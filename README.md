@@ -37,31 +37,50 @@ Si algo falla, no hay ZIP.
 
 ---
 
-## Interfaz Visual, Bloques Dinámicos y Modo Simulación
+## Interfaz Visual, Bloques Dinámicos, Modo Simulación y Navegación GitHub
 
-La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux, optimizada para máxima productividad con bloques configurables:
+La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux y GitHub.com, optimizada para máxima productividad con bloques configurables:
 
-1. **Barra Superior (Top Menu Bar)**: Selector de vistas (Bloques Blockly, Código Python del microservicio, DAG Visual Mermaid), menús de Archivo/Edición (Modo Turbo), título editable del proyecto, botones de verificación AST y descarga del ZIP.
-2. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
-   - Diseño visual de auténticas piezas de puzzle Scratch con pestañas de conexión, muescas de encaje y paleta de colores vibrantes sin cajas de texto invasivas.
-   - **Popover descriptivo flotante (Hover Tooltip)**: al posar el cursor sobre cualquier bloque por unos instantes, se despliega una tarjeta enriquecida con la descripción del bloque, los parámetros configurables y el código Python WPipe equivalente.
-   - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins`), selector dinámico de categoría (`connectivity`, `database`, `security`, `vision`, etc.), filtro de búsqueda por texto y lista desplegable con los 196 steps del catálogo (incluyendo plugins comunitarios como `ecam_yolo`).
+1. **Barra Superior (Top Menu Bar)**: Selector de 4 pestañas modulares (🧩 Canvas de Diseño, 🎮 Simulación & Depuración, 📊 Flujo Mermaid DAG y 💻 Microservicio Python), menús desplegables enriquecidos de Archivo y Edición (Colapsar/Expandir todos los bloques, Deshacer/Rehacer, Zoom to Fit, Modo Turbo, Guardar/Restaurar en localStorage, Exportar Canvas JSON y Descargar ZIP).
+2. **Tira Lateral de Categorías Scratch 3.0 (Far Left Dot Column)**:
+   - Selectores circulares temáticos por categoría: Inicio (Ámbar), Pasos (Azul), Control (Naranja), Bucles (Amarillo) y Paralelo (Esmeralda).
+   - Botón de extensión icónico de Scratch 3.0 `[ + | ≡ ]` en la parte inferior para abrir la biblioteca de extensiones con los 197 steps y filtros por repositorio (Oficiales / Plugins).
+3. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
+   - Diseño visual de auténticas piezas de puzzle Scratch con pestañas de ensamble, muescas de encaje y paleta de colores vibrantes sin cajas de texto invasivas.
+   - Buscador rápido en tiempo real para filtrar bloques al instante.
+   - **Tarjeta descriptiva flotante (Hover Tooltip)**: al posar el cursor sobre cualquier bloque, se despliega una tarjeta enriquecida con la descripción del bloque, los parámetros configurables y el código Python WPipe equivalente generado.
+   - 🚀 **Lanzador de Pipeline (Trigger Hat Block)**: Bloque sombrero de inicio que configura el punto de entrada al pipeline (FastAPI REST `POST /run`, Kafka Consumer, Redis Queue, Cron / Programador, Webhook, CLI local), reflejado automáticamente en diagramas Mermaid y en wrappers de ejecución en `app/main.py`.
+   - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins` con auto-actualización inmediata del paso seleccionado), selector dinámico de categoría, filtro de búsqueda por texto y lista desplegable con los 197 steps del catálogo (incluyendo plugins comunitarios como `ecam_yolo` y `rss_parser`).
    - ✨ **Paso con IA (Dialecto A)**: Bloque para arrastrar y describir en lenguaje natural el comportamiento deseado. Genera la función decorada con `@step` y su Context DTO Pydantic (`app/dto/` y `app/states/`).
    - 📄 **Paso Personalizado (.py)**: Bloque con acción de adjunto de archivos Python locales (`.py`), empaquetándolos directamente en el microservicio.
    - 🔀 **Condición Si (Single Branch)**: Bloque de bifurcación condicional simple sin rama else (`Condition(expression=..., branch_true=[...])`).
-   - 🔀 **Condición Si / Sino (Dual Branch)**: Bloque condicional completo con ramas `VERDADERA` y `FALSA`.
+   - ⚖️ **Condición Si / Sino (Dual Branch)**: Bloque condicional completo con ramas `VERDADERA` y `FALSA`.
    - 🔁 **Bucle Mientras (While Loop)**: Bloque de repetición condicional continua (`For(validation_expression=..., steps=[...])`).
-   - 🔁 **Bucle Repetir (For Loop)**: Bloque de repetición determinista N veces (`For(iterations=N, steps=[...])`).
+   - 🔢 **Bucle Repetir (For Loop)**: Bloque de repetición determinista N veces (`For(iterations=N, steps=[...])`).
    - ⚡ **Ejecución Paralela (Parallel)**: Bloque de concurrencia con política de fusión de contexto (`accumulate` o `last_wins`).
    - ⏳ **Segundo Plano (Background)**: Bloque de ejecución asíncrona no bloqueante en hilo secundario (`Background(step=...)`).
-   - 📚 **Acceso al Catálogo Completo**: Modal con documentación completa, parámetros y ejemplos de los 196 steps.
-3. **Área Central de Bloques (Blockly Canvas)**: Espacio de trabajo infinito con zoom, centrado, papelera y sincronización bidireccional inmediata con el IR intermedio.
-4. **Etapa de Simulación (Simulation Stage)**:
-   - Controles de ejecución: **Bandera Verde** (🏁 Run) y **Octágono Rojo** (🛑 Stop).
-   - Secuencia de ejecución en tiempo real con resaltado visual animado del bloque activo en el canvas.
-   - Simulador de Payload de entrada (JSON editable).
-   - Inspector de Contexto en vivo: tabla comparativa de variables `read` y `write` con diff visual de estados.
-   - Consola de logs de ejecución y medidores de tiempo.
+4. **Área Central de Bloques (Blockly Canvas)**:
+   - Espacio de trabajo infinito con permanencia en DOM (no se destruye al alternar pestañas).
+   - Barra de herramientas flotante sobre el lienzo con botones rápidos: Centrar, Colapsar todo, Expandir todo, Deshacer, Limpiar y Guía FAQ.
+5. **Pestaña Dedicada de Simulación & Depuración (Simulation Stage)**:
+   - Laboratorio de pruebas a pantalla completa (100% del ancho para máxima legibilidad).
+   - Controles de ejecución: **Bandera Verde** (🏁 Run), **Octágono Rojo** (🛑 Stop) y Reinicio.
+   - Presets de payload listos para usar (API REST, Kafka Event, Redis Queue, Cron Job).
+   - Simulador de Payload JSON de entrada editable.
+   - Inspector de Contexto en vivo: tabla reactiva de mutación de variables (`data`) en tiempo real.
+   - Línea temporal de pasos con tiempos de cómputo en ms y estados (`idle`, `running`, `success`, `error`).
+   - Monitor de consumo de recursos en tiempo real (CPU % y memoria RAM en MB).
+   - Consola terminal de logs enriquecida (`stdout` / `stderr`).
+6. **Navegador de Repositorio Estilo GitHub.com (Microservicio Python)**:
+   - Navegación idéntica a la experiencia de exploración de repositorios en **github.com**:
+     - Selector de rama git `🏷️ main`.
+     - Barra interactiva de migas de pan (breadcrumbs) con segmentos clicables (`wpipe_microservice / app / dto / step_dto.py`).
+     - Banner de commit estilo GitHub con autor, mensaje de commit, hash y badge de verificación.
+     - Vista de tabla de directorio con iconos tipados (🐍 Python, 🐳 Docker, ⚙️ Config/TOML, 📝 Markdown, 💻 Shell script), commit message por archivo, tamaños y enlace `..` para subir de carpeta.
+     - Visor de archivos (Blob viewer) con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
+     - Previsualización incrustada de `README.md` bajo la tabla de directorio.
+     - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
+     - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
 
 ---
 

@@ -1,8 +1,10 @@
 from typing import Any
-from fastapi import APIRouter, HTTPException, Response
-from app.schemas.ir import CanvasIR, SemanticIR, TargetIR
-from app.services.ir_transformer import transform_canvas_to_semantic, transform_semantic_to_target
+
+from fastapi import APIRouter, Response
+
+from app.schemas.ir import CanvasIR, TargetIR
 from app.services.codegen import build_microservice_zip
+from app.services.ir_transformer import transform_canvas_to_semantic, transform_semantic_to_target
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -82,13 +84,22 @@ def dry_run_pipeline(canvas_ir: CanvasIR) -> dict[str, Any]:
 
 
 @router.post("/generate")
-def generate_microservice_zip(canvas_ir: CanvasIR, project_name: str = "wpipe_microservice") -> Response:
+def generate_microservice_zip(
+    canvas_ir: CanvasIR, project_name: str = "wpipe_microservice"
+) -> Response:
     semantic_ir = transform_canvas_to_semantic(canvas_ir)
     target_ir = transform_semantic_to_target(semantic_ir, project_name=project_name)
     zip_bytes = build_microservice_zip(target_ir)
 
     filename = f"{project_name}.zip"
-    headers = {
-        "Content-Disposition": f"attachment; filename={filename}"
-    }
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    return Response(content=zip_bytes, media_type="application/zip", headers=headers)
+
+
+@router.post("/generate-from-files")
+def generate_microservice_zip_from_files(target_ir: TargetIR) -> Response:
+    zip_bytes = build_microservice_zip(target_ir)
+    project_name = target_ir.project_name or "wpipe_microservice"
+    filename = f"{project_name}.zip"
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
     return Response(content=zip_bytes, media_type="application/zip", headers=headers)

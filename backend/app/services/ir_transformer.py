@@ -58,7 +58,7 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
         if_children = [
             build_semantic_step(child)
             for child in canvas_ir.nodes
-            if child.data.parent_id == node.id and child.data.slot_type in ("if_body", "loop_body", "parallel_body")
+            if child.data.parent_id == node.id and child.data.slot_type in ("if_body", "loop_body", "parallel_body", "background_body")
         ]
         else_children = [
             build_semantic_step(child)
@@ -69,7 +69,7 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
         if data.node_type == "condition":
             step.branch_true = if_children
             step.branch_false = else_children
-        elif data.node_type == "for":
+        elif data.node_type in ("for", "while", "background"):
             step.loop_steps = if_children
         elif data.node_type == "parallel":
             step.parallel_steps = if_children
@@ -126,15 +126,19 @@ def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "w
 
     has_condition = any(s.step_type == "condition" for s in all_steps)
     has_for = any(s.step_type == "for" for s in all_steps)
+    has_while = any(s.step_type == "while" for s in all_steps)
     has_parallel = any(s.step_type == "parallel" for s in all_steps)
+    has_background = any(s.step_type == "background" for s in all_steps)
 
     wpipe_symbols = ["Pipeline", "step"]
     if has_condition:
         wpipe_symbols.append("Condition")
-    if has_for:
+    if has_for or has_while:
         wpipe_symbols.append("For")
     if has_parallel:
         wpipe_symbols.append("Parallel")
+    if has_background:
+        wpipe_symbols.append("Background")
 
     imports: list[str] = [f"from wpipe import {', '.join(wpipe_symbols)}"]
     custom_state_files: list[TargetFile] = []
@@ -232,13 +236,21 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
             false_rendered = ",\n".join(render_step(c, indent + 4) for c in s.branch_false)
             true_block = f"[\n{true_rendered}\n{pad}    ]" if true_rendered else "[]"
             false_block = f"[\n{false_rendered}\n{pad}    ]" if false_rendered else "[]"
-            return (
-                f'{pad}Condition(\n'
-                f'{pad}    expression="{expr}",\n'
-                f'{pad}    branch_true={true_block},\n'
-                f'{pad}    branch_false={false_block}\n'
-                f'{pad})'
-            )
+            if s.branch_false:
+                return (
+                    f'{pad}Condition(\n'
+                    f'{pad}    expression="{expr}",\n'
+                    f'{pad}    branch_true={true_block},\n'
+                    f'{pad}    branch_false={false_block}\n'
+                    f'{pad})'
+                )
+            else:
+                return (
+                    f'{pad}Condition(\n'
+                    f'{pad}    expression="{expr}",\n'
+                    f'{pad}    branch_true={true_block}\n'
+                    f'{pad})'
+                )
 
         elif s.step_type == "for":
             iters = s.for_iterations or 5
@@ -247,6 +259,17 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
             return (
                 f'{pad}For(\n'
                 f'{pad}    iterations={iters},\n'
+                f'{pad}    steps={loop_block}\n'
+                f'{pad})'
+            )
+
+        elif s.step_type == "while":
+            expr = s.condition_expression or "True"
+            loop_rendered = ",\n".join(render_step(c, indent + 4) for c in s.loop_steps)
+            loop_block = f"[\n{loop_rendered}\n{pad}    ]" if loop_rendered else "[]"
+            return (
+                f'{pad}For(\n'
+                f'{pad}    validation_expression="{expr}",\n'
                 f'{pad}    steps={loop_block}\n'
                 f'{pad})'
             )
@@ -261,7 +284,17 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
                 f'{pad}    merge_policy="{policy}"\n'
                 f'{pad})'
             )
-        return f"{pad}# Unknown step {s.name}"
+
+        elif s.step_type == "background":
+            if s.loop_steps:
+                child = s.loop_steps[0]
+                child_rendered = render_step(child, indent=0).strip()
+                return (
+                    f'{pad}Background(\n'
+                    f'{pad}    step={child_rendered}\n'
+                    f'{pad})'
+                )
+            return f"{pad}# Background (no step assigned)"
 
     step_declarations = [render_step(s, indent=8) for s in semantic_ir.steps]
     steps_str = ",\n".join(step_declarations) if step_declarations else "        # No steps configured"

@@ -114,6 +114,40 @@ function getStepOptions(repoFilter: string, catFilter: string, searchTerm: strin
   });
 }
 
+export function createCollapseToggleField(): Blockly.FieldImage {
+  const minusSvg =
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='2' width='20' height='20' rx='5' fill='%231f2937' stroke='%2338bdf8'/><line x1='7' y1='12' x2='17' y2='12'/></svg>";
+
+  return new Blockly.FieldImage(
+    minusSvg,
+    16,
+    16,
+    "➖ Colapsar este bloque sobre sí mismo (Click para alternar)",
+    function (this: any) {
+      const block = this.getSourceBlock();
+      if (block && typeof block.setCollapsed === "function") {
+        block.setCollapsed(!block.isCollapsed());
+      }
+    }
+  );
+}
+
+export function attachBlockCollapseBehavior(block: Blockly.Block) {
+  const blockSvg = block as any;
+  if (blockSvg && typeof blockSvg.getSvgRoot === "function") {
+    const svg = blockSvg.getSvgRoot();
+    if (svg) {
+      svg.ondblclick = (e: MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (typeof block.setCollapsed === "function") {
+          block.setCollapsed(!block.isCollapsed());
+        }
+      };
+    }
+  }
+}
+
 // Define custom block shapes and categories for WPipe Studio Scratch workspace
 export function registerWPipeBlocklyBlocks() {
   if (Blockly.Blocks["wpipe_step"]) return;
@@ -121,7 +155,7 @@ export function registerWPipeBlocklyBlocks() {
   // 0. WPipe Trigger / Event Ingress Block (Scratch Events Gold/Amber)
   Blockly.Blocks["wpipe_trigger"] = {
     init: function () {
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("🚀 Disparador del Pipeline:")
         .appendField(
           new Blockly.FieldDropdown(
@@ -150,7 +184,8 @@ export function registerWPipeBlocklyBlocks() {
             }
           ),
           "TRIGGER_TYPE"
-        );
+        )
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
 
       this.appendDummyInput()
         .appendField("Ruta / Tópico / Clave:")
@@ -161,7 +196,7 @@ export function registerWPipeBlocklyBlocks() {
       this.setNextStatement(true, null);
       this.setColour(42); // Scratch Events Gold / Amber
       this.setTooltip(
-        "Disparador de entrada del pipeline: define cómo se recibe la carga inicial (API REST, Kafka, Redis, Cron, etc.)."
+        "Disparador de entrada del pipeline: define cómo se recibe la carga inicial (API REST, Kafka, Redis, Cron, etc.). Doble-clic para colapsar."
       );
     },
   };
@@ -181,9 +216,10 @@ export function registerWPipeBlocklyBlocks() {
         }
       );
 
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("📦 Paso de Catálogo:")
-        .appendField(configField, "CONFIG_ICON");
+        .appendField(configField, "CONFIG_ICON")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
 
       const repoDropdown = new Blockly.FieldDropdown(getRepoOptions, function (this: any, newVal: string) {
         const block = this.getSourceBlock();
@@ -248,7 +284,7 @@ export function registerWPipeBlocklyBlocks() {
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(217); // Scratch Motion Blue
-      this.setTooltip("Paso ejecutable de WPipe. Usa los selectores para elegir origen, categoría y step.");
+      this.setTooltip("Paso ejecutable de WPipe. Usa los selectores para elegir origen, categoría y step. Doble-clic para colapsar.");
     },
     onchange: function () {
       if (!this.workspace || this.workspace.isDragging()) return;
@@ -284,9 +320,10 @@ export function registerWPipeBlocklyBlocks() {
         }
       );
 
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("✨ Paso Generado con IA:")
-        .appendField(editPromptField, "AI_EDIT_ICON");
+        .appendField(editPromptField, "AI_EDIT_ICON")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
 
       this.appendDummyInput()
         .appendField("Nombre:")
@@ -303,7 +340,7 @@ export function registerWPipeBlocklyBlocks() {
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(275); // Scratch My Blocks Purple
-      this.setTooltip("Paso autogenerado por IA a partir de tu descripción en lenguaje natural.");
+      this.setTooltip("Paso autogenerado por IA a partir de tu descripción en lenguaje natural. Doble-clic para colapsar.");
     },
   };
 
@@ -322,9 +359,10 @@ export function registerWPipeBlocklyBlocks() {
         }
       );
 
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("📄 Paso Personalizado (.py):")
-        .appendField(attachFileField, "ATTACH_ICON");
+        .appendField(attachFileField, "ATTACH_ICON")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
 
       this.appendDummyInput()
         .appendField("Nombre:")
@@ -341,61 +379,66 @@ export function registerWPipeBlocklyBlocks() {
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(180); // Cyan / Teal
-      this.setTooltip("Estado propio cargado desde un archivo Python (.py). Haz clic en 📎 para adjuntarlo.");
+      this.setTooltip("Estado propio cargado desde un archivo Python (.py). Haz clic en 📎 para adjuntarlo. Doble-clic para colapsar.");
     },
   };
 
   // 4. IF Condition Block (Scratch Control Orange)
   Blockly.Blocks["wpipe_if"] = {
     init: function () {
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("🔀 SI condición:")
         .appendField(new Blockly.FieldTextInput("status_code == 200"), "CONDITION")
-        .appendField("ENTONCES:");
+        .appendField("ENTONCES:")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendStatementInput("DO").setCheck(null).appendField("RAMA VERDADERA:");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(36); // Scratch Control Orange
-      this.setTooltip("Ejecuta los pasos anidados si la condición evalúa a verdadero (True)");
+      this.setTooltip("Ejecuta los pasos anidados si la condición evalúa a verdadero (True). Doble-clic para colapsar.");
     },
   };
 
   // 5. IF-ELSE Dual-Branch Condition Block (Scratch Control Orange)
   Blockly.Blocks["wpipe_if_else"] = {
     init: function () {
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("🔀 SI condición:")
         .appendField(new Blockly.FieldTextInput("status_code == 200"), "CONDITION")
-        .appendField("ENTONCES:");
+        .appendField("ENTONCES:")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendStatementInput("DO").setCheck(null).appendField("RAMA VERDADERA:");
       this.appendDummyInput().appendField("SINO:");
       this.appendStatementInput("ELSE").setCheck(null).appendField("RAMA FALSA:");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(36); // Scratch Control Orange
-      this.setTooltip("Ejecuta la rama verdadera en True, o la rama falsa en False");
+      this.setTooltip("Ejecuta la rama verdadera en True, o la rama falsa en False. Doble-clic para colapsar.");
     },
   };
 
   // 6. FOR / REPEAT Loop Block (Events Amber)
   Blockly.Blocks["wpipe_for"] = {
     init: function () {
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("🔁 REPETIR")
         .appendField(new Blockly.FieldNumber(5, 1, 1000), "ITERATIONS")
-        .appendField("VECES:");
+        .appendField("VECES:")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendStatementInput("DO").setCheck(null).appendField("PASOS A REPETIR:");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(28); // Scratch Events Amber
-      this.setTooltip("Ejecuta los pasos contenidos N veces de manera secuencial");
+      this.setTooltip("Ejecuta los pasos contenidos N veces de manera secuencial. Doble-clic para colapsar.");
     },
   };
 
   // 7. PARALLEL Branch Block (Operators Green)
   Blockly.Blocks["wpipe_parallel"] = {
     init: function () {
-      this.appendDummyInput().appendField("⚡ EJECUTAR EN PARALELO");
+      this.appendDummyInput("HEADER")
+        .appendField("⚡ EJECUTAR EN PARALELO")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendDummyInput()
         .appendField("Fusión de contexto:")
         .appendField(
@@ -409,34 +452,37 @@ export function registerWPipeBlocklyBlocks() {
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(150); // Scratch Operators Green
-      this.setTooltip("Ejecuta los pasos en paralelo fusionando el contexto con la política seleccionada");
+      this.setTooltip("Ejecuta los pasos en paralelo fusionando el contexto con la política seleccionada. Doble-clic para colapsar.");
     },
   };
 
   // 8. WHILE Loop Block (Events Amber)
   Blockly.Blocks["wpipe_while"] = {
     init: function () {
-      this.appendDummyInput()
+      this.appendDummyInput("HEADER")
         .appendField("🔁 REPETIR MIENTRAS:")
         .appendField(new Blockly.FieldTextInput("retry_count < 3"), "CONDITION")
-        .appendField("DO:");
+        .appendField("DO:")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendStatementInput("DO").setCheck(null).appendField("PASOS A REPETIR:");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(28); // Scratch Events Amber
-      this.setTooltip("Ejecuta los pasos contenidos en bucle mientras la condición sea verdadera (While)");
+      this.setTooltip("Ejecuta los pasos contenidos en bucle mientras la condición sea verdadera (While). Doble-clic para colapsar.");
     },
   };
 
   // 9. BACKGROUND Task Block (Scratch Dark Indigo)
   Blockly.Blocks["wpipe_background"] = {
     init: function () {
-      this.appendDummyInput().appendField("⏳ SEGUNDO PLANO (Background)");
+      this.appendDummyInput("HEADER")
+        .appendField("⏳ SEGUNDO PLANO (Background)")
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
       this.appendStatementInput("DO").setCheck(null).appendField("PASO ASÍNCRONO:");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(235); // Scratch Indigo / Dark Blue
-      this.setTooltip("Ejecuta el paso en un hilo secundario sin bloquear el flujo principal (Background)");
+      this.setTooltip("Ejecuta el paso en un hilo secundario sin bloquear el flujo principal (Background). Doble-clic para colapsar.");
     },
   };
 }
@@ -444,17 +490,127 @@ export function registerWPipeBlocklyBlocks() {
 // Global reference store for workspace injection helper
 let activeWorkspaceRef: Blockly.WorkspaceSvg | null = null;
 
-export function addTriggerBlockToWorkspace(triggerType: string = "api", triggerParam: string = "/run") {
-  if (!activeWorkspaceRef) return;
-  const block = activeWorkspaceRef.newBlock("wpipe_trigger");
-  block.setFieldValue(triggerType, "TRIGGER_TYPE");
-  block.setFieldValue(triggerParam, "TRIGGER_PARAM");
+function getOptimalNewBlockPosition(ws: Blockly.WorkspaceSvg): { x: number; y: number } {
+  try {
+    const metrics = ws.getMetricsManager().getViewMetrics(true);
+    const viewLeft = metrics.left;
+    const viewTop = metrics.top;
+    const viewWidth = metrics.width;
+    const viewHeight = metrics.height;
+
+    const selected = Blockly.getSelected();
+    if (selected && selected instanceof Blockly.BlockSvg && selected.workspace === ws) {
+      const selXy = selected.getRelativeToSurfaceXY();
+      const selHw = selected.getHeightWidth ? selected.getHeightWidth() : { height: 100, width: 250 };
+      return {
+        x: selXy.x,
+        y: selXy.y + selHw.height + 25,
+      };
+    }
+
+    const topBlocks = ws.getTopBlocks(false);
+    if (topBlocks.length === 0) {
+      return { x: Math.max(80, viewLeft + 60), y: Math.max(60, viewTop + 60) };
+    }
+
+    let maxBottomY = 0;
+    let preferredX = 80;
+
+    topBlocks.forEach((tb) => {
+      const xy = tb.getRelativeToSurfaceXY();
+      const hw = tb.getHeightWidth ? tb.getHeightWidth() : { height: 100, width: 250 };
+      if (xy.y + hw.height > maxBottomY) {
+        maxBottomY = xy.y + hw.height;
+        preferredX = xy.x;
+      }
+    });
+
+    if (maxBottomY + 40 >= viewTop && maxBottomY + 40 <= viewTop + viewHeight - 80) {
+      return {
+        x: preferredX,
+        y: maxBottomY + 25,
+      };
+    }
+
+    const centerX = viewLeft + viewWidth / 2 - 120;
+    const centerY = viewTop + viewHeight / 2 - 60;
+    const jitterX = Math.floor(Math.random() * 30);
+    const jitterY = Math.floor(Math.random() * 30);
+
+    return {
+      x: Math.max(viewLeft + 40, centerX + jitterX),
+      y: Math.max(viewTop + 40, centerY + jitterY),
+    };
+  } catch {
+    return { x: 200 + Math.floor(Math.random() * 40), y: 150 + Math.floor(Math.random() * 40) };
+  }
+}
+
+function tryAutoConnectBlock(ws: Blockly.WorkspaceSvg, newBlock: Blockly.BlockSvg): boolean {
+  if (!newBlock.previousConnection) return false;
+
+  // 1. If user has a selected block with open nextConnection:
+  const selected = Blockly.getSelected();
+  if (selected && selected instanceof Blockly.BlockSvg && selected.workspace === ws && selected !== newBlock) {
+    if (selected.nextConnection && !selected.nextConnection.isConnected()) {
+      selected.nextConnection.connect(newBlock.previousConnection);
+      return true;
+    }
+  }
+
+  // 2. Otherwise find the lowest block in the primary stack that has an open nextConnection
+  const topBlocks = ws.getTopBlocks(false);
+  for (const tb of topBlocks) {
+    let curr: Blockly.Block | null = tb;
+    while (curr) {
+      if (curr !== newBlock && curr.nextConnection && !curr.nextConnection.isConnected()) {
+        curr.nextConnection.connect(newBlock.previousConnection);
+        return true;
+      }
+      if (curr.nextConnection && curr.nextConnection.targetBlock()) {
+        curr = curr.nextConnection.targetBlock();
+      } else {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
+function placeAndHighlightBlock(ws: Blockly.WorkspaceSvg, block: Blockly.BlockSvg) {
   block.initSvg();
   block.render();
-  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
+  attachBlockCollapseBehavior(block);
+
+  const connected = tryAutoConnectBlock(ws, block);
+  if (!connected) {
+    const pos = getOptimalNewBlockPosition(ws);
+    block.moveTo(new Blockly.utils.Coordinate(pos.x, pos.y));
+  }
+
   if (typeof (block as any).select === "function") {
     (block as any).select();
   }
+
+  if (typeof (block as any).bringToFront === "function") {
+    (block as any).bringToFront();
+  }
+
+  // Trigger workspace change listeners
+  try {
+    const event = new (Blockly.Events.get(Blockly.Events.BLOCK_CREATE) || Blockly.Events.BlockCreate)(block);
+    Blockly.Events.fire(event);
+  } catch {
+    // fallback
+  }
+}
+
+export function addTriggerBlockToWorkspace(triggerType: string = "api", triggerParam: string = "/run") {
+  if (!activeWorkspaceRef) return;
+  const block = activeWorkspaceRef.newBlock("wpipe_trigger") as Blockly.BlockSvg;
+  block.setFieldValue(triggerType, "TRIGGER_TYPE");
+  block.setFieldValue(triggerParam, "TRIGGER_PARAM");
+  placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
 export function collapseAllBlocksInWorkspace() {
@@ -503,53 +659,33 @@ export function addStepBlockToWorkspace(
   stepOrigin: string = "catalog"
 ) {
   if (!activeWorkspaceRef) return;
-  const block = activeWorkspaceRef.newBlock("wpipe_step");
+  const block = activeWorkspaceRef.newBlock("wpipe_step") as Blockly.BlockSvg;
   block.setFieldValue(initialStepName, "STEP_NAME");
   block.setFieldValue(initialNamespace, "NAMESPACE");
-  block.initSvg();
-  block.render();
-  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
-  if (typeof (block as any).select === "function") {
-    (block as any).select();
-  }
+  placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
 export function addAiStepBlockToWorkspace(initialName: string = "ai_process_step", initialPrompt: string = "Procesar datos con modelo de IA") {
   if (!activeWorkspaceRef) return;
-  const block = activeWorkspaceRef.newBlock("wpipe_ai_step");
+  const block = activeWorkspaceRef.newBlock("wpipe_ai_step") as Blockly.BlockSvg;
   block.setFieldValue(initialName, "STEP_NAME");
   block.setFieldValue(initialPrompt, "AI_PROMPT");
-  block.initSvg();
-  block.render();
-  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
-  if (typeof (block as any).select === "function") {
-    (block as any).select();
-  }
+  placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
 export function addUserFileStepBlockToWorkspace(initialName: string = "custom_file_step") {
   if (!activeWorkspaceRef) return;
-  const block = activeWorkspaceRef.newBlock("wpipe_user_file_step");
+  const block = activeWorkspaceRef.newBlock("wpipe_user_file_step") as Blockly.BlockSvg;
   block.setFieldValue(initialName, "STEP_NAME");
-  block.initSvg();
-  block.render();
-  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
-  if (typeof (block as any).select === "function") {
-    (block as any).select();
-  }
+  placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
 export function addControlBlockToWorkspace(
   type: "wpipe_if" | "wpipe_if_else" | "wpipe_for" | "wpipe_while" | "wpipe_parallel" | "wpipe_background"
 ) {
   if (!activeWorkspaceRef) return;
-  const block = activeWorkspaceRef.newBlock(type);
-  block.initSvg();
-  block.render();
-  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
-  if (typeof (block as any).select === "function") {
-    (block as any).select();
-  }
+  const block = activeWorkspaceRef.newBlock(type) as Blockly.BlockSvg;
+  placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
 export function getMermaidFromBlocklyWorkspace(): string {
@@ -999,6 +1135,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
       triggerBlock.initSvg();
       triggerBlock.render();
+      attachBlockCollapseBehavior(triggerBlock);
       triggerBlock.moveBy(80, 50);
 
       const block1 = ws.newBlock("wpipe_step");
@@ -1006,6 +1143,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       block1.setFieldValue("wpipe_steps.connectivity", "NAMESPACE");
       block1.initSvg();
       block1.render();
+      attachBlockCollapseBehavior(block1);
 
       if (triggerBlock.nextConnection && block1.previousConnection) {
         triggerBlock.nextConnection.connect(block1.previousConnection);
@@ -1014,6 +1152,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       const block2 = ws.newBlock("wpipe_if_else");
       block2.initSvg();
       block2.render();
+      attachBlockCollapseBehavior(block2);
 
       if (block1.nextConnection && block2.previousConnection) {
         block1.nextConnection.connect(block2.previousConnection);
@@ -1024,13 +1163,21 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       block3.setFieldValue("wpipe_plugins.vision", "NAMESPACE");
       block3.initSvg();
       block3.render();
+      attachBlockCollapseBehavior(block3);
 
       const doInput = block2.getInput("DO");
       if (doInput && doInput.connection && block3.previousConnection) {
         doInput.connection.connect(block3.previousConnection);
       }
 
-      ws.addChangeListener(() => {
+      ws.addChangeListener((e) => {
+        if (e && (e as any).type === Blockly.Events.BLOCK_CREATE) {
+          const createEv = e as any;
+          if (createEv.blockId) {
+            const b = ws.getBlockById(createEv.blockId);
+            if (b) attachBlockCollapseBehavior(b);
+          }
+        }
         if (onWorkspaceChange) {
           onWorkspaceChange(ws);
         }
@@ -1039,6 +1186,9 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
 
     return () => {
       if (workspaceRef.current) {
+        if (activeWorkspaceRef === workspaceRef.current) {
+          activeWorkspaceRef = null;
+        }
         workspaceRef.current.dispose();
         workspaceRef.current = null;
       }

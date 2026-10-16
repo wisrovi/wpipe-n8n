@@ -24,7 +24,7 @@ class ContextContract(BaseModel):
 
 class NodeData(BaseModel):
     label: str
-    node_type: Literal["step", "condition", "for", "parallel"] = "step"
+    node_type: Literal["step", "condition", "for", "while", "parallel", "background"] = "step"
     namespace: str | None = None
     func_name: str | None = None
     origin: StepOrigin = StepOrigin.CATALOG
@@ -36,7 +36,7 @@ class NodeData(BaseModel):
     notes: str | None = None
     code_snippet: str | None = None
     parent_id: str | None = None
-    slot_type: Literal["if_body", "else_body", "loop_body", "parallel_body"] | None = None
+    slot_type: Literal["if_body", "else_body", "loop_body", "parallel_body", "background_body"] | None = None
     has_else: bool | None = None
 
 
@@ -103,7 +103,7 @@ class CanvasIR(BaseModel):
 class SemanticStep(BaseModel):
     step_id: str
     name: str
-    step_type: Literal["step", "condition", "for", "parallel"] = "step"
+    step_type: Literal["step", "condition", "for", "while", "parallel", "background"] = "step"
     namespace: str | None = None
     func_name: str | None = None
     origin: StepOrigin = StepOrigin.CATALOG

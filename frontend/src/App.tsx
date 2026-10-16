@@ -3,7 +3,11 @@ import { CanvasNode, CanvasEdge, CanvasIR, StepOrigin } from "./lib/ir/schemas";
 import {
   BlocklyComponent,
   addStepBlockToWorkspace,
+  addAiStepBlockToWorkspace,
+  addUserFileStepBlockToWorkspace,
   addControlBlockToWorkspace,
+  setBlocklyCatalog,
+  attachedFilesRegistry,
   getMermaidFromBlocklyWorkspace,
   getWorkPlanFromBlocklyWorkspace,
   getCanvasIRFromBlocklyWorkspace,
@@ -143,9 +147,64 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [aiStepName, setAiStepName] = useState<string>("");
 
+  // AI Step Configuration Modal State
+  const [showAiConfigModal, setShowAiConfigModal] = useState<boolean>(false);
+  const [targetAiBlock, setTargetAiBlock] = useState<any | null>(null);
+  const [aiStepNameInput, setAiStepNameInput] = useState<string>("custom_ai_state");
+  const [aiPromptInput, setAiPromptInput] = useState<string>("");
+
+  // User File Attachment State
+  const [targetUserFileBlock, setTargetUserFileBlock] = useState<any | null>(null);
+  const userFileInputRef = useRef<HTMLInputElement>(null);
+
   // Catalog Data
   const [catalog, setCatalog] = useState<CatalogStep[]>([]);
   const [userStates, setUserStates] = useState<CatalogStep[]>([]);
+
+  const handleUserFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !targetUserFileBlock) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const code = (event.target?.result as string) || "";
+      const matchDef = code.match(/def\s+([a-zA-Z0-9_]+)\s*\(/);
+      const detectedName = matchDef ? matchDef[1] : file.name.replace(/\.py$/, "");
+      targetUserFileBlock.setFieldValue(detectedName, "STEP_NAME");
+      targetUserFileBlock.setFieldValue(file.name, "FILE_NAME");
+      targetUserFileBlock.setFieldValue(`✅ ${file.name} (${Math.round((file.size / 1024) * 10) / 10} KB)`, "FILE_STATUS");
+
+      attachedFilesRegistry[targetUserFileBlock.id] = {
+        fileName: file.name,
+        code: code,
+        stepName: detectedName,
+      };
+      setStatusMessage(`Archivo adjuntado: ${file.name} (función: ${detectedName})`);
+    };
+    reader.readAsText(file);
+  };
+
+  // Register AI and File Upload handlers for Blockly workspace
+  useEffect(() => {
+    (window as any).onOpenAiPromptModal = (block: any) => {
+      setTargetAiBlock(block);
+      setAiStepNameInput(block.getFieldValue("STEP_NAME") || "custom_ai_state");
+      setAiPromptInput(block.getFieldValue("AI_PROMPT") || "");
+      setShowAiConfigModal(true);
+    };
+
+    (window as any).onAttachUserFile = (block: any) => {
+      setTargetUserFileBlock(block);
+      if (userFileInputRef.current) {
+        userFileInputRef.current.value = "";
+        userFileInputRef.current.click();
+      }
+    };
+
+    return () => {
+      delete (window as any).onOpenAiPromptModal;
+      delete (window as any).onAttachUserFile;
+    };
+  }, []);
 
   // FAQ Items Database
   const faqList: FaqItem[] = [
@@ -204,6 +263,7 @@ export default function App() {
       .then((data) => {
         if (Array.isArray(data)) {
           setCatalog(data);
+          setBlocklyCatalog(data);
         }
       })
       .catch((err) => {
@@ -777,307 +837,171 @@ export default function App() {
           {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE */}
           {activeMainTab === "code" && (
             <div className="flex-1 flex overflow-hidden">
-              {/* Category Strip (60px Scratux vertical bar) */}
-              <div className="w-16 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between items-center py-2 z-20">
-                <div className="flex flex-col space-y-2 items-center w-full">
-                  {/* Motion Blue - Official Steps */}
-                  <button
-                    onClick={() => setSelectedCategory("motion")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "motion" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Pasos Oficiales (wpipe-steps)"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#4c97ff] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      📦
+              {/* PALETA DE BLOQUES (Streamlined Toolbox) */}
+              <div className="w-64 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between overflow-hidden z-20">
+                {/* Header */}
+                <div className="p-3 border-b border-gray-800/80 bg-gray-950/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs">
+                      🧩
                     </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Pasos</span>
-                  </button>
-
-                  {/* Looks Cyan - Community Plugins */}
-                  <button
-                    onClick={() => setSelectedCategory("looks")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "looks" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Plugins de Comunidad (wpipe-plugins)"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#5cb1d6] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      🔌
-                    </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Plugins</span>
-                  </button>
-
-                  {/* Sound Pink - Vision & AI */}
-                  <button
-                    onClick={() => setSelectedCategory("sound")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "sound" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Visión por Computadora & IA"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#ff6680] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      🎬
-                    </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">IA/Visión</span>
-                  </button>
-
-                  {/* Control Orange - IF, FOR, PARALLEL */}
-                  <button
-                    onClick={() => setSelectedCategory("control")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "control" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Control de Flujo (IF, FOR, PARALLEL)"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#ffab19] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      🔀
-                    </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Control</span>
-                  </button>
-
-                  {/* Sensing Teal - Security & Health */}
-                  <button
-                    onClick={() => setSelectedCategory("sensing")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "sensing" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Seguridad & Red"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#2e8ca8] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      🛡️
-                    </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Seguridad</span>
-                  </button>
-
-                  {/* My Blocks Purple - Custom & AI States */}
-                  <button
-                    onClick={() => setSelectedCategory("myblocks")}
-                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
-                      selectedCategory === "myblocks" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
-                    }`}
-                    title="Mis Estados Personalizados (.py & IA)"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-[#9966ff] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
-                      ✨
-                    </div>
-                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Mis Pasos</span>
-                  </button>
-                </div>
-
-                {/* Bottom [+] Extension Library Button */}
-                <button
-                  onClick={() => setShowExtensionModal(true)}
-                  className="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white flex flex-col items-center justify-center shadow-lg transition transform hover:scale-105 active:scale-95"
-                  title="Añadir Extensión (Catálogo de 196 Steps)"
-                >
-                  <Plus size={18} />
-                  <span className="text-[8px] font-bold">Catálogo</span>
-                </button>
-              </div>
-
-              {/* Flyout Block Palette (240px) */}
-              <div className="w-60 bg-[#0d121f] border-r border-gray-800/80 flex flex-col overflow-hidden">
-                <div className="p-2 border-b border-gray-800/80 bg-gray-950/60">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Filtrar bloques..."
-                      value={categorySearch}
-                      onChange={(e) => setCategorySearch(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-800 rounded-md py-1 px-2 text-xs text-gray-200 focus:outline-none"
-                    />
-                    {categorySearch && (
-                      <button
-                        onClick={() => setCategorySearch("")}
-                        className="absolute right-2 top-1.5 text-xs text-gray-400"
-                      >
-                        ✕
-                      </button>
-                    )}
+                    <span className="font-extrabold text-xs text-gray-200">Paleta de Bloques</span>
                   </div>
+                  <span className="text-[10px] text-gray-500 font-mono">6 Bloques</span>
                 </div>
 
                 {/* Blocks List */}
-                <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                  {/* CONTROL BLOCKS */}
-                  {selectedCategory === "control" && (
+                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                  {/* Section 1: Pasos & Estados */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                      <span>Pasos & Estados</span>
+                    </div>
+
                     <div className="space-y-2">
+                      {/* 1. Paso de Catálogo */}
                       <div
-                        onClick={() => addControlBlockToWorkspace("wpipe_if")}
-                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                        onClick={() => {
+                          addStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso de Catálogo' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-950/40 to-blue-900/20 border border-blue-500/40 hover:border-blue-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
                       >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🔀</span> IF Condition THEN
-                        </span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-blue-300">
+                            <span className="w-5 h-5 rounded-md bg-blue-500 flex items-center justify-center text-white text-[11px]">📦</span>
+                            <span>Paso de Catálogo</span>
+                          </span>
+                          <span className="text-[10px] text-blue-400 group-hover:text-blue-300 font-mono font-bold">+ Añadir</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          196 pasos oficiales y plugins. Filtra por repo, categoría y selecciona el step en el mismo bloque.
+                        </p>
                       </div>
+
+                      {/* 2. Paso con IA */}
                       <div
-                        onClick={() => addControlBlockToWorkspace("wpipe_if_else")}
-                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                        onClick={() => {
+                          addAiStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso con IA' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-purple-950/40 to-purple-900/20 border border-purple-500/40 hover:border-purple-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
                       >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🔀</span> IF / ELSE Condition
-                        </span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-purple-300">
+                            <span className="w-5 h-5 rounded-md bg-purple-600 flex items-center justify-center text-white text-[11px]">✨</span>
+                            <span>Paso con IA</span>
+                          </span>
+                          <span className="text-[10px] text-purple-400 group-hover:text-purple-300 font-mono font-bold">+ Añadir</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Describe en texto lo que debe hacer y la IA generará el código Dialecto A y Context DTO.
+                        </p>
                       </div>
+
+                      {/* 3. Paso Personalizado (.py) */}
                       <div
-                        onClick={() => addControlBlockToWorkspace("wpipe_for")}
-                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                        onClick={() => {
+                          addUserFileStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-teal-950/40 to-teal-900/20 border border-teal-500/40 hover:border-teal-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
                       >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🔁</span> REPEAT Loop DO
-                        </span>
-                      </div>
-                      <div
-                        onClick={() => addControlBlockToWorkspace("wpipe_parallel")}
-                        className="p-2.5 rounded-lg bg-[#59c059] border-2 border-[#389438] text-white cursor-pointer hover:brightness-110 shadow transition"
-                      >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>⚡</span> RUN IN PARALLEL
-                        </span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-teal-300">
+                            <span className="w-5 h-5 rounded-md bg-teal-600 flex items-center justify-center text-white text-[11px]">📄</span>
+                            <span>Paso Personalizado</span>
+                          </span>
+                          <span className="text-[10px] text-teal-400 group-hover:text-teal-300 font-mono font-bold">+ Adjuntar</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Adjunta tu archivo Python (.py) para usarlo directamente al construir el microservicio.
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {/* OFFICIAL STEPS */}
-                  {selectedCategory === "motion" && (
+                  {/* Section 2: Control de Flujo */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      <span>Control de Flujo</span>
+                    </div>
+
                     <div className="space-y-2">
-                      {officialSteps
-                        .filter(
-                          (s) =>
-                            !categorySearch ||
-                            s.name.toLowerCase().includes(categorySearch.toLowerCase()) ||
-                            s.category.toLowerCase().includes(categorySearch.toLowerCase())
-                        )
-                        .slice(0, 25)
-                        .map((step, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              addStepBlockToWorkspace(step.name, step.namespace, "catalog");
-                              setStatusMessage(`Añadido paso '${step.name}' al canvas`);
-                            }}
-                            className="p-2 rounded-lg bg-[#4c97ff] border-2 border-[#3373cc] text-white cursor-pointer hover:brightness-110 shadow transition"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-extrabold flex items-center gap-1 truncate">
-                                <span>📦</span> {step.name}
-                              </span>
-                            </div>
-                            <span className="text-[9px] opacity-80 block truncate">{step.category}</span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-
-                  {/* PLUGINS */}
-                  {selectedCategory === "looks" && (
-                    <div className="space-y-2">
-                      {pluginSteps
-                        .filter(
-                          (s) =>
-                            !categorySearch ||
-                            s.name.toLowerCase().includes(categorySearch.toLowerCase())
-                        )
-                        .map((step, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              addStepBlockToWorkspace(step.name, step.namespace, "catalog");
-                              setStatusMessage(`Añadido plugin '${step.name}' al canvas`);
-                            }}
-                            className="p-2 rounded-lg bg-[#5cb1d6] border-2 border-[#2e8ca8] text-white cursor-pointer hover:brightness-110 shadow transition"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-extrabold flex items-center gap-1 truncate">
-                                <span>🔌</span> {step.name}
-                              </span>
-                            </div>
-                            <span className="text-[9px] opacity-80 block truncate">{step.description}</span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-
-                  {/* VISION & AI */}
-                  {selectedCategory === "sound" && (
-                    <div className="space-y-2">
+                      {/* 4. Condición Si / Sino */}
                       <div
-                        onClick={() => addStepBlockToWorkspace("ImageECamYOLO", "wpipe_plugins.vision", "catalog")}
-                        className="p-2 rounded-lg bg-[#ff6680] border-2 border-[#d93854] text-white cursor-pointer hover:brightness-110 shadow transition"
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_if_else");
+                          setStatusMessage("Añadida 'Condición Si / Sino' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/40 to-amber-900/20 border border-amber-500/40 hover:border-amber-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
                       >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🎬</span> ImageECamYOLO
-                        </span>
-                        <span className="text-[9px] opacity-80 block">YOLOv8 + EigenCAM heatmap</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-amber-300">
+                            <span className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center text-white text-[11px]">🔀</span>
+                            <span>Condición (Si / Sino)</span>
+                          </span>
+                          <span className="text-[10px] text-amber-400 group-hover:text-amber-300 font-mono font-bold">+ Añadir</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Bifurcación lógica con ramas THEN y ELSE anidadas (Condition).
+                        </p>
                       </div>
+
+                      {/* 5. Bucle Repetir */}
                       <div
-                        onClick={() => addStepBlockToWorkspace("WhisperASR", "wpipe_steps.multimedia", "catalog")}
-                        className="p-2 rounded-lg bg-[#ff6680] border-2 border-[#d93854] text-white cursor-pointer hover:brightness-110 shadow transition"
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_for");
+                          setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-orange-950/40 to-orange-900/20 border border-orange-500/40 hover:border-orange-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
                       >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🎬</span> WhisperASR
-                        </span>
-                        <span className="text-[9px] opacity-80 block">Transcripción de audio</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-orange-300">
+                            <span className="w-5 h-5 rounded-md bg-orange-600 flex items-center justify-center text-white text-[11px]">🔁</span>
+                            <span>Bucle Repetir (For)</span>
+                          </span>
+                          <span className="text-[10px] text-orange-400 group-hover:text-orange-300 font-mono font-bold">+ Añadir</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Ejecuta los pasos contenidos N veces de manera determinista (For).
+                        </p>
+                      </div>
+
+                      {/* 6. Ejecución Paralela */}
+                      <div
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_parallel");
+                          setStatusMessage("Añadida 'Ejecución Paralela' al canvas");
+                        }}
+                        className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-emerald-900/20 border border-emerald-500/40 hover:border-emerald-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-300">
+                            <span className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-white text-[11px]">⚡</span>
+                            <span>Ejecución Paralela</span>
+                          </span>
+                          <span className="text-[10px] text-emerald-400 group-hover:text-emerald-300 font-mono font-bold">+ Añadir</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Ejecución concurrente con política de fusión accumulate o last_wins (Parallel).
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
+                </div>
 
-                  {/* SENSING / SECURITY */}
-                  {selectedCategory === "sensing" && (
-                    <div className="space-y-2">
-                      <div
-                        onClick={() => addStepBlockToWorkspace("WafFilterStep", "wpipe_steps.security.waf", "catalog")}
-                        className="p-2 rounded-lg bg-[#2e8ca8] border-2 border-[#1c667d] text-white cursor-pointer hover:brightness-110 shadow transition"
-                      >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🛡️</span> WafFilterStep
-                        </span>
-                      </div>
-                      <div
-                        onClick={() => addStepBlockToWorkspace("Fail2BanCheck", "wpipe_steps.security", "catalog")}
-                        className="p-2 rounded-lg bg-[#2e8ca8] border-2 border-[#1c667d] text-white cursor-pointer hover:brightness-110 shadow transition"
-                      >
-                        <span className="text-xs font-bold flex items-center gap-1">
-                          <span>🛡️</span> Fail2BanCheck
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MY BLOCKS */}
-                  {selectedCategory === "myblocks" && (
-                    <div className="space-y-3">
-                      <button
-                        onClick={() => setShowAiModal(true)}
-                        className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold shadow flex items-center justify-center gap-1.5"
-                      >
-                        <Sparkles size={14} />
-                        <span>+ Crear Paso con IA</span>
-                      </button>
-
-                      <label className="block w-full text-center py-2 px-3 bg-gray-800 hover:bg-gray-700 text-amber-300 rounded-lg text-xs font-semibold border border-gray-700 cursor-pointer transition">
-                        <span>📂 Importar archivo .py</span>
-                        <input type="file" accept=".py" className="hidden" onChange={handleFileUpload} />
-                      </label>
-
-                      <div className="space-y-2 pt-2">
-                        {userStates.map((step, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              addStepBlockToWorkspace(step.name, step.namespace, "user_imported");
-                              setStatusMessage(`Añadido paso de usuario '${step.name}'`);
-                            }}
-                            className="p-2 rounded-lg bg-[#9966ff] border-2 border-[#7a4cd6] text-white cursor-pointer hover:brightness-110 shadow transition"
-                          >
-                            <span className="text-xs font-bold flex items-center gap-1 truncate">
-                              <span>📄</span> {step.name}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                {/* Footer: Open Catalog Docs */}
+                <div className="p-3 border-t border-gray-800/80 bg-gray-950/80">
+                  <button
+                    onClick={() => setShowExtensionModal(true)}
+                    className="w-full py-2 px-3 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700/80 text-gray-200 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition"
+                  >
+                    <BookOpen size={14} className="text-sky-400" />
+                    <span>Catálogo Completo (196 Steps)</span>
+                  </button>
                 </div>
               </div>
 
@@ -1714,6 +1638,94 @@ export default function App() {
                   Guardar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. HIDDEN USER FILE INPUT FOR PYTHON UPLOAD */}
+      <input
+        type="file"
+        ref={userFileInputRef}
+        accept=".py"
+        className="hidden"
+        onChange={handleUserFileSelected}
+      />
+
+      {/* 10. AI STEP CONFIGURATION MODAL */}
+      {showAiConfigModal && targetAiBlock && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0f172a] border border-purple-500/80 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl glass-panel">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white text-base shadow">
+                  ✨
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-indigo-200 font-heading">
+                    Configurar Paso con IA
+                  </h3>
+                  <p className="text-[11px] text-purple-400 font-mono">
+                    Dialecto A: Generará @step, función y Context DTO tipado
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAiConfigModal(false)}
+                className="text-gray-400 hover:text-white font-bold p-1 text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-gray-300 font-semibold font-mono block mb-1">
+                  Nombre del Estado / Función Python:
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-gray-100 font-mono focus:border-purple-500 focus:outline-none"
+                  placeholder="ej: analyze_sales_summary"
+                  value={aiStepNameInput}
+                  onChange={(e) => setAiStepNameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, "_"))}
+                />
+              </div>
+
+              <div>
+                <label className="text-gray-300 font-semibold font-mono block mb-1">
+                  Descripción del comportamiento (Prompt para la IA):
+                </label>
+                <textarea
+                  rows={4}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-gray-100 focus:border-purple-500 focus:outline-none resize-none leading-relaxed"
+                  placeholder="Describe en lenguaje natural qué debe hacer este paso, qué variables lee y qué variables escribe en el pipeline..."
+                  value={aiPromptInput}
+                  onChange={(e) => setAiPromptInput(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-gray-800">
+              <button
+                onClick={() => setShowAiConfigModal(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (targetAiBlock) {
+                    targetAiBlock.setFieldValue(aiStepNameInput || "custom_ai_state", "STEP_NAME");
+                    targetAiBlock.setFieldValue(aiPromptInput || "Paso generado con IA", "AI_PROMPT");
+                    setStatusMessage(`Paso IA configurado: ${aiStepNameInput}`);
+                  }
+                  setShowAiConfigModal(false);
+                }}
+                className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow"
+              >
+                Guardar y Aplicar al Bloque
+              </button>
             </div>
           </div>
         </div>

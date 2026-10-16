@@ -15,7 +15,7 @@ export type ContextContract = z.infer<typeof ContextContractSchema>;
 
 export const NodeDataSchema = z.object({
   label: z.string(),
-  node_type: z.enum(["step", "condition", "for", "parallel"]).default("step"),
+  node_type: z.enum(["step", "condition", "for", "while", "parallel", "background"]).default("step"),
   namespace: z.string().nullable().optional(),
   func_name: z.string().nullable().optional(),
   origin: StepOriginSchema.default("catalog"),
@@ -27,7 +27,7 @@ export const NodeDataSchema = z.object({
   notes: z.string().nullable().optional(),
   code_snippet: z.string().nullable().optional(),
   parent_id: z.string().nullable().optional(),
-  slot_type: z.enum(["if_body", "else_body", "loop_body", "parallel_body"]).nullable().optional(),
+  slot_type: z.enum(["if_body", "else_body", "loop_body", "parallel_body", "background_body"]).nullable().optional(),
   has_else: z.boolean().nullable().optional(),
 });
 export type NodeData = z.infer<typeof NodeDataSchema>;

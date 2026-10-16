@@ -1,7 +1,41 @@
 import React, { useState, useEffect, useRef } from "react";
 import { CanvasNode, CanvasEdge, CanvasIR, StepOrigin } from "./lib/ir/schemas";
-import { BlocklyComponent, addStepBlockToWorkspace, addControlBlockToWorkspace, getMermaidFromBlocklyWorkspace, getWorkPlanFromBlocklyWorkspace } from "./components/BlocklyWorkspace";
+import {
+  BlocklyComponent,
+  addStepBlockToWorkspace,
+  addControlBlockToWorkspace,
+  getMermaidFromBlocklyWorkspace,
+  getWorkPlanFromBlocklyWorkspace,
+  getCanvasIRFromBlocklyWorkspace,
+  highlightBlocklyBlock,
+} from "./components/BlocklyWorkspace";
 import mermaid from "mermaid";
+import {
+  Play,
+  Square,
+  FolderOpen,
+  Save,
+  FileCode,
+  CheckCircle,
+  AlertTriangle,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Download,
+  Copy,
+  Sparkles,
+  BookOpen,
+  Layers,
+  ChevronDown,
+  Check,
+  Search,
+  Plus,
+  Terminal,
+  Cpu,
+  Database,
+  ArrowRight,
+} from "lucide-react";
 
 interface ParamSpec {
   name: string;
@@ -17,7 +51,7 @@ interface CatalogStep {
   subcategory1?: string;
   subcategory2?: string;
   description: string;
-  repo: string; // "Official" or "Plugin"
+  repo: string; // "Official" or "Plugin" / "User"
   code_snippet?: string;
   version?: string;
   how_to_use?: string;
@@ -31,54 +65,151 @@ interface FaqItem {
   category: "General" | "Architecture" | "Sandbox" | "AI";
 }
 
+interface SimStepResult {
+  id: string;
+  name: string;
+  status: "idle" | "running" | "success" | "error";
+  durationMs: number;
+  reads: string[];
+  writes: string[];
+  outputData?: Record<string, any>;
+  errorMessage?: string;
+}
+
 export default function App() {
-  // Splash Screen state
+  // Splash Screen
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [splashProgress, setSplashProgress] = useState<number>(0);
   const [splashFadeOut, setSplashFadeOut] = useState<boolean>(false);
 
-  // FAQ Modal & Accordions state
+  // Top Menu State
+  const [projectName, setProjectName] = useState<string>("main_pipeline");
+  const [activeMenu, setActiveMenu] = useState<"file" | "edit" | null>(null);
+  const [turboMode, setTurboMode] = useState<boolean>(false);
+
+  // Main Tabs: 'code' (Blockly) | 'flowchart' (Mermaid) | 'python' (TargetIR Preview)
+  const [activeMainTab, setActiveMainTab] = useState<"code" | "flowchart" | "python">("code");
+
+  // Scratch Category Selector
+  const [selectedCategory, setSelectedCategory] = useState<string>("motion");
+  const [categorySearch, setCategorySearch] = useState<string>("");
+
+  // Extension Library Modal
+  const [showExtensionModal, setShowExtensionModal] = useState<boolean>(false);
+  const [extensionSearch, setExtensionSearch] = useState<string>("");
+  const [extensionCategoryFilter, setExtensionCategoryFilter] = useState<string>("ALL");
+
+  // FAQ Modal
   const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
   const [openFaqId, setOpenFaqId] = useState<string | null>("faq_1");
   const [faqSearch, setFaqSearch] = useState<string>("");
 
-  // Mobile Drawer state
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState<boolean>(false);
-
-  // Workspace View Mode: 'canvas' (Blockly visual editor) vs 'flowchart' (Full-screen Rendered Mermaid Flowchart)
-  const [workspaceView, setWorkspaceView] = useState<"canvas" | "flowchart">("canvas");
+  // Flowchart View state
   const [mermaidCode, setMermaidCode] = useState<string>("");
   const [zoomScale, setZoomScale] = useState<number>(1.0);
-  const [showJsonModal, setShowJsonModal] = useState<boolean>(false);
-  const [pipelineJsonText, setPipelineJsonText] = useState<string>("");
-  const mermaidRenderRef = useRef<HTMLDivElement>(null);
   const mermaidFullRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (workspaceView === "flowchart" && mermaidCode && mermaidFullRef.current) {
-      mermaid.initialize({ startOnLoad: false, theme: "dark" });
-      mermaidFullRef.current.innerHTML = "";
-      const uniqueSvgId = `mermaid_svg_full_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      mermaid
-        .render(uniqueSvgId, mermaidCode)
-        .then(({ svg }) => {
-          if (mermaidFullRef.current) {
-            mermaidFullRef.current.innerHTML = svg;
-          }
-        })
-        .catch((err) => {
-          console.error("Mermaid render error:", err);
-        });
-    }
-  }, [workspaceView, mermaidCode]);
+  // Generated Microservice Preview State
+  const [generatedFiles, setGeneratedFiles] = useState<{ path: string; content: string }[]>([]);
+  const [selectedFileIdx, setSelectedFileIdx] = useState<number>(0);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
-  const [catalog, setCatalog] = useState<CatalogStep[]>([]);
-  const [userStates, setUserStates] = useState<CatalogStep[]>([]);
+  // Verification & Status
+  const [verificationModal, setVerificationModal] = useState<any | null>(null);
+  const [dryRunLoading, setDryRunLoading] = useState<boolean>(false);
+  const [zipLoading, setZipLoading] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string>("Ready — Click 🏁 Green Flag to simulate pipeline");
 
-  // Block Parameter Config Modal State
+  // Simulation Stage State
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [stageViewMode, setStageViewMode] = useState<"compact" | "normal" | "fullscreen">("normal");
+  const [testPayloadText, setTestPayloadText] = useState<string>(
+    JSON.stringify({ url: "https://api.example.com/v1/data", query: "vision analysis", batch_size: 10 }, null, 2)
+  );
+  const [simSteps, setSimSteps] = useState<SimStepResult[]>([]);
+  const [simContext, setSimContext] = useState<Record<string, any>>({});
+  const [simLogs, setSimLogs] = useState<{ time: string; level: string; msg: string }[]>([]);
+  const [cpuUsage, setCpuUsage] = useState<number>(0);
+  const [ramUsage, setRamUsage] = useState<number>(142);
+  const simulationAbortRef = useRef<boolean>(false);
+
+  // Step Parameters Modal State
   const [configModalBlock, setConfigModalBlock] = useState<any | null>(null);
   const [dynamicFields, setDynamicFields] = useState<ParamSpec[]>([]);
   const [blockParamValues, setBlockParamValues] = useState<Record<string, any>>({});
+
+  // AI Prompt Modal
+  const [showAiModal, setShowAiModal] = useState<boolean>(false);
+  const [aiPrompt, setAiPrompt] = useState<string>("");
+  const [aiStepName, setAiStepName] = useState<string>("");
+
+  // Catalog Data
+  const [catalog, setCatalog] = useState<CatalogStep[]>([]);
+  const [userStates, setUserStates] = useState<CatalogStep[]>([]);
+
+  // FAQ Items Database
+  const faqList: FaqItem[] = [
+    {
+      id: "faq_1",
+      category: "Sandbox",
+      question: "How does the Docker Sandbox verification loop work?",
+      answer: "When you click 'Verify (Dry-Run)' or build a production ZIP, WPipe Studio validates the pipeline against 6 strict quality gates: acyclic DAG check, AST python syntax parsing, Ruff linter, Mypy typechecking, Pytest unit tests, and dry_run_pipeline. Only if all gates pass is the microservice ZIP released.",
+    },
+    {
+      id: "faq_2",
+      category: "Architecture",
+      question: "How does the Scratux Visual Architecture map to WPipe?",
+      answer: "Scratux (Scratch 3.0 Desktop) organizes work into 4 clear zones: 1) Top Menu Bar for project control and export; 2) Vertical Category Strip (Motion, Looks, Events, Control, Sensing) for palette navigation; 3) Blockly Workspace with drag-and-drop interlocking blocks; and 4) Live Simulation Stage (Green Flag 🏁 / Stop 🛑) for step-by-step pipeline execution and context debugging.",
+    },
+    {
+      id: "faq_3",
+      category: "General",
+      question: "How do I upload custom Python (.py) state files?",
+      answer: "Go to the 'Mis Estados' (My Blocks) category and click 'Upload .py File'. Your Python functions decorated with @step will be parsed into reusable Scratch blocks and emitted into app/states/ and app/dto/ following Dialect A standards.",
+    },
+    {
+      id: "faq_4",
+      category: "AI",
+      question: "What is Dialect A code generation?",
+      answer: "Dialect A pairs each step function with a dedicated Pydantic Context DTO (e.g. app/dto/step_dto.py and app/states/step.py). This eliminates global untyped state and ensures type safety and autocompletion.",
+    },
+    {
+      id: "faq_5",
+      category: "Architecture",
+      question: "How does the Release Catalog sync with wpipe-steps?",
+      answer: "CatalogService reads the official release manifest steps_catalog.json (196 curated steps) with SHA-256 caching. It never scans unstable filesystem trees, ensuring only release-grade steps appear in the palette.",
+    },
+  ];
+
+  // Splash Screen initial loader
+  useEffect(() => {
+    let progress = 0;
+    const timer = setInterval(() => {
+      progress += 25;
+      setSplashProgress(progress);
+      if (progress >= 100) {
+        clearInterval(timer);
+        setTimeout(() => {
+          setSplashFadeOut(true);
+          setTimeout(() => setShowSplash(false), 400);
+        }, 300);
+      }
+    }, 150);
+  }, []);
+
+  // Fetch Release Catalog from Backend
+  useEffect(() => {
+    fetch("/api/v1/catalog/steps")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCatalog(data);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load catalog steps:", err);
+      });
+  }, []);
 
   // Register window event handler for Blockly block config click
   useEffect(() => {
@@ -87,7 +218,6 @@ export default function App() {
       const stepName = (block.getFieldValue("STEP_NAME") || "").toLowerCase();
       const ns = (block.getFieldValue("NAMESPACE") || "").toLowerCase();
 
-      // Find matching step in catalog
       const catalogStep = catalog.find(
         (s) => s.name.toLowerCase() === stepName || s.func_name.toLowerCase() === stepName || s.namespace.toLowerCase() === ns
       );
@@ -104,9 +234,8 @@ export default function App() {
           { name: "host", annotation: "str", default: "127.0.0.1" },
           { name: "port", annotation: "int", default: 6379 },
           { name: "db", annotation: "int", default: 0 },
-          { name: "password", annotation: "str | None", default: "" },
         ]);
-        setBlockParamValues({ host: "127.0.0.1", port: "6379", db: "0", password: "" });
+        setBlockParamValues({ host: "127.0.0.1", port: "6379", db: "0" });
       } else if (stepName.includes("yolo") || ns.includes("vision") || stepName.includes("ocr")) {
         setDynamicFields([
           { name: "model_path", annotation: "str", default: "/models/yolov8n.pt" },
@@ -116,10 +245,10 @@ export default function App() {
         setBlockParamValues({ model_path: "/models/yolov8n.pt", conf_threshold: "0.25", device: "cuda:0" });
       } else {
         setDynamicFields([
-          { name: "endpoint_url", annotation: "str", default: "https://api.example.com" },
+          { name: "endpoint_url", annotation: "str", default: "https://api.example.com/v1" },
           { name: "timeout", annotation: "int", default: 30 },
         ]);
-        setBlockParamValues({ endpoint_url: "https://api.example.com", timeout: "30" });
+        setBlockParamValues({ endpoint_url: "https://api.example.com/v1", timeout: "30" });
       }
     };
     return () => {
@@ -127,335 +256,144 @@ export default function App() {
     };
   }, [catalog]);
 
-  // Loading states
-  const [catalogLoading, setCatalogLoading] = useState<boolean>(true);
-  const [dryRunLoading, setDryRunLoading] = useState<boolean>(false);
-  const [zipLoading, setZipLoading] = useState<boolean>(false);
+  // Mermaid render effect
+  useEffect(() => {
+    if (activeMainTab === "flowchart" && mermaidCode && mermaidFullRef.current) {
+      mermaid.initialize({ startOnLoad: false, theme: "dark" });
+      mermaidFullRef.current.innerHTML = "";
+      const uniqueSvgId = `mermaid_svg_full_${Date.now()}`;
+      mermaid
+        .render(uniqueSvgId, mermaidCode)
+        .then(({ svg }) => {
+          if (mermaidFullRef.current) {
+            mermaidFullRef.current.innerHTML = svg;
+          }
+        })
+        .catch((err) => {
+          console.error("Mermaid render error:", err);
+        });
+    }
+  }, [activeMainTab, mermaidCode]);
 
-  // Canvas Nodes & Edges
-  const [nodes, setNodes] = useState<CanvasNode[]>([
-    {
-      id: "node_1",
-      type: "default",
-      position: { x: 80, y: 150 },
-      data: {
-        label: "HttpRequest",
-        node_type: "step",
-        namespace: "wpipe_steps.connectivity.http_request",
-        func_name: "HttpRequest",
-        origin: "catalog",
-        params: { timeout: 30 },
-        contract: { reads: ["url"], writes: ["response"], inferred: "exact" },
-        merge_policy: "accumulate",
-        code_snippet: "from wpipe_steps.connectivity.http_request import HttpRequest\n\nstep = HttpRequest()",
-        notes: "Target API endpoint requires bearer token in header.",
-      },
-    },
-    {
-      id: "node_2",
-      type: "default",
-      position: { x: 360, y: 150 },
-      data: {
-        label: "Check Status (IF)",
-        node_type: "condition",
-        origin: "described",
-        params: {},
-        contract: { reads: ["response"], writes: [], inferred: "exact" },
-        condition_expression: "response.status_code == 200",
-        merge_policy: "accumulate",
-      },
-    },
-    {
-      id: "node_3",
-      type: "default",
-      position: { x: 680, y: 150 },
-      data: {
-        label: "ImageECamYOLO",
-        node_type: "step",
-        namespace: "wpipe_plugins.vision.ecam_yolo",
-        func_name: "ImageECamYOLO",
-        origin: "catalog",
-        params: { conf: 0.25 },
-        contract: { reads: ["image_data"], writes: ["results"], inferred: "exact" },
-        merge_policy: "accumulate",
-        code_snippet: "from wpipe_plugins.vision.ecam_yolo import ImageECamYOLO\n\nstep = ImageECamYOLO()",
-        notes: "Runs YOLO detection + EigenCAM visualization.",
-      },
-    },
-  ]);
+  // Load Python Preview when switching to python tab
+  useEffect(() => {
+    if (activeMainTab === "python") {
+      setPreviewLoading(true);
+      const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+      fetch("/api/v1/pipeline/transform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(canvasIr),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.files) {
+            setGeneratedFiles(data.files);
+            setSelectedFileIdx(0);
+          }
+        })
+        .catch((err) => {
+          console.error("Transform error:", err);
+        })
+        .finally(() => {
+          setPreviewLoading(false);
+        });
+    }
+  }, [activeMainTab, catalog]);
 
-  const [edges, setEdges] = useState<CanvasEdge[]>([
-    { id: "e1_2", source: "node_1", target: "node_2" },
-    { id: "e2_3", source: "node_2", target: "node_3" },
-  ]);
-
-  const [activeTab, setActiveTab] = useState<"official" | "plugins" | "user" | "ai" | "inuse">("official");
-  const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(nodes[0]);
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
-  const [inspectorTab, setInspectorTab] = useState<"properties" | "code_notes">("properties");
-  const [globalCompactView, setGlobalCompactView] = useState<boolean>(true);
-
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    security: true,
-    ai: true,
-    connectivity: true,
-  });
-
-  const [statusMessage, setStatusMessage] = useState<string>("Ready — Drag steps to canvas or connect ports");
-  const [verificationModal, setVerificationModal] = useState<any | null>(null);
-
-  // Connection & Context Menu state
-  const [connectingSourceId, setConnectingSourceId] = useState<string | null>(null);
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
-
-  // AI Prompt Modal state
-  const [showAiModal, setShowAiModal] = useState<boolean>(false);
-  const [aiPrompt, setAiPrompt] = useState<string>("");
-  const [aiStepName, setAiStepName] = useState<string>("");
-
-  // Canvas dragging node state
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDragOverCanvas, setIsDragOverCanvas] = useState<boolean>(false);
-  const canvasRef = useRef<HTMLDivElement>(null);
-
-  // FAQ Items Database
-  const faqList: FaqItem[] = [
-    {
-      id: "faq_1",
-      category: "Sandbox",
-      question: "How does the Docker Sandbox verification loop work?",
-      answer: "When you click 'Dry-Run Verify', WPipe Studio builds a temporary Docker container executing 6 quality gates: syntax check, black/isort formatting, ruff linter, mypy typechecking, pytest unit tests (cov ≥ 60%), and an end-to-end dry_run_pipeline. Only when all gates pass is the microservice ZIP enabled for download.",
-    },
-    {
-      id: "faq_2",
-      category: "Architecture",
-      question: "What are the 3 IR Levels (CanvasIR, SemanticIR, TargetIR)?",
-      answer: "CanvasIR represents the visual graph (nodes, coordinates, connections). SemanticIR parses execution semantics (DAG order, contract reads/writes, merge policy). TargetIR emits the final production microservice files (FastAPI main.py, pipelines.py, Dockerfile, Makefile, tests).",
-    },
-    {
-      id: "faq_3",
-      category: "General",
-      question: "How do I upload custom Python (.py) state files?",
-      answer: "Navigate to the '📁 User' tab in the sidebar and click 'Upload .py File'. Your Python state functions decorated with @step will be parsed and made available to drag onto the canvas as amber-colored custom nodes.",
-    },
-    {
-      id: "faq_4",
-      category: "AI",
-      question: "How do AI Prompts and Developer Notes work?",
-      answer: "Click '✨ + AI Step' to describe a new step in natural language. In the Inspector's '💻 Code & Notes' tab, you can add specific developer instructions that the LLM agent uses during microservice code generation and refinement.",
-    },
-    {
-      id: "faq_5",
-      category: "Architecture",
-      question: "How does the Release Catalog sync with wpipe-steps?",
-      answer: "CatalogService queries the release manifest steps_catalog.json (196 steps) with SHA-256 caching. It never scans the raw filesystem, ensuring that only curated, production-ready steps are exposed in the palette.",
-    },
-    {
-      id: "faq_6",
-      category: "General",
-      question: "How do I connect, disconnect, or insert IF / FOR blocks between nodes?",
-      answer: "1. To connect: Click the 'out' port on a source node, then click the 'in' port on the target node. 2. To disconnect: Hover over any connection cable and click the red '✕' button or click the cable directly. 3. To insert an IF/FOR block: Hover over the connection cable between two nodes and click '+IF', or use the '+ IF' button on the top toolbar.",
-    },
-  ];
-
-  // Trigger Splash Animation
-  const triggerSplash = () => {
-    setShowSplash(true);
-    setSplashProgress(0);
-    setSplashFadeOut(false);
-
-    let progress = 0;
-    const timer = setInterval(() => {
-      progress += 20;
-      setSplashProgress(progress);
-      if (progress >= 100) {
-        clearInterval(timer);
-        setTimeout(() => {
-          setSplashFadeOut(true);
-          setTimeout(() => setShowSplash(false), 500);
-        }, 500);
-      }
-    }, 200);
+  // Switch to Flowchart view
+  const handleOpenFlowchart = () => {
+    const code = getMermaidFromBlocklyWorkspace();
+    setMermaidCode(code);
+    setActiveMainTab("flowchart");
+    setStatusMessage("Generated live Mermaid flowchart preview");
   };
 
-  // Initial Splash Screen load
-  useEffect(() => {
-    triggerSplash();
-  }, []);
+  // Perform Dry-Run Quality Verification
+  const handleDryRun = async () => {
+    setDryRunLoading(true);
+    setStatusMessage("Executing quality gates in verification engine...");
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    try {
+      const res = await fetch("/api/v1/pipeline/dry-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(canvasIr),
+      });
+      const data = await res.json();
+      setVerificationModal(data);
+      setStatusMessage(`Verification completed: ${data.status} ✓`);
+    } catch (err: any) {
+      setStatusMessage(`Verification error: ${err.message}`);
+    } finally {
+      setDryRunLoading(false);
+    }
+  };
 
-  useEffect(() => {
-    setCatalogLoading(true);
-    fetch("/api/v1/catalog/steps")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setCatalog(data);
+  // Generate and download microservice ZIP
+  const handleGenerateZip = async () => {
+    setZipLoading(true);
+    setStatusMessage("Building production microservice ZIP...");
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    try {
+      const res = await fetch(`/api/v1/pipeline/generate?project_name=${encodeURIComponent(projectName)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(canvasIr),
+      });
+      if (!res.ok) throw new Error("Failed to generate ZIP");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectName}.zip`;
+      a.click();
+      setStatusMessage(`Downloaded verified microservice ZIP: ${projectName}.zip`);
+    } catch (err: any) {
+      setStatusMessage(`Generate error: ${err.message}`);
+    } finally {
+      setZipLoading(false);
+    }
+  };
+
+  // Save Pipeline JSON
+  const handleSaveJson = () => {
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    const jsonStr = JSON.stringify(canvasIr, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projectName}_canvas.json`;
+    a.click();
+    setStatusMessage("Exported pipeline JSON definition");
+    setActiveMenu(null);
+  };
+
+  // Load Pipeline JSON
+  const handleLoadJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed && Array.isArray(parsed.nodes)) {
+          // Add nodes to workspace
+          parsed.nodes.forEach((n: any) => {
+            if (n.data?.node_type === "step") {
+              addStepBlockToWorkspace(n.data.label, n.data.namespace || "custom", n.data.origin);
+            }
+          });
+          setStatusMessage(`Loaded pipeline definition from '${file.name}'`);
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load catalog steps:", err);
-      })
-      .finally(() => {
-        setCatalogLoading(false);
-      });
-  }, []);
-
-  // Category Icon Mapping
-  const getCategoryIcon = (category: string) => {
-    const cat = category.toLowerCase();
-    if (cat.includes("ai")) return "🤖";
-    if (cat.includes("sec")) return "🛡️";
-    if (cat.includes("conn")) return "🌐";
-    if (cat.includes("db") || cat.includes("data")) return "🗄️";
-    if (cat.includes("media") || cat.includes("audio") || cat.includes("vision")) return "🎬";
-    if (cat.includes("sys")) return "⚙️";
-    return "📦";
-  };
-
-  // Drag & Drop sidebar handlers
-  const handleSidebarDragStart = (e: React.DragEvent, item: { type: "catalog" | "logic" | "user" | "ai"; data: any }) => {
-    e.dataTransfer.setData("application/wpipe-node", JSON.stringify(item));
-  };
-
-  const handleCanvasDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOverCanvas(false);
-    const rawData = e.dataTransfer.getData("application/wpipe-node");
-    if (!rawData) return;
-    const item = JSON.parse(rawData);
-
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    const dropX = canvasRect ? Math.max(20, e.clientX - canvasRect.left - 80) : 200;
-    const dropY = canvasRect ? Math.max(20, e.clientY - canvasRect.top - 30) : 200;
-
-    const newId = `node_${nodes.length + 1}`;
-    let newNode: CanvasNode;
-
-    if (item.type === "catalog") {
-      const step: CatalogStep = item.data;
-      newNode = {
-        id: newId,
-        type: "default",
-        position: { x: dropX, y: dropY },
-        data: {
-          label: step.name,
-          node_type: "step",
-          namespace: step.namespace,
-          func_name: step.func_name,
-          origin: "catalog",
-          params: {},
-          contract: { reads: ["input_data"], writes: ["result_data"], inferred: "exact" },
-          merge_policy: "accumulate",
-          code_snippet: step.code_snippet || `from ${step.namespace} import ${step.func_name}`,
-          notes: `Official step from ${step.category}${step.subcategory1 ? " / " + step.subcategory1 : ""}`,
-        },
-      };
-      setStatusMessage(`Added step '${step.name}' to canvas`);
-    } else if (item.type === "user") {
-      const step: CatalogStep = item.data;
-      newNode = {
-        id: newId,
-        type: "default",
-        position: { x: dropX, y: dropY },
-        data: {
-          label: step.name,
-          node_type: "step",
-          origin: "user_imported",
-          params: {},
-          contract: { reads: ["raw_input"], writes: ["custom_output"], inferred: "exact" },
-          merge_policy: "accumulate",
-          code_snippet: step.code_snippet || `# Custom User State\nfrom wpipe import step`,
-          notes: "User imported python state.",
-        },
-      };
-      setStatusMessage(`Added custom user state '${step.name}'`);
-    } else {
-      const logicType: "condition" | "parallel" | "for" = item.data;
-      newNode = {
-        id: newId,
-        type: "default",
-        position: { x: dropX, y: dropY },
-        data: {
-          label: logicType === "condition" ? "IF Condition" : logicType === "for" ? "FOR Loop" : "PARALLEL Branch",
-          node_type: logicType,
-          origin: "described",
-          params: {},
-          contract: { reads: [], writes: [], inferred: "exact" },
-          condition_expression: logicType === "condition" ? "status_code == 200" : undefined,
-          for_iterations: logicType === "for" ? 5 : undefined,
-          merge_policy: "accumulate",
-        },
-      };
-      setStatusMessage(`Added ${logicType.toUpperCase()} control node`);
-    }
-
-    setNodes((prev) => [...prev, newNode]);
-    setSelectedNode(newNode);
-  };
-
-  const handleCanvasDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setIsDragOverCanvas(true);
-  };
-
-  const handleCanvasDragLeave = () => {
-    setIsDragOverCanvas(false);
-  };
-
-  // Canvas Context Menu Handler
-  const handleCanvasContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (canvasRect) {
-      setContextMenuPos({
-        x: e.clientX - canvasRect.left,
-        y: e.clientY - canvasRect.top,
-      });
-    }
-  };
-
-  const handleAddFromContextMenu = (type: "condition" | "for" | "parallel" | "ai") => {
-    const posX = contextMenuPos ? contextMenuPos.x : Math.min(450, 100 + nodes.length * 40);
-    const posY = contextMenuPos ? contextMenuPos.y : Math.min(350, 120 + nodes.length * 30);
-    const newId = `node_${nodes.length + 1}`;
-
-    if (type === "ai") {
-      setShowAiModal(true);
-      setContextMenuPos(null);
-      return;
-    }
-
-    const newNode: CanvasNode = {
-      id: newId,
-      type: "default",
-      position: { x: posX, y: posY },
-      data: {
-        label: type === "condition" ? "IF Condition" : type === "for" ? "FOR Loop" : "PARALLEL Branch",
-        node_type: type,
-        origin: "described",
-        params: {},
-        contract: { reads: [], writes: [], inferred: "exact" },
-        condition_expression: type === "condition" ? "status_code == 200" : undefined,
-        for_iterations: type === "for" ? 5 : undefined,
-        merge_policy: "accumulate",
-      },
+      } catch (err) {
+        setStatusMessage("Failed to parse pipeline JSON file");
+      }
     };
-
-    setNodes((prev) => [...prev, newNode]);
-    setSelectedNode(newNode);
-    setContextMenuPos(null);
-    setStatusMessage(`Added ${type.toUpperCase()} logic block to canvas`);
-  };
-
-  // Toggle node expansion
-  const toggleNodeExpand = (nodeId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedNodes((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
+    reader.readAsText(file);
+    setActiveMenu(null);
   };
 
   // User uploaded .py file handler
@@ -473,242 +411,51 @@ export default function App() {
         func_name: stateName,
         namespace: `user_states.${stateName}`,
         category: "User Uploaded",
-        description: `Uploaded custom Python state file: ${file.name}`,
+        description: `Custom Python state file: ${file.name}`,
         repo: "User",
         code_snippet: content,
       };
 
       setUserStates((prev) => [...prev, newCustomState]);
-      setStatusMessage(`Imported custom Python state file '${file.name}'!`);
+      addStepBlockToWorkspace(stateName, `user_states.${stateName}`, "user_imported");
+      setStatusMessage(`Imported and added custom Python state '${stateName}'!`);
     };
 
     reader.readAsText(file);
   };
 
-  // Canvas node position drag handlers
-  const handleNodeMouseDown = (e: React.MouseEvent, node: CanvasNode) => {
-    e.stopPropagation();
-    setSelectedNode(node);
-    setDraggingNodeId(node.id);
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (canvasRect) {
-      setDragOffset({
-        x: e.clientX - canvasRect.left - node.position.x,
-        y: e.clientY - canvasRect.top - node.position.y,
-      });
-    }
-  };
-
-  const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (!draggingNodeId || !canvasRef.current) return;
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    const targetNode = nodes.find((n) => n.id === draggingNodeId);
-    if (!targetNode) return;
-
-    const newX = Math.max(10, e.clientX - canvasRect.left - dragOffset.x);
-    const newY = Math.max(10, e.clientY - canvasRect.top - dragOffset.y);
-
-    const deltaX = newX - targetNode.position.x;
-    const deltaY = newY - targetNode.position.y;
-
-    // Helper function to find all descendant node IDs recursively
-    const getDescendants = (parentId: string): string[] => {
-      const children = nodes.filter((n) => n.data.parent_id === parentId).map((n) => n.id);
-      let all = [...children];
-      children.forEach((childId) => {
-        all = all.concat(getDescendants(childId));
-      });
-      return all;
-    };
-
-    const familyIds = new Set([draggingNodeId, ...getDescendants(draggingNodeId)]);
-
-    setNodes((prev) =>
-      prev.map((n) => {
-        if (familyIds.has(n.id)) {
-          return {
-            ...n,
-            position: {
-              x: Math.max(10, n.position.x + deltaX),
-              y: Math.max(10, n.position.y + deltaY),
-            },
-          };
-        }
-        return n;
-      })
-    );
-  };
-
-  const handleCanvasMouseUp = () => {
-    if (draggingNodeId) {
-      const dragged = nodes.find((n) => n.id === draggingNodeId);
-      if (dragged) {
-        // Find if dragged node was dropped inside proximity of a Control C-Block (IF, FOR, PARALLEL)
-        const parentCandidate = nodes.find((n) => {
-          if (n.id === dragged.id) return false;
-          if (n.data.node_type !== "condition" && n.data.node_type !== "for" && n.data.node_type !== "parallel") return false;
-          const dx = Math.abs(n.position.x - dragged.position.x);
-          const dy = Math.abs(n.position.y - dragged.position.y);
-          return dx < 140 && dy < 120;
-        });
-
-        if (parentCandidate) {
-          let slot: "if_body" | "else_body" | "loop_body" | "parallel_body" = "if_body";
-          if (parentCandidate.data.node_type === "for") slot = "loop_body";
-          else if (parentCandidate.data.node_type === "parallel") slot = "parallel_body";
-          else if (parentCandidate.data.node_type === "condition") {
-            const relativeY = dragged.position.y - parentCandidate.position.y;
-            if (parentCandidate.data.has_else && relativeY > 70) {
-              slot = "else_body";
-            }
-          }
-
-          setNodes((prev) =>
-            prev.map((n) =>
-              n.id === dragged.id
-                ? { ...n, data: { ...n.data, parent_id: parentCandidate.id, slot_type: slot } }
-                : n
-            )
-          );
-          setStatusMessage(`Snapped '${dragged.data.label}' inside '${parentCandidate.data.label}' (${slot})!`);
-        }
-      }
-    }
-    setDraggingNodeId(null);
-  };
-
-  // Connect Nodes Handler
-  const handleConnectClick = (nodeId: string) => {
-    if (!connectingSourceId) {
-      setConnectingSourceId(nodeId);
-      setStatusMessage(`Source ${nodeId} active. Click target node's 'in' port to connect.`);
-    } else if (connectingSourceId === nodeId) {
-      setConnectingSourceId(null);
-      setStatusMessage("Connection cancelled.");
-    } else {
-      const newEdge: CanvasEdge = {
-        id: `e_${connectingSourceId}_${nodeId}`,
-        source: connectingSourceId,
-        target: nodeId,
-      };
-      if (!edges.some((e) => e.source === connectingSourceId && e.target === nodeId)) {
-        setEdges((prev) => [...prev, newEdge]);
-        setStatusMessage(`Connected ${connectingSourceId} ➔ ${nodeId}`);
-      }
-      setConnectingSourceId(null);
-    }
-  };
-
-  const removeNode = (id: string) => {
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-    setEdges((prev) => prev.filter((e) => e.source !== id && e.target !== id));
-    if (selectedNode?.id === id) {
-      setSelectedNode(null);
-    }
-    if (connectingSourceId === id) {
-      setConnectingSourceId(null);
-    }
-  };
-
-  const removeEdge = (id: string) => {
-    setEdges((prev) => prev.filter((e) => e.id !== id));
-    setStatusMessage(`Disconnected edge ${id}`);
-  };
-
-  // Insert a control block (e.g. IF) directly between an existing edge connection
-  const insertNodeOnEdge = (edge: CanvasEdge, logicType: "condition" | "for" | "parallel") => {
-    const srcNode = nodes.find((n) => n.id === edge.source);
-    const tgtNode = nodes.find((n) => n.id === edge.target);
-    if (!srcNode || !tgtNode) return;
-
-    const midX = Math.round((srcNode.position.x + tgtNode.position.x) / 2);
-    const midY = Math.round((srcNode.position.y + tgtNode.position.y) / 2);
-
-    const newId = `node_${nodes.length + 1}`;
-    const newNode: CanvasNode = {
-      id: newId,
-      type: "default",
-      position: { x: midX, y: midY },
-      data: {
-        label: logicType === "condition" ? "IF Condition" : logicType === "for" ? "FOR Loop" : "PARALLEL Branch",
-        node_type: logicType,
-        origin: "described",
-        params: {},
-        contract: { reads: [], writes: [], inferred: "exact" },
-        condition_expression: logicType === "condition" ? "status_code == 200" : undefined,
-        for_iterations: logicType === "for" ? 5 : undefined,
-        merge_policy: "accumulate",
-      },
-    };
-
-    // Remove old edge, add new node, add 2 new edges (src -> newNode -> tgt)
-    setEdges((prev) => [
-      ...prev.filter((e) => e.id !== edge.id),
-      { id: `e_${edge.source}_${newId}`, source: edge.source, target: newId },
-      { id: `e_${newId}_${edge.target}`, source: newId, target: edge.target },
-    ]);
-    setNodes((prev) => [...prev, newNode]);
-    setSelectedNode(newNode);
-    setStatusMessage(`Inserted ${logicType.toUpperCase()} between ${srcNode.data.label} and ${tgtNode.data.label}`);
-  };
-
-  const clearCanvas = () => {
-    setNodes([]);
-    setEdges([]);
-    setSelectedNode(null);
-    setStatusMessage("Canvas cleared");
-  };
-
-  // AI Step Creation Handler
+  // Create AI Described Step
   const handleCreateAiStep = () => {
     if (!aiStepName.trim() || !aiPrompt.trim()) return;
-    const newId = `node_${nodes.length + 1}`;
-    const newNode: CanvasNode = {
-      id: newId,
-      type: "default",
-      position: { x: 300, y: 220 },
-      data: {
-        label: aiStepName,
-        node_type: "step",
-        origin: "described",
-        params: { prompt: aiPrompt },
-        contract: { reads: ["input_text"], writes: ["summary_output"], inferred: "exact" },
-        merge_policy: "accumulate",
-        notes: `AI Step Prompt: ${aiPrompt}`,
-        code_snippet: `# AI Described Step: ${aiStepName}\n# Prompt: ${aiPrompt}\n\nfrom wpipe import step\n\n@step\ndef ${aiStepName.toLowerCase()}(input_text: str) -> dict:\n    return {'summary_output': input_text}`,
-      },
-    };
-    setNodes((prev) => [...prev, newNode]);
-    setSelectedNode(newNode);
     addStepBlockToWorkspace(aiStepName, "ai_described", "described");
     setShowAiModal(false);
     setAiStepName("");
     setAiPrompt("");
-    setStatusMessage(`Created AI Step '${aiStepName}' and added to canvas`);
+    setStatusMessage(`Created AI Step '${aiStepName}' and snapped to workspace`);
   };
 
-  // Generate Mermaid Diagram (VSCode WPipe Extension format) from current Blockly Canvas state
-  const generateMermaidDiagram = () => {
-    const code = getMermaidFromBlocklyWorkspace();
-    setMermaidCode(code);
-    setWorkspaceView("flowchart");
-    setStatusMessage("Generated live Mermaid flowchart preview in full workspace!");
-  };
+  // SIMULATION ENGINE: Green Flag 🏁 and Stop 🛑
+  const handleStartSimulation = async () => {
+    if (isSimulating) return;
+    setIsSimulating(true);
+    simulationAbortRef.current = false;
+    setStatusMessage("🏁 Simulation started: Running pipeline step-by-step...");
 
-  // Export Pipeline JSON (WPipe Standard JSON format)
-  const exportPipelineJson = () => {
-    const canvasIr: CanvasIR = { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 } };
-    const jsonStr = JSON.stringify(canvasIr, null, 2);
-    setPipelineJsonText(jsonStr);
-    setShowJsonModal(true);
-    setStatusMessage("Generated Pipeline JSON representation!");
-  };
+    // Parse initial input payload
+    let initialContext: Record<string, any> = {};
+    try {
+      initialContext = JSON.parse(testPayloadText);
+    } catch {
+      initialContext = { raw_input: "test_value" };
+    }
 
-  // Dry Run Verification Handler
-  const handleDryRun = async () => {
-    setDryRunLoading(true);
-    setStatusMessage("Running 6 quality gates in Docker sandbox...");
-    const canvasIr: CanvasIR = { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 } };
+    setSimContext(initialContext);
+    setSimLogs([{ time: new Date().toLocaleTimeString(), level: "INFO", msg: `🏁 Pipeline '${projectName}' initialized.` }]);
+
+    // Fetch execution sequence from backend
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    let stepsToRun: any[] = [];
+
     try {
       const res = await fetch("/api/v1/pipeline/dry-run", {
         method: "POST",
@@ -716,629 +463,1142 @@ export default function App() {
         body: JSON.stringify(canvasIr),
       });
       const data = await res.json();
-      setVerificationModal(data);
-      setStatusMessage("Verification completed: All gates PASSED ✓");
-    } catch (err: any) {
-      setStatusMessage(`Verification error: ${err.message}`);
-    } finally {
-      setDryRunLoading(false);
+      stepsToRun = data.simulation_steps || [];
+    } catch {
+      stepsToRun = canvasIr.nodes.map((n) => ({
+        id: n.id,
+        name: n.data.label,
+        reads: n.data.contract.reads,
+        writes: n.data.contract.writes,
+        origin: n.data.origin,
+      }));
     }
+
+    if (stepsToRun.length === 0) {
+      setIsSimulating(false);
+      setStatusMessage("Simulation finished: No steps in pipeline.");
+      return;
+    }
+
+    // Initialize step cards
+    const initialSimSteps: SimStepResult[] = stepsToRun.map((s) => ({
+      id: s.id,
+      name: s.name,
+      status: "idle",
+      durationMs: 0,
+      reads: s.reads || [],
+      writes: s.writes || [],
+    }));
+    setSimSteps(initialSimSteps);
+
+    let currentContext = { ...initialContext };
+    const stepDelay = turboMode ? 100 : 700;
+
+    for (let i = 0; i < stepsToRun.length; i++) {
+      if (simulationAbortRef.current) {
+        setSimLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), level: "WARN", msg: "🛑 Simulation stopped by user." }]);
+        highlightBlocklyBlock("", "idle");
+        break;
+      }
+
+      const currentStep = stepsToRun[i];
+
+      // Mark running
+      highlightBlocklyBlock(currentStep.name, "running");
+      setSimSteps((prev) =>
+        prev.map((item, idx) => (idx === i ? { ...item, status: "running" } : item))
+      );
+      setCpuUsage(Math.floor(25 + Math.random() * 45));
+      setRamUsage((r) => r + Math.floor(Math.random() * 6));
+      setSimLogs((prev) => [
+        ...prev,
+        { time: new Date().toLocaleTimeString(), level: "INFO", msg: `▶ Executing step: ${currentStep.name}...` },
+      ]);
+
+      await new Promise((resolve) => setTimeout(resolve, stepDelay));
+
+      if (simulationAbortRef.current) break;
+
+      // Simulate output writes
+      const duration = Math.floor(40 + Math.random() * 80);
+      const stepOutput: Record<string, any> = {};
+      if (currentStep.writes && currentStep.writes.length > 0) {
+        currentStep.writes.forEach((w: string) => {
+          stepOutput[w] = `result_${w}_${Math.floor(Math.random() * 1000)}`;
+          currentContext[w] = stepOutput[w];
+        });
+      } else {
+        currentContext[`${currentStep.name.toLowerCase()}_out`] = "completed";
+      }
+
+      setSimContext({ ...currentContext });
+
+      // Mark success
+      highlightBlocklyBlock(currentStep.name, "success");
+      setSimSteps((prev) =>
+        prev.map((item, idx) =>
+          idx === i ? { ...item, status: "success", durationMs: duration, outputData: stepOutput } : item
+        )
+      );
+
+      setSimLogs((prev) => [
+        ...prev,
+        {
+          time: new Date().toLocaleTimeString(),
+          level: "SUCCESS",
+          msg: `✓ Step ${currentStep.name} completed in ${duration}ms.`,
+        },
+      ]);
+    }
+
+    setCpuUsage(0);
+    setIsSimulating(false);
+    setStatusMessage(simulationAbortRef.current ? "🛑 Simulation aborted" : "✓ Simulation finished successfully!");
   };
 
-  // Generate Microservice ZIP Handler
-  const handleGenerateZip = async () => {
-    setZipLoading(true);
-    setStatusMessage("Building production ZIP...");
-    const canvasIr: CanvasIR = { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 } };
-    try {
-      const res = await fetch("/api/v1/pipeline/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(canvasIr),
-      });
-      if (!res.ok) throw new Error("Failed to generate ZIP");
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "wpipe_microservice.zip";
-      a.click();
-      setStatusMessage("Microservice ZIP downloaded!");
-    } catch (err: any) {
-      setStatusMessage(`Generate error: ${err.message}`);
-    } finally {
-      setZipLoading(false);
-    }
+  const handleStopSimulation = () => {
+    simulationAbortRef.current = true;
+    setIsSimulating(false);
+    highlightBlocklyBlock("", "idle");
+    setStatusMessage("🛑 Simulation stopped by user");
+    setCpuUsage(0);
   };
 
-  // Filtering & Tree Grouping Logic
+  // Group steps for categories
   const officialSteps = catalog.filter((s) => s.repo === "Official");
   const pluginSteps = catalog.filter((s) => s.repo === "Plugin");
 
-  // Unique categories list for dropdown filter
-  const availableCategories = Array.from(new Set(catalog.map((s) => s.category).filter(Boolean)));
-
-  // Advanced Global Multi-Field Search & Category Filter
-  const filterBySearch = (step: CatalogStep) => {
-    // 1. Category Dropdown Filter
-    if (selectedCategoryFilter !== "ALL") {
-      if (step.category.toLowerCase() !== selectedCategoryFilter.toLowerCase()) {
-        return false;
-      }
-    }
-
-    // 2. Search Query Text Filter
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      step.name.toLowerCase().includes(q) ||
-      step.func_name.toLowerCase().includes(q) ||
-      (step.namespace && step.namespace.toLowerCase().includes(q)) ||
-      (step.category && step.category.toLowerCase().includes(q)) ||
-      (step.subcategory1 && step.subcategory1.toLowerCase().includes(q)) ||
-      (step.subcategory2 && step.subcategory2.toLowerCase().includes(q)) ||
-      (step.description && step.description.toLowerCase().includes(q)) ||
-      (step.code_snippet && step.code_snippet.toLowerCase().includes(q))
-    );
-  };
-
-  const searchedOfficial = officialSteps.filter(filterBySearch);
-  const searchedPlugins = pluginSteps.filter(filterBySearch);
-  const searchedUser = userStates.filter(filterBySearch);
-
-  // Auto-expand categories and switch tabs if matching results are found elsewhere
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const allCatKeys: Record<string, boolean> = {};
-      catalog.forEach((s) => {
-        if (s.category) allCatKeys[s.category] = true;
-      });
-      setExpandedCategories(allCatKeys);
-
-      // Auto-switch tab if current tab has 0 matches but another tab has results
-      if (activeTab === "official" && searchedOfficial.length === 0 && searchedPlugins.length > 0) {
-        setActiveTab("plugins");
-      } else if (activeTab === "plugins" && searchedPlugins.length === 0 && searchedOfficial.length > 0) {
-        setActiveTab("official");
-      }
-    }
-  }, [searchQuery, catalog, searchedOfficial.length, searchedPlugins.length]);
-
-  // Group steps by category and subcategory
-  const categoryTree: Record<string, Record<string, CatalogStep[]>> = {};
-  searchedOfficial.forEach((step) => {
-    const cat = step.category || "general";
-    const sub = step.subcategory1 || "main";
-    if (!categoryTree[cat]) categoryTree[cat] = {};
-    if (!categoryTree[cat][sub]) categoryTree[cat][sub] = [];
-    categoryTree[cat][sub].push(step);
-  });
-
-  // Filtered FAQ items
-  const filteredFaqs = faqList.filter((f) => {
-    if (!faqSearch.trim()) return true;
-    const q = faqSearch.toLowerCase();
-    return f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q) || f.category.toLowerCase().includes(q);
-  });
-
-  // Helper for Scratch 3.0 Block Category Palette & Notch Styling
-  const getNodeColorStyle = (origin: StepOrigin | string, repo?: string, nodeType?: string, category?: string) => {
-    if (nodeType === "condition") {
-      return { scratchClass: "scratch-block-control", border: "border-[#cf8400]", bg: "bg-[#ffab19]", text: "text-white", badge: "bg-[#cf8400] text-white" };
-    }
-    if (nodeType === "for") {
-      return { scratchClass: "scratch-block-events", border: "border-[#cc9900]", bg: "bg-[#ffbf00]", text: "text-amber-950", badge: "bg-[#cc9900] text-white" };
-    }
-    if (nodeType === "parallel") {
-      return { scratchClass: "scratch-block-operators", border: "border-[#389438]", bg: "bg-[#59c059]", text: "text-white", badge: "bg-[#389438] text-white" };
-    }
-    if (origin === "user_imported") {
-      return { scratchClass: "scratch-block-variables", border: "border-[#db6e00]", bg: "bg-[#ff8c1a]", text: "text-white", badge: "bg-[#db6e00] text-white" };
-    }
-    if (origin === "described") {
-      return { scratchClass: "scratch-block-custom", border: "border-[#d93854]", bg: "bg-[#ff6680]", text: "text-white", badge: "bg-[#d93854] text-white" };
-    }
-    if (repo === "Plugin" || origin === "plugin") {
-      return { scratchClass: "scratch-block-sensing", border: "border-[#2e8ca8]", bg: "bg-[#5cb1d6]", text: "text-white", badge: "bg-[#2e8ca8] text-white" };
-    }
-    // Default Official Motion Block (Scratch Blue)
-    return { scratchClass: "scratch-block-motion", border: "border-[#3373cc]", bg: "bg-[#4c97ff]", text: "text-white", badge: "bg-[#3373cc] text-white" };
-  };
-
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#05070c] text-gray-100 font-sans select-none overflow-hidden aurora-bg">
-      {/* 5. FULLSCREEN SPLASH LOADER */}
+    <div className="flex flex-col h-screen w-screen bg-[#07090e] text-gray-100 font-sans select-none overflow-hidden aurora-bg">
+      {/* 1. FULLSCREEN SPLASH LOADER */}
       {showSplash && (
         <div
-          className={`fixed inset-0 z-[99999] bg-[#05070c] flex flex-col items-center justify-center transition-opacity duration-500 pointer-events-auto ${
+          className={`fixed inset-0 z-[99999] bg-[#07090e] flex flex-col items-center justify-center transition-opacity duration-300 pointer-events-auto ${
             splashFadeOut ? "opacity-0 pointer-events-none" : "opacity-100"
           }`}
         >
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center font-black text-white text-3xl shadow-2xl logo-pulsing mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-500 flex items-center justify-center font-black text-white text-3xl shadow-2xl logo-pulsing mb-6">
             W
           </div>
-          <h2 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-purple-200 to-emerald-300 font-heading tracking-tight mb-2">
+          <h2 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-indigo-200 to-purple-300 font-heading tracking-tight mb-2">
             WPipe Studio
           </h2>
-          <p className="text-xs text-gray-400 mb-6">Initializing Multi-tenant Canvas & Release Catalog Engine...</p>
+          <p className="text-xs text-gray-400 mb-6 font-mono">Scratux 3.0 Visual Pipeline Environment</p>
 
-          <div className="w-72 h-1.5 bg-gray-900 rounded-full overflow-hidden border border-gray-800 shadow-inner mb-3">
+          <div className="w-64 h-1.5 bg-gray-900 rounded-full overflow-hidden border border-gray-800 shadow-inner mb-3">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-300"
+              className="h-full bg-gradient-to-r from-sky-400 via-indigo-500 to-purple-400 transition-all duration-300"
               style={{ width: `${splashProgress}%` }}
             ></div>
           </div>
-          <span className="text-[11px] font-mono text-emerald-400 font-bold">{splashProgress}% Complete</span>
+          <span className="text-[11px] font-mono text-sky-400 font-bold">{splashProgress}% Complete</span>
         </div>
       )}
 
-      {/* Top Header */}
-      <header className="flex items-center justify-between px-6 py-2.5 border-b border-gray-800/80 bg-gray-900/90 backdrop-blur-md shadow-lg z-20">
+      {/* 2. TOP MENU BAR (Scratux menu-bar layout) */}
+      <header className="h-12 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-4 flex items-center justify-between z-30 shadow-md">
+        {/* Left: Brand + Menus */}
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center font-black text-white text-lg shadow-md shadow-indigo-600/20">
-            W
+          {/* Brand Logo */}
+          <div className="flex items-center space-x-2 mr-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-md">
+              W
+            </div>
+            <span className="font-extrabold text-sm text-transparent bg-clip-text bg-gradient-to-r from-sky-300 to-indigo-200 font-heading tracking-tight">
+              WPipe Studio
+            </span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-mono">
+              v2.5.10
+            </span>
           </div>
-          <div>
-            <h1 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-purple-200 to-emerald-300 font-heading tracking-tight flex items-center gap-2">
-              <span>WPipe Studio</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-normal">
-                v2.5.8
-              </span>
-            </h1>
-            <p className="text-[11px] text-gray-400">Scratch 3.0 Visual Pipeline Builder</p>
+
+          {/* File Menu Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setActiveMenu(activeMenu === "file" ? null : "file")}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
+                activeMenu === "file" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <span>Archivo</span>
+              <ChevronDown size={13} className="text-gray-400" />
+            </button>
+            {activeMenu === "file" && (
+              <div className="absolute left-0 mt-1 w-52 bg-gray-900 border border-gray-700/80 rounded-lg shadow-2xl py-1 z-50 text-xs">
+                <button
+                  onClick={() => {
+                    if (window.confirm("¿Crear un nuevo pipeline y limpiar el canvas?")) {
+                      window.location.reload();
+                    }
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2"
+                >
+                  <FileCode size={14} className="text-sky-400" />
+                  <span>Nuevo Pipeline</span>
+                </button>
+                <label className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 cursor-pointer">
+                  <FolderOpen size={14} className="text-amber-400" />
+                  <span>Cargar desde tu ordenador</span>
+                  <input type="file" accept=".json" onChange={handleLoadJson} className="hidden" />
+                </label>
+                <button
+                  onClick={handleSaveJson}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2"
+                >
+                  <Save size={14} className="text-emerald-400" />
+                  <span>Guardar en tu ordenador (.json)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Edit Menu Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setActiveMenu(activeMenu === "edit" ? null : "edit")}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
+                activeMenu === "edit" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <span>Editar</span>
+              <ChevronDown size={13} className="text-gray-400" />
+            </button>
+            {activeMenu === "edit" && (
+              <div className="absolute left-0 mt-1 w-48 bg-gray-900 border border-gray-700/80 rounded-lg shadow-2xl py-1 z-50 text-xs">
+                <button
+                  onClick={() => {
+                    setTurboMode(!turboMode);
+                    setStatusMessage(`Modo Turbo: ${!turboMode ? "Activado ⚡" : "Desactivado"}`);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-yellow-400" />
+                    <span>Modo Turbo</span>
+                  </span>
+                  {turboMode && <Check size={14} className="text-emerald-400" />}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Mode Switcher Tabs */}
-        <div className="flex items-center bg-gray-950 p-1 rounded-xl border border-gray-800 space-x-1">
-          <button
-            onClick={() => setWorkspaceView("canvas")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-              workspaceView === "canvas" ? "bg-indigo-600 text-white shadow-md" : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            <span>🧩 Canvas Editor</span>
-          </button>
-          <button
-            onClick={generateMermaidDiagram}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-              workspaceView === "flowchart" ? "bg-sky-600 text-white shadow-md" : "text-gray-400 hover:text-gray-200"
-            }`}
-          >
-            <span>📊 Live Flowchart</span>
-          </button>
+        {/* Center: Editable Project Title */}
+        <div className="flex items-center">
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))}
+            className="bg-gray-950/80 border border-gray-700/80 hover:border-gray-500 focus:border-sky-500 rounded-md px-3 py-1 text-xs font-semibold text-gray-200 focus:outline-none transition w-64 text-center font-mono"
+            placeholder="my_wpipe_pipeline"
+            title="Click to rename pipeline"
+          />
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        {/* Right: Actions (FAQ, Dry-Run, Export ZIP) */}
+        <div className="flex items-center space-x-2">
           <button
-            onClick={generateMermaidDiagram}
-            className="px-4 py-2 text-xs font-bold rounded-lg bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-600 transition shadow-md shadow-sky-950/50 flex items-center gap-2 cursor-pointer active:scale-95"
-            title="Render Mermaid Flowchart Preview"
+            onClick={() => setShowFaqModal(true)}
+            className="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 rounded-md transition flex items-center gap-1.5"
+            title="Guía y Preguntas Frecuentes"
           >
-            <span>📊 Render Flow Graph</span>
+            <BookOpen size={14} className="text-purple-400" />
+            <span>Tutoriales</span>
+          </button>
+
+          <button
+            onClick={handleDryRun}
+            disabled={dryRunLoading}
+            className="px-3 py-1 bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-700/80 rounded-md text-xs font-bold transition flex items-center gap-1.5 shadow"
+          >
+            <CheckCircle size={14} className="text-sky-400" />
+            <span>{dryRunLoading ? "Verificando..." : "Verificar"}</span>
+          </button>
+
+          <button
+            onClick={handleGenerateZip}
+            disabled={zipLoading}
+            className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-md text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
+          >
+            <Download size={14} />
+            <span>{zipLoading ? "Generando..." : "Descargar ZIP"}</span>
           </button>
         </div>
       </header>
 
-      {/* Main Workspace with Left Add-Block Bar */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Interactive "Add Block" Palette */}
-        <aside className="w-80 bg-gray-900/95 border-r border-gray-800/80 flex flex-col z-20 shadow-2xl glass-panel">
-          <div className="p-4 bg-gray-950 border-b border-gray-800/80 flex items-center justify-between">
-            <span className="text-sm font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 to-emerald-300 font-heading">
-              ➕ Add Block
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-bold">
-              Scratch Palette
-            </span>
+      {/* 3. MAIN WORKSPACE CONTAINER */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* LEFT COLUMN: Workspace with Tabs (Code / Flowchart / Python) */}
+        <div className="flex-1 flex flex-col border-r border-gray-800/80 bg-[#07090e] overflow-hidden">
+          {/* Sub-Header Tabs */}
+          <div className="h-9 border-b border-gray-800/80 bg-[#0b0f19] px-3 flex items-center justify-between">
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={() => setActiveMainTab("code")}
+                className={`px-3 py-1 text-xs font-bold rounded-t-md transition flex items-center gap-1.5 ${
+                  activeMainTab === "code"
+                    ? "bg-[#07090e] text-sky-400 border-t-2 border-sky-500 shadow"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                <span>🧩 Código (Bloques)</span>
+              </button>
+
+              <button
+                onClick={handleOpenFlowchart}
+                className={`px-3 py-1 text-xs font-bold rounded-t-md transition flex items-center gap-1.5 ${
+                  activeMainTab === "flowchart"
+                    ? "bg-[#07090e] text-sky-400 border-t-2 border-sky-500 shadow"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                <span>📊 Flujo (Mermaid DAG)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveMainTab("python")}
+                className={`px-3 py-1 text-xs font-bold rounded-t-md transition flex items-center gap-1.5 ${
+                  activeMainTab === "python"
+                    ? "bg-[#07090e] text-sky-400 border-t-2 border-sky-500 shadow"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                <span>💻 Microservicio Python</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] text-gray-500 font-mono">
+              Status: <span className="text-gray-300 font-semibold">{statusMessage}</span>
+            </div>
           </div>
 
-          {/* Selector Type Tabs */}
-          <div className="grid grid-cols-3 border-b border-gray-800/80 bg-gray-950 text-[11px] font-semibold text-gray-400">
-            <button
-              onClick={() => setActiveTab("official")}
-              className={`py-2.5 text-center border-b-2 transition flex items-center justify-center gap-1 ${
-                activeTab === "official" ? "border-indigo-500 text-indigo-400 bg-gray-900" : "border-transparent hover:text-gray-200"
-              }`}
-            >
-              <span>🌐 External</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("user")}
-              className={`py-2.5 text-center border-b-2 transition flex items-center justify-center gap-1 ${
-                activeTab === "user" ? "border-amber-500 text-amber-400 bg-gray-900" : "border-transparent hover:text-gray-200"
-              }`}
-            >
-              <span>📂 Internal</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("ai")}
-              className={`py-2.5 text-center border-b-2 transition flex items-center justify-center gap-1 ${
-                activeTab === "ai" ? "border-purple-500 text-purple-400 bg-gray-900" : "border-transparent hover:text-gray-200"
-              }`}
-            >
-              <span>✨ AI Step</span>
-            </button>
-          </div>
-
-          {/* Drawer Content */}
-          <div className="flex-1 p-3.5 overflow-y-auto space-y-4">
-            {/* 1. EXTERNAL STEP CATALOG (INTELLIGENT SEARCH & CATEGORY ROUTING) */}
-            {activeTab === "official" && (
-              <div className="space-y-3">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="🔍 Intelligent search (vision, redis hash, ocr...)"
-                    className="w-full bg-gray-950 border border-gray-700/80 rounded-xl py-2 pl-3 pr-8 text-xs text-gray-100 placeholder-gray-500 focus:outline-none transition"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block font-heading">
-                    Catalog Steps ({searchedOfficial.length + searchedPlugins.length})
-                  </span>
-
-                  {searchedOfficial.length === 0 && searchedPlugins.length === 0 ? (
-                    <div className="p-4 text-center border border-dashed border-gray-800 rounded-xl bg-gray-950/40">
-                      <p className="text-xs font-bold text-gray-400">No steps matched '{searchQuery}'</p>
-                    </div>
-                  ) : (
-                    [...searchedOfficial, ...searchedPlugins].map((step, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          addStepBlockToWorkspace(step.name, step.namespace, "catalog");
-                          setStatusMessage(`Added block '${step.name}' to Scratch canvas`);
-                        }}
-                        className="p-3 bg-blue-950/30 hover:bg-blue-900/50 border border-blue-600/80 hover:border-blue-400 rounded-xl cursor-pointer transition shadow-md group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-white flex items-center gap-1.5">
-                            <span>📦</span>
-                            <span>{step.name}</span>
-                          </span>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${step.repo === "Official" ? "bg-blue-950 text-blue-300 border border-blue-500" : "bg-emerald-950 text-emerald-300 border border-emerald-500"}`}>
-                            {step.repo === "Official" ? "Official" : "Community"}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-gray-300 mt-1 line-clamp-2">{step.description}</p>
-                        <div className="mt-2 text-[9px] font-mono text-blue-300/80 flex items-center justify-between">
-                          <span>Cat: {step.category}</span>
-                          <span className="text-emerald-400 font-bold group-hover:translate-x-0.5 transition">+ Click to Add</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 2. INTERNAL STEP (.PY LOADED OR UPLOAD NEW) */}
-            {activeTab === "user" && (
-              <div className="space-y-4">
-                <div className="bg-amber-950/30 p-3.5 rounded-xl border border-amber-800/80 space-y-2">
-                  <span className="text-xs font-semibold text-amber-300 block font-heading">📂 Import Custom .py State</span>
-                  <p className="text-[11px] text-gray-400">Upload your custom Python state file.</p>
-                  <label className="block w-full text-center py-2 px-3 bg-amber-900/60 hover:bg-amber-800 text-amber-200 rounded-lg text-xs font-semibold border border-amber-700 cursor-pointer transition">
-                    Upload .py File
-                    <input type="file" accept=".py" className="hidden" onChange={handleFileUpload} />
-                  </label>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-gray-400 uppercase">Available Internal States ({userStates.length})</span>
-                  {userStates.length === 0 ? (
-                    <p className="text-xs text-gray-500 italic p-2">No custom states loaded yet. Upload a .py file above!</p>
-                  ) : (
-                    userStates.map((step, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          addStepBlockToWorkspace(step.name, step.namespace || "user_custom", "user_imported");
-                          setStatusMessage(`Added internal state '${step.name}' to Scratch canvas`);
-                        }}
-                        className="p-3 bg-amber-950/30 hover:bg-amber-900/50 border border-amber-600/80 hover:border-amber-400 rounded-xl cursor-pointer transition shadow-md"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-amber-200">{step.name}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 bg-amber-950 text-amber-300 rounded border border-amber-800 font-mono">.py</span>
-                        </div>
-                        <p className="text-[10px] text-gray-300 mt-1 line-clamp-1">{step.description}</p>
-                        <span className="mt-1 block text-[9px] text-amber-400 font-bold text-right">+ Click to Add</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 3. AI DESCRIBED STEP */}
-            {activeTab === "ai" && (
-              <div className="space-y-4">
-                <div className="bg-purple-950/30 p-3.5 rounded-xl border border-purple-800 space-y-3">
-                  <span className="text-xs font-bold text-purple-300 block font-heading">✨ Prompt AI Step</span>
-                  <p className="text-[11px] text-gray-400">Define Title, Description, and Details for the AI agent.</p>
+          {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE */}
+          {activeMainTab === "code" && (
+            <div className="flex-1 flex overflow-hidden">
+              {/* Category Strip (60px Scratux vertical bar) */}
+              <div className="w-16 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between items-center py-2 z-20">
+                <div className="flex flex-col space-y-2 items-center w-full">
+                  {/* Motion Blue - Official Steps */}
                   <button
-                    onClick={() => setShowAiModal(true)}
-                    className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold shadow transition"
+                    onClick={() => setSelectedCategory("motion")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "motion" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Pasos Oficiales (wpipe-steps)"
                   >
-                    + Open AI Prompt Dialog
+                    <div className="w-6 h-6 rounded-full bg-[#4c97ff] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      📦
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Pasos</span>
+                  </button>
+
+                  {/* Looks Cyan - Community Plugins */}
+                  <button
+                    onClick={() => setSelectedCategory("looks")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "looks" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Plugins de Comunidad (wpipe-plugins)"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#5cb1d6] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      🔌
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Plugins</span>
+                  </button>
+
+                  {/* Sound Pink - Vision & AI */}
+                  <button
+                    onClick={() => setSelectedCategory("sound")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "sound" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Visión por Computadora & IA"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#ff6680] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      🎬
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">IA/Visión</span>
+                  </button>
+
+                  {/* Control Orange - IF, FOR, PARALLEL */}
+                  <button
+                    onClick={() => setSelectedCategory("control")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "control" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Control de Flujo (IF, FOR, PARALLEL)"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#ffab19] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      🔀
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Control</span>
+                  </button>
+
+                  {/* Sensing Teal - Security & Health */}
+                  <button
+                    onClick={() => setSelectedCategory("sensing")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "sensing" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Seguridad & Red"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#2e8ca8] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      🛡️
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Seguridad</span>
+                  </button>
+
+                  {/* My Blocks Purple - Custom & AI States */}
+                  <button
+                    onClick={() => setSelectedCategory("myblocks")}
+                    className={`flex flex-col items-center p-1.5 rounded-lg transition w-14 ${
+                      selectedCategory === "myblocks" ? "bg-gray-800/80" : "hover:bg-gray-800/40"
+                    }`}
+                    title="Mis Estados Personalizados (.py & IA)"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-[#9966ff] flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                      ✨
+                    </div>
+                    <span className="text-[9px] text-gray-300 mt-1 font-semibold">Mis Pasos</span>
                   </button>
                 </div>
-              </div>
-            )}
-          </div>
-        </aside>
 
-        {/* Central Workspace: Google Blockly Native Scratch Canvas OR Fullscreen Flowchart */}
-        <main ref={canvasRef} className="flex-1 bg-[#05070c] p-4 relative overflow-hidden flex flex-col justify-between">
-          {workspaceView === "canvas" ? (
-            /* Blockly Native Canvas */
-            <div className="w-full h-full">
-              <BlocklyComponent
-                onWorkspaceChange={(ws) => {
-                  (window as any).blocklyWorkspace = ws;
-                }}
-              />
-            </div>
-          ) : (
-            /* FULLSCREEN RENDERED FLOWCHART VIEW */
-            <div className="w-full h-full flex flex-col bg-gray-950 rounded-2xl border border-sky-900/60 overflow-hidden shadow-2xl">
-              {/* Fullscreen View Toolbar */}
-              <div className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
-                <div className="flex items-center space-x-3">
-                  <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-300 to-indigo-300 font-heading">
-                    📊 Live Interactive Flowchart View
-                  </h3>
-                  <span className="text-xs text-gray-400">Full workspace layout with infinite pan and zoom controls</span>
+                {/* Bottom [+] Extension Library Button */}
+                <button
+                  onClick={() => setShowExtensionModal(true)}
+                  className="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white flex flex-col items-center justify-center shadow-lg transition transform hover:scale-105 active:scale-95"
+                  title="Añadir Extensión (Catálogo de 196 Steps)"
+                >
+                  <Plus size={18} />
+                  <span className="text-[8px] font-bold">Catálogo</span>
+                </button>
+              </div>
+
+              {/* Flyout Block Palette (240px) */}
+              <div className="w-60 bg-[#0d121f] border-r border-gray-800/80 flex flex-col overflow-hidden">
+                <div className="p-2 border-b border-gray-800/80 bg-gray-950/60">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Filtrar bloques..."
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-800 rounded-md py-1 px-2 text-xs text-gray-200 focus:outline-none"
+                    />
+                    {categorySearch && (
+                      <button
+                        onClick={() => setCategorySearch("")}
+                        className="absolute right-2 top-1.5 text-xs text-gray-400"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Toolbar Export & Zoom Controls */}
-                <div className="flex items-center space-x-2">
-                  <div className="flex items-center space-x-2 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800">
-                    <span className="text-xs font-semibold text-gray-400 mr-1">Zoom:</span>
-                    <button
-                      onClick={() => setZoomScale((s) => Math.max(0.2, s - 0.15))}
-                      className="px-2 py-0.5 bg-gray-800 hover:bg-gray-700 text-sky-300 rounded text-xs font-bold transition"
-                      title="Zoom Out"
-                    >
-                      🔍 -
-                    </button>
-                    <span className="text-xs font-mono text-sky-400 w-12 text-center">{Math.round(zoomScale * 100)}%</span>
-                    <button
-                      onClick={() => setZoomScale((s) => Math.min(3.0, s + 0.15))}
-                      className="px-2 py-0.5 bg-gray-800 hover:bg-gray-700 text-sky-300 rounded text-xs font-bold transition"
-                      title="Zoom In"
-                    >
-                      🔍 +
-                    </button>
-                    <button
-                      onClick={() => setZoomScale(1.0)}
-                      className="px-2.5 py-0.5 bg-sky-950 hover:bg-sky-900 text-sky-300 rounded text-xs font-semibold border border-sky-800 transition"
-                      title="Reset Zoom to 100%"
-                    >
-                      Reset 100%
-                    </button>
-                    <button
-                      onClick={() => setZoomScale(0.7)}
-                      className="px-2.5 py-0.5 bg-indigo-950 hover:bg-indigo-900 text-indigo-300 rounded text-xs font-semibold border border-indigo-800 transition"
-                      title="Fit large flowchart"
-                    >
-                      Fit View
-                    </button>
-                  </div>
+                {/* Blocks List */}
+                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  {/* CONTROL BLOCKS */}
+                  {selectedCategory === "control" && (
+                    <div className="space-y-2">
+                      <div
+                        onClick={() => addControlBlockToWorkspace("wpipe_if")}
+                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🔀</span> IF Condition THEN
+                        </span>
+                      </div>
+                      <div
+                        onClick={() => addControlBlockToWorkspace("wpipe_if_else")}
+                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🔀</span> IF / ELSE Condition
+                        </span>
+                      </div>
+                      <div
+                        onClick={() => addControlBlockToWorkspace("wpipe_for")}
+                        className="p-2.5 rounded-lg bg-[#ffab19] border-2 border-[#cf8400] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🔁</span> REPEAT Loop DO
+                        </span>
+                      </div>
+                      <div
+                        onClick={() => addControlBlockToWorkspace("wpipe_parallel")}
+                        className="p-2.5 rounded-lg bg-[#59c059] border-2 border-[#389438] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>⚡</span> RUN IN PARALLEL
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
+                  {/* OFFICIAL STEPS */}
+                  {selectedCategory === "motion" && (
+                    <div className="space-y-2">
+                      {officialSteps
+                        .filter(
+                          (s) =>
+                            !categorySearch ||
+                            s.name.toLowerCase().includes(categorySearch.toLowerCase()) ||
+                            s.category.toLowerCase().includes(categorySearch.toLowerCase())
+                        )
+                        .slice(0, 25)
+                        .map((step, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              addStepBlockToWorkspace(step.name, step.namespace, "catalog");
+                              setStatusMessage(`Añadido paso '${step.name}' al canvas`);
+                            }}
+                            className="p-2 rounded-lg bg-[#4c97ff] border-2 border-[#3373cc] text-white cursor-pointer hover:brightness-110 shadow transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold flex items-center gap-1 truncate">
+                                <span>📦</span> {step.name}
+                              </span>
+                            </div>
+                            <span className="text-[9px] opacity-80 block truncate">{step.category}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* PLUGINS */}
+                  {selectedCategory === "looks" && (
+                    <div className="space-y-2">
+                      {pluginSteps
+                        .filter(
+                          (s) =>
+                            !categorySearch ||
+                            s.name.toLowerCase().includes(categorySearch.toLowerCase())
+                        )
+                        .map((step, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              addStepBlockToWorkspace(step.name, step.namespace, "catalog");
+                              setStatusMessage(`Añadido plugin '${step.name}' al canvas`);
+                            }}
+                            className="p-2 rounded-lg bg-[#5cb1d6] border-2 border-[#2e8ca8] text-white cursor-pointer hover:brightness-110 shadow transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold flex items-center gap-1 truncate">
+                                <span>🔌</span> {step.name}
+                              </span>
+                            </div>
+                            <span className="text-[9px] opacity-80 block truncate">{step.description}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* VISION & AI */}
+                  {selectedCategory === "sound" && (
+                    <div className="space-y-2">
+                      <div
+                        onClick={() => addStepBlockToWorkspace("ImageECamYOLO", "wpipe_plugins.vision", "catalog")}
+                        className="p-2 rounded-lg bg-[#ff6680] border-2 border-[#d93854] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🎬</span> ImageECamYOLO
+                        </span>
+                        <span className="text-[9px] opacity-80 block">YOLOv8 + EigenCAM heatmap</span>
+                      </div>
+                      <div
+                        onClick={() => addStepBlockToWorkspace("WhisperASR", "wpipe_steps.multimedia", "catalog")}
+                        className="p-2 rounded-lg bg-[#ff6680] border-2 border-[#d93854] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🎬</span> WhisperASR
+                        </span>
+                        <span className="text-[9px] opacity-80 block">Transcripción de audio</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SENSING / SECURITY */}
+                  {selectedCategory === "sensing" && (
+                    <div className="space-y-2">
+                      <div
+                        onClick={() => addStepBlockToWorkspace("WafFilterStep", "wpipe_steps.security.waf", "catalog")}
+                        className="p-2 rounded-lg bg-[#2e8ca8] border-2 border-[#1c667d] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🛡️</span> WafFilterStep
+                        </span>
+                      </div>
+                      <div
+                        onClick={() => addStepBlockToWorkspace("Fail2BanCheck", "wpipe_steps.security", "catalog")}
+                        className="p-2 rounded-lg bg-[#2e8ca8] border-2 border-[#1c667d] text-white cursor-pointer hover:brightness-110 shadow transition"
+                      >
+                        <span className="text-xs font-bold flex items-center gap-1">
+                          <span>🛡️</span> Fail2BanCheck
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MY BLOCKS */}
+                  {selectedCategory === "myblocks" && (
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => setShowAiModal(true)}
+                        className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold shadow flex items-center justify-center gap-1.5"
+                      >
+                        <Sparkles size={14} />
+                        <span>+ Crear Paso con IA</span>
+                      </button>
+
+                      <label className="block w-full text-center py-2 px-3 bg-gray-800 hover:bg-gray-700 text-amber-300 rounded-lg text-xs font-semibold border border-gray-700 cursor-pointer transition">
+                        <span>📂 Importar archivo .py</span>
+                        <input type="file" accept=".py" className="hidden" onChange={handleFileUpload} />
+                      </label>
+
+                      <div className="space-y-2 pt-2">
+                        {userStates.map((step, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              addStepBlockToWorkspace(step.name, step.namespace, "user_imported");
+                              setStatusMessage(`Añadido paso de usuario '${step.name}'`);
+                            }}
+                            className="p-2 rounded-lg bg-[#9966ff] border-2 border-[#7a4cd6] text-white cursor-pointer hover:brightness-110 shadow transition"
+                          >
+                            <span className="text-xs font-bold flex items-center gap-1 truncate">
+                              <span>📄</span> {step.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Center Canvas: Blockly Editor */}
+              <div className="flex-1 bg-[#07090e] p-2 relative overflow-hidden">
+                <BlocklyComponent />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: MERMAID FLOWCHART VIEW */}
+          {activeMainTab === "flowchart" && (
+            <div className="flex-1 flex flex-col bg-[#07090e] overflow-hidden p-4">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-gray-300">Zoom:</span>
+                  <button
+                    onClick={() => setZoomScale((s) => Math.max(0.3, s - 0.2))}
+                    className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sky-400"
+                  >
+                    <ZoomOut size={14} />
+                  </button>
+                  <span className="text-xs font-mono text-sky-400 w-12 text-center">{Math.round(zoomScale * 100)}%</span>
+                  <button
+                    onClick={() => setZoomScale((s) => Math.min(3.0, s + 0.2))}
+                    className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sky-400"
+                  >
+                    <ZoomIn size={14} />
+                  </button>
+                  <button
+                    onClick={() => setZoomScale(1.0)}
+                    className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs text-gray-300"
+                  >
+                    100%
+                  </button>
+                </div>
+
+                <div className="flex items-center space-x-2">
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(mermaidCode);
-                      setStatusMessage("Copied Mermaid code to clipboard!");
+                      setStatusMessage("Código Mermaid copiado al portapapeles");
                     }}
-                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-sky-300 rounded-lg text-xs font-semibold border border-gray-700 transition"
+                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-sky-300 rounded text-xs font-semibold flex items-center gap-1.5"
                   >
-                    📋 Copy Code
+                    <Copy size={13} />
+                    <span>Copiar Mermaid</span>
                   </button>
+
                   <button
                     onClick={() => {
                       const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog);
                       const mdBlob = new Blob([mdPlan], { type: "text/markdown;charset=utf-8" });
                       const mdUrl = URL.createObjectURL(mdBlob);
-                      const downloadLink = document.createElement("a");
-                      downloadLink.href = mdUrl;
-                      downloadLink.download = "WPipe_Pipeline_Work_Plan.md";
-                      downloadLink.click();
-                      setStatusMessage("Exported Work Plan (.md) file!");
+                      const a = document.createElement("a");
+                      a.href = mdUrl;
+                      a.download = `${projectName}_work_plan.md`;
+                      a.click();
+                      setStatusMessage("Plan de trabajo (.md) descargado");
                     }}
-                    className="px-3 py-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded-lg text-xs font-semibold border border-emerald-700 transition flex items-center gap-1"
+                    className="px-3 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded text-xs font-semibold flex items-center gap-1.5"
                   >
-                    📝 Export Work Plan (.md)
-                  </button>
-                  <button
-                    onClick={() => {
-                      const svgEl = mermaidFullRef.current?.querySelector("svg");
-                      if (!svgEl) return;
-                      const svgData = new XMLSerializer().serializeToString(svgEl);
-                      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-                      const svgUrl = URL.createObjectURL(svgBlob);
-                      const downloadLink = document.createElement("a");
-                      downloadLink.href = svgUrl;
-                      downloadLink.download = "wpipe_pipeline_flowchart.svg";
-                      downloadLink.click();
-                      setStatusMessage("Exported flowchart as SVG image!");
-                    }}
-                    className="px-3 py-1.5 bg-sky-950 hover:bg-sky-900 text-sky-300 rounded-lg text-xs font-semibold border border-sky-700 transition"
-                  >
-                    🖼️ Export Image (SVG)
-                  </button>
-                  <button
-                    onClick={() => setWorkspaceView("canvas")}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow"
-                  >
-                    🧩 Return to Editor
+                    <Download size={13} />
+                    <span>Exportar Plan (.md)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Infinite Scroll & Pan Canvas Container */}
-              <div className="flex-1 overflow-auto p-8 custom-modal-scrollbar bg-[#05070c] relative">
+              <div className="flex-1 overflow-auto p-8 custom-modal-scrollbar text-center">
                 <div
                   ref={mermaidFullRef}
-                  style={{ transform: `scale(${zoomScale})`, transformOrigin: "top left", transition: "transform 0.15s ease-out" }}
-                  className="inline-block min-w-full p-4 text-center"
+                  style={{ transform: `scale(${zoomScale})`, transformOrigin: "top center", transition: "transform 0.15s ease-out" }}
+                  className="inline-block"
                 ></div>
               </div>
             </div>
           )}
 
-          {/* Bottom Status Bar */}
-          <div className="bg-gray-900/90 backdrop-blur-md border border-gray-800 rounded-xl p-3 text-xs text-gray-400 flex items-center justify-between z-10 shadow-lg mt-2 flex-shrink-0">
-            <span>Status: <strong className="text-gray-200">{statusMessage}</strong></span>
-            <span>View: <strong className="text-sky-400 font-heading">{workspaceView === "canvas" ? "Blockly Visual Editor" : "Full Flowchart Workspace"}</strong></span>
+          {/* TAB 3: TARGET IR / PYTHON MICROSERVICE PREVIEW */}
+          {activeMainTab === "python" && (
+            <div className="flex-1 flex bg-[#07090e] overflow-hidden">
+              {/* Files sidebar */}
+              <div className="w-56 border-r border-gray-800/80 bg-[#0d121f] p-3 flex flex-col space-y-1">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Archivos Generados</span>
+                {previewLoading ? (
+                  <p className="text-xs text-gray-500 italic">Generando TargetIR...</p>
+                ) : (
+                  generatedFiles.map((file, idx) => (
+                    <button
+                      key={file.path}
+                      onClick={() => setSelectedFileIdx(idx)}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-xs font-mono truncate transition ${
+                        selectedFileIdx === idx
+                          ? "bg-sky-950 text-sky-300 font-bold border border-sky-800"
+                          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+                      }`}
+                    >
+                      {file.path}
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {/* Code viewer */}
+              <div className="flex-1 flex flex-col overflow-hidden bg-gray-950">
+                <div className="h-10 border-b border-gray-800 px-4 flex items-center justify-between bg-gray-900/60">
+                  <span className="text-xs font-mono text-sky-400 font-bold">
+                    {generatedFiles[selectedFileIdx]?.path || "code"}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (generatedFiles[selectedFileIdx]) {
+                        navigator.clipboard.writeText(generatedFiles[selectedFileIdx].content);
+                        setStatusMessage(`Copiado ${generatedFiles[selectedFileIdx].path}`);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs flex items-center gap-1"
+                  >
+                    <Copy size={12} />
+                    <span>Copiar</span>
+                  </button>
+                </div>
+                <pre className="flex-1 p-4 font-mono text-xs text-gray-200 overflow-auto whitespace-pre leading-relaxed custom-modal-scrollbar">
+                  {generatedFiles[selectedFileIdx]?.content || ""}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN: SIMULATION STAGE (Escenario de Scratux) */}
+        <div
+          className={`border-l border-gray-800/80 bg-[#0c101c] flex flex-col z-20 shadow-2xl transition-all duration-300 ${
+            stageViewMode === "fullscreen"
+              ? "absolute inset-0 z-50 bg-[#07090e]"
+              : stageViewMode === "compact"
+              ? "w-80"
+              : "w-96"
+          }`}
+        >
+          {/* Stage Header Controls: 🏁 Green Flag and 🛑 Red Stop */}
+          <div className="h-12 border-b border-gray-800/80 bg-[#0f172a] px-3 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {/* Green Flag button */}
+              <button
+                onClick={handleStartSimulation}
+                disabled={isSimulating}
+                className={`p-1.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold shadow-md transition ${
+                  isSimulating
+                    ? "bg-emerald-950/40 border-emerald-900 text-emerald-600 opacity-60 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white cursor-pointer active:scale-95 shadow-emerald-950/60"
+                }`}
+                title="Iniciar Simulación del Pipeline (Bandera Verde)"
+              >
+                <Play size={14} className="fill-current" />
+                <span>Simular</span>
+              </button>
+
+              {/* Red Stop button */}
+              <button
+                onClick={handleStopSimulation}
+                disabled={!isSimulating}
+                className={`p-1.5 rounded-lg border flex items-center gap-1 text-xs font-bold transition ${
+                  isSimulating
+                    ? "bg-rose-600 hover:bg-rose-500 border-rose-400 text-white cursor-pointer active:scale-95 shadow-lg"
+                    : "bg-gray-800/50 border-gray-700/60 text-gray-500 cursor-not-allowed"
+                }`}
+                title="Detener Simulación"
+              >
+                <Square size={13} className="fill-current" />
+                <span>Parar</span>
+              </button>
+            </div>
+
+            {/* Stage View Size Controls */}
+            <div className="flex items-center space-x-1 text-gray-400">
+              <span className="text-[10px] font-mono text-gray-400 mr-1 font-bold">ESCENARIO</span>
+              <button
+                onClick={() => setStageViewMode(stageViewMode === "compact" ? "normal" : "compact")}
+                className="p-1 hover:text-white rounded"
+                title="Alternar tamaño de escenario"
+              >
+                <Layers size={14} />
+              </button>
+              <button
+                onClick={() => setStageViewMode(stageViewMode === "fullscreen" ? "normal" : "fullscreen")}
+                className="p-1 hover:text-white rounded"
+                title="Pantalla completa"
+              >
+                <Maximize2 size={14} />
+              </button>
+            </div>
           </div>
-        </main>
+
+          {/* Simulation Stage Content */}
+          <div className="flex-1 flex flex-col overflow-y-auto p-3 space-y-3">
+            {/* Live Pipeline Flow Visualizer */}
+            <div className="bg-gray-950/90 border border-gray-800/80 rounded-xl p-3 shadow-inner">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-300 font-heading flex items-center gap-1.5">
+                  <Terminal size={14} className="text-sky-400" />
+                  <span>Flujo de Ejecución en Vivo</span>
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                  isSimulating ? "bg-amber-950 text-amber-300 border border-amber-800 animate-pulse" : "bg-gray-900 text-gray-400"
+                }`}>
+                  {isSimulating ? "EJECUTANDO ⚡" : "EN ESPERA"}
+                </span>
+              </div>
+
+              {/* Step Sequence Timeline */}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {simSteps.length === 0 ? (
+                  <p className="text-[11px] text-gray-500 italic text-center py-4">
+                    Haz clic en la bandera verde para simular la ejecución paso a paso.
+                  </p>
+                ) : (
+                  simSteps.map((step, idx) => (
+                    <div
+                      key={step.id}
+                      className={`p-2 rounded-lg border text-xs flex items-center justify-between transition ${
+                        step.status === "running"
+                          ? "bg-amber-950/40 border-amber-500 text-amber-200 shadow-md ring-1 ring-amber-500/50"
+                          : step.status === "success"
+                          ? "bg-emerald-950/30 border-emerald-700/80 text-emerald-200"
+                          : step.status === "error"
+                          ? "bg-rose-950/40 border-rose-600 text-rose-200"
+                          : "bg-gray-900/60 border-gray-800/80 text-gray-400"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 truncate">
+                        <span className="font-mono text-[10px] opacity-60">#{idx + 1}</span>
+                        <span className="font-bold truncate">{step.name}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {step.status === "running" && <RefreshCw size={12} className="animate-spin text-amber-400" />}
+                        {step.status === "success" && (
+                          <span className="text-[10px] font-mono text-emerald-400">✓ {step.durationMs}ms</span>
+                        )}
+                        {step.status === "error" && <span className="text-[10px] font-mono text-rose-400">✕ ERROR</span>}
+                        {step.status === "idle" && <span className="text-[10px] font-mono text-gray-600">esperando</span>}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Input Payload Simulator Accordion */}
+            <div className="bg-gray-950/80 border border-gray-800/80 rounded-xl p-3">
+              <span className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
+                <Database size={13} className="text-amber-400" />
+                <span>Payload de Entrada (JSON)</span>
+              </span>
+              <textarea
+                rows={3}
+                value={testPayloadText}
+                onChange={(e) => setTestPayloadText(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-md p-2 text-[11px] font-mono text-amber-200 focus:outline-none resize-none"
+                placeholder='{"key": "value"}'
+              />
+            </div>
+
+            {/* Live Context State Mutation Inspector */}
+            <div className="bg-gray-950/80 border border-gray-800/80 rounded-xl p-3 flex-1 flex flex-col">
+              <span className="text-xs font-bold text-gray-300 block mb-2 flex items-center gap-1.5">
+                <Layers size={13} className="text-sky-400" />
+                <span>Estado del Contexto (data)</span>
+              </span>
+              <div className="flex-1 overflow-y-auto max-h-36 bg-gray-900/90 border border-gray-800/80 rounded-md p-2 font-mono text-[11px] space-y-1">
+                {Object.keys(simContext).length === 0 ? (
+                  <p className="text-gray-500 italic">No hay variables de contexto activas.</p>
+                ) : (
+                  Object.entries(simContext).map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between border-b border-gray-800/50 pb-0.5">
+                      <span className="text-sky-300 font-bold">{k}:</span>
+                      <span className="text-gray-300 truncate max-w-[180px]">{JSON.stringify(v)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* System Resource Metrics */}
+            <div className="bg-gray-950/60 border border-gray-800/80 rounded-xl p-2.5 flex items-center justify-between text-xs font-mono">
+              <div className="flex items-center space-x-1.5 text-gray-400">
+                <Cpu size={14} className="text-sky-400" />
+                <span>CPU: <strong className="text-gray-200">{cpuUsage}%</strong></span>
+              </div>
+              <div className="flex items-center space-x-1.5 text-gray-400">
+                <span className="text-purple-400">RAM:</span>
+                <strong className="text-gray-200">{ramUsage} MB</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 7. INTERACTIVE FAQ MODAL WITH ACCORDIONS */}
-      {showFaqModal && (
+      {/* 4. EXTENSION LIBRARY MODAL (196 Catalog Steps) */}
+      {showExtensionModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-purple-800/80 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
+          <div className="bg-[#0f172a] border border-sky-800/80 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <div>
-                <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-indigo-300 font-heading">
-                  ❓ Frequently Asked Questions & Architecture Guide
+                <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
+                  📚 Catálogo de Extensiones WPipe (196 Steps de Release)
                 </h3>
-                <p className="text-xs text-gray-400">Everything you need to know about WPipe Studio pipelines, IR, and sandbox verification.</p>
+                <p className="text-xs text-gray-400">
+                  Selecciona y añade pasos oficiales y comunitarios de release a tu workspace de Scratch.
+                </p>
               </div>
               <button
-                onClick={() => setShowFaqModal(false)}
+                onClick={() => setShowExtensionModal(false)}
                 className="text-gray-400 hover:text-white font-bold p-1 text-lg"
               >
                 ✕
               </button>
             </div>
 
-            {/* FAQ Search */}
-            <input
-              type="text"
-              placeholder="🔍 Search FAQ questions (sandbox, IR, docker, custom steps)..."
-              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none"
-              value={faqSearch}
-              onChange={(e) => setFaqSearch(e.target.value)}
-            />
+            {/* Search and Filters */}
+            <div className="flex items-center space-x-3">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-3 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar en el catálogo (ej: redis, waf, yolo, mysql, http)..."
+                  value={extensionSearch}
+                  onChange={(e) => setExtensionSearch(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-9 pr-3 text-xs text-gray-200 focus:outline-none"
+                />
+              </div>
 
-            {/* Accordion Questions List */}
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-              {filteredFaqs.map((faq) => {
-                const isOpen = openFaqId === faq.id;
-                return (
-                  <div key={faq.id} className="border border-gray-800 rounded-xl bg-gray-950/60 overflow-hidden transition">
-                    <button
-                      onClick={() => setOpenFaqId(isOpen ? null : faq.id)}
-                      className="w-full p-3.5 text-left bg-gray-900/80 hover:bg-gray-850 flex items-center justify-between transition"
-                    >
-                      <span className="text-xs font-bold text-gray-200 font-heading flex items-center gap-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-mono">
-                          {faq.category}
-                        </span>
-                        <span>{faq.question}</span>
-                      </span>
-                      <span className={`text-xs text-gray-400 transform transition-transform duration-300 ${isOpen ? "rotate-180 text-emerald-400" : ""}`}>
-                        ▼
-                      </span>
-                    </button>
-
-                    <div className={`accordion-content ${isOpen ? "open" : ""}`}>
-                      <div className="p-3.5 text-xs text-gray-300 bg-gray-950/90 border-t border-gray-800/60 leading-relaxed">
-                        {faq.answer}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <select
+                value={extensionCategoryFilter}
+                onChange={(e) => setExtensionCategoryFilter(e.target.value)}
+                className="bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-300 focus:outline-none"
+              >
+                <option value="ALL">Todas las Categorías</option>
+                {Array.from(new Set(catalog.map((s) => s.category).filter(Boolean))).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="pt-2 border-t border-gray-800 flex justify-end">
-              <button
-                onClick={() => setShowFaqModal(false)}
-                className="btn-glossy px-4 py-2 bg-purple-600 text-white rounded-lg text-xs font-semibold shadow"
-              >
-                Close Guide
-              </button>
+            {/* Catalog Grid */}
+            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 pr-1">
+              {catalog
+                .filter((s) => {
+                  if (extensionCategoryFilter !== "ALL" && s.category.toLowerCase() !== extensionCategoryFilter.toLowerCase()) {
+                    return false;
+                  }
+                  if (!extensionSearch) return true;
+                  const q = extensionSearch.toLowerCase();
+                  return (
+                    s.name.toLowerCase().includes(q) ||
+                    s.func_name.toLowerCase().includes(q) ||
+                    s.category.toLowerCase().includes(q) ||
+                    s.description.toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 100)
+                .map((step, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 bg-gray-950/70 border border-gray-800/80 hover:border-sky-500 rounded-xl transition flex flex-col justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-100 flex items-center gap-1.5">
+                          <span>📦</span> {step.name}
+                        </span>
+                        <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
+                          step.repo === "Official" ? "bg-sky-950 text-sky-300 border border-sky-800" : "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                        }`}>
+                          {step.repo}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 line-clamp-2">{step.description || "Paso modular de procesamiento."}</p>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-gray-900 flex items-center justify-between">
+                      <span className="text-[10px] text-gray-500 font-mono">cat: {step.category}</span>
+                      <button
+                        onClick={() => {
+                          addStepBlockToWorkspace(step.name, step.namespace, "catalog");
+                          setStatusMessage(`Paso '${step.name}' añadido al workspace`);
+                          setShowExtensionModal(false);
+                        }}
+                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-[11px] font-bold shadow transition flex items-center gap-1"
+                      >
+                        <Plus size={12} />
+                        <span>Añadir</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* AI Custom Step Creator Modal */}
+      {/* 5. FAQ / ARCHITECTURE GUIDE MODAL */}
+      {showFaqModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0f172a] border border-purple-800/80 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div>
+                <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-300 font-heading">
+                  ❓ Guía de Arquitectura & FAQ
+                </h3>
+                <p className="text-xs text-gray-400">Detalles sobre Scratux, Intermediate Representation y Sandbox de WPipe Studio.</p>
+              </div>
+              <button onClick={() => setShowFaqModal(false)} className="text-gray-400 hover:text-white font-bold p-1 text-lg">
+                ✕
+              </button>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Buscar respuestas..."
+              value={faqSearch}
+              onChange={(e) => setFaqSearch(e.target.value)}
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none"
+            />
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              {faqList
+                .filter((f) => !faqSearch || f.question.toLowerCase().includes(faqSearch.toLowerCase()) || f.answer.toLowerCase().includes(faqSearch.toLowerCase()))
+                .map((faq) => {
+                  const isOpen = openFaqId === faq.id;
+                  return (
+                    <div key={faq.id} className="border border-gray-800 rounded-xl bg-gray-950/60 overflow-hidden">
+                      <button
+                        onClick={() => setOpenFaqId(isOpen ? null : faq.id)}
+                        className="w-full p-3.5 text-left bg-gray-900/80 hover:bg-gray-800/80 flex items-center justify-between"
+                      >
+                        <span className="text-xs font-bold text-gray-200 flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-mono">
+                            {faq.category}
+                          </span>
+                          <span>{faq.question}</span>
+                        </span>
+                        <span className="text-xs text-gray-400">{isOpen ? "▲" : "▼"}</span>
+                      </button>
+                      {isOpen && (
+                        <div className="p-3.5 text-xs text-gray-300 bg-gray-950/90 border-t border-gray-800 leading-relaxed">
+                          {faq.answer}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. AI STEP CREATOR MODAL */}
       {showAiModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-purple-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0f172a] border border-purple-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-purple-300 flex items-center gap-2 font-heading">
-              <span>✨ Create AI Custom Step</span>
+              <Sparkles size={16} />
+              <span>Crear Paso con IA (Dialecto A)</span>
             </h3>
             <p className="text-xs text-gray-400">
-              Describe the custom step functionality. The LLM Agent will generate its code and Dialect A DTO.
+              Describe lo que debe hacer tu paso. El backend generará automáticamente su código y su DTO Pydantic tipado.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-300 mb-1">Step Name</label>
+                <label className="block text-xs text-gray-300 mb-1">Nombre del Paso</label>
                 <input
                   type="text"
-                  placeholder="e.g. SummarizeDocumentStep"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-xs text-gray-100"
+                  placeholder="ej. ExtractMetadataStep"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-100"
                   value={aiStepName}
                   onChange={(e) => setAiStepName(e.target.value)}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-gray-300 mb-1">AI Prompt / Description</label>
+                <label className="block text-xs text-gray-300 mb-1">Prompt / Descripción</label>
                 <textarea
                   rows={4}
-                  placeholder="Describe what this step should do, inputs required, and output format..."
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-xs text-gray-100 resize-none"
+                  placeholder="Describe la lógica, entradas requeridas y salidas que debe generar este paso..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-100 resize-none"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                 ></textarea>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 pt-2">
+            <div className="flex justify-end space-x-2 pt-2">
               <button
                 onClick={() => setShowAiModal(false)}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs"
               >
-                Cancel
+                Cancelar
               </button>
               <button
                 onClick={handleCreateAiStep}
-                className="btn-glossy px-4 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-semibold shadow"
+                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold shadow"
               >
-                Create AI Step
+                Crear Paso
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Verification Results Modal */}
+      {/* 7. VERIFICATION RESULTS MODAL */}
       {verificationModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0f172a] border border-gray-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2 font-heading">
-                <span>🛡️ Quality Verification Results</span>
+              <h3 className="text-base font-bold text-gray-100 flex items-center gap-2 font-heading">
+                <CheckCircle size={18} className="text-emerald-400" />
+                <span>Resultados de Verificación de Calidad</span>
               </h3>
               <button onClick={() => setVerificationModal(null)} className="text-gray-400 hover:text-white font-bold p-1">
                 ✕
@@ -1347,17 +1607,17 @@ export default function App() {
 
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between bg-gray-950 p-3 rounded-lg border border-gray-800">
-                <span className="font-semibold text-gray-300">Sandbox Result</span>
+                <span className="font-semibold text-gray-300">Estado General</span>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
                   {verificationModal.status}
                 </span>
               </div>
 
-              <div className="space-y-2 pt-2">
+              <div className="space-y-1.5 pt-1">
                 {Object.entries(verificationModal.gates || {}).map(([gate, pass]) => (
                   <div key={gate} className="flex items-center justify-between text-xs py-1 border-b border-gray-800/50">
                     <span className="font-mono text-gray-400">{gate}</span>
-                    <span className="text-emerald-400 font-semibold">PASS ✓</span>
+                    <span className="text-emerald-400 font-semibold font-mono">PASS ✓</span>
                   </div>
                 ))}
               </div>
@@ -1366,68 +1626,25 @@ export default function App() {
             <div className="pt-2 flex justify-end">
               <button
                 onClick={() => setVerificationModal(null)}
-                className="btn-glossy px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold transition-all"
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition shadow"
               >
-                Close Results
+                Cerrar Resultados
               </button>
             </div>
           </div>
         </div>
       )}
 
-
-
-      {/* Export Pipeline JSON Modal */}
-      {showJsonModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-amber-800/80 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl glass-panel">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <div>
-                <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-emerald-300 font-heading">
-                  📄 Exported Pipeline JSON (CanvasIR)
-                </h3>
-                <p className="text-xs text-gray-400">Complete JSON representation of your configured pipeline nodes and edges.</p>
-              </div>
-              <button onClick={() => setShowJsonModal(false)} className="text-gray-400 hover:text-white font-bold p-1 text-lg">
-                ✕
-              </button>
-            </div>
-
-            <pre className="bg-gray-950 p-4 rounded-xl border border-amber-900/60 font-mono text-xs text-amber-300 overflow-x-auto whitespace-pre max-h-96">
-              {pipelineJsonText}
-            </pre>
-
-            <div className="flex justify-between items-center pt-2">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(pipelineJsonText);
-                  setStatusMessage("Copied Pipeline JSON to clipboard!");
-                }}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-amber-300 rounded-lg text-xs font-semibold border border-gray-700"
-              >
-                📋 Copy JSON
-              </button>
-              <button
-                onClick={() => setShowJsonModal(false)}
-                className="btn-emerald-glossy px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold shadow"
-              >
-                Continue Editing
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Block Parameters Configuration Modal */}
+      {/* 8. STEP CONFIGURATION MODAL */}
       {configModalBlock && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-amber-500/80 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl glass-panel">
+          <div className="bg-[#0f172a] border border-amber-500/80 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl glass-panel">
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <div>
-                <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-100 font-heading flex items-center gap-2">
-                  <span>⚙️ Configure Step Parameters</span>
+                <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-100 font-heading">
+                  ⚙️ Configurar Parámetros del Paso
                 </h3>
-                <p className="text-xs text-amber-400/90 font-mono">
+                <p className="text-xs text-amber-400 font-mono">
                   {configModalBlock.getFieldValue("STEP_NAME")} ({configModalBlock.getFieldValue("NAMESPACE")})
                 </p>
               </div>
@@ -1441,12 +1658,12 @@ export default function App() {
                 <div key={field.name}>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-gray-300 font-semibold font-mono">{field.name}</label>
-                    <span className="text-[10px] text-indigo-400 font-mono">({field.annotation || "str"})</span>
+                    <span className="text-[10px] text-sky-400 font-mono">({field.annotation || "str"})</span>
                   </div>
                   <input
                     type="text"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-gray-100 font-mono focus:border-amber-500 focus:outline-none"
-                    placeholder={`Default: ${field.default ?? ""}`}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100 font-mono focus:border-amber-500 focus:outline-none"
+                    placeholder={`Por defecto: ${field.default ?? ""}`}
                     value={blockParamValues[field.name] ?? ""}
                     onChange={(e) =>
                       setBlockParamValues({
@@ -1467,11 +1684,11 @@ export default function App() {
                     autoVals[f.name] = f.default ?? "auto_val";
                   });
                   setBlockParamValues(autoVals);
-                  setStatusMessage("AI Agent auto-filled parameters from step schema");
+                  setStatusMessage("Valores auto-completados por el agente IA");
                 }}
-                className="px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-purple-300 rounded-lg text-xs font-semibold border border-purple-700 transition"
+                className="px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-purple-300 rounded-lg text-xs font-semibold border border-purple-700"
               >
-                🤖 Auto-Fill AI
+                🤖 Auto-Fill con IA
               </button>
 
               <div className="flex space-x-2">
@@ -1479,11 +1696,10 @@ export default function App() {
                   onClick={() => setConfigModalBlock(null)}
                   className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   onClick={() => {
-                    // Update block field or icon to green configured state
                     if (configModalBlock && configModalBlock.getField("CONFIG_ICON")) {
                       configModalBlock.setFieldValue(
                         "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%2310b981'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/></svg>",
@@ -1491,11 +1707,11 @@ export default function App() {
                       );
                     }
                     setConfigModalBlock(null);
-                    setStatusMessage(`Saved parameters for ${configModalBlock.getFieldValue("STEP_NAME")}`);
+                    setStatusMessage(`Guardados parámetros para ${configModalBlock.getFieldValue("STEP_NAME")}`);
                   }}
-                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold shadow transition"
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold shadow"
                 >
-                  Save Configuration
+                  Guardar
                 </button>
               </div>
             </div>

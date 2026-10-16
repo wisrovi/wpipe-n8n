@@ -37,15 +37,21 @@ Si algo falla, no hay ZIP.
 
 ---
 
-## Interfaz Visual y Modo Simulación (Estilo Scratux 3.0)
+## Interfaz Visual, Bloques Dinámicos y Modo Simulación
 
-La interfaz de `wpipe-studio` replica fielmente la distribución de elementos de Scratch 3.0 / Scratux:
+La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux, optimizada para máxima productividad con bloques configurables:
 
-1. **Barra Superior (Top Menu Bar)**: Marca, selector de vistas (Bloques, Código Python, DAG Visual), menús de Archivo/Edición, título editable del pipeline, botones de exportación JSON/ZIP y ejecución de verificación.
-2. **Franja Vertical de Categorías (60px Category Strip)**: Puntos circulares de color para cada categoría de steps (`Steps`, `Vision`, `NLP`, `Logic`, `Control`, `Database`, `MCP`, `Output`) y botón inferior `[+]` de Librería de Extensiones para buscar e integrar cualquiera de los 196 steps del catálogo.
-3. **Cajón de Bloques (240px Block Flyout)**: Lista deslizable con buscador integrado para arrastrar bloques hacia el canvas central.
-4. **Área Central de Bloques (Blockly Canvas)**: Espacio de trabajo infinito con zoom, centrado, papelera y sincronización bidireccional inmediata con el IR intermedio.
-5. **Etapa de Simulación (Simulation Stage)**:
+1. **Barra Superior (Top Menu Bar)**: Selector de vistas (Bloques Blockly, Código Python del microservicio, DAG Visual Mermaid), menús de Archivo/Edición (Modo Turbo), título editable del proyecto, botones de verificación AST y descarga del ZIP.
+2. **Paleta de Bloques Optimizada (Streamlined Toolbox)**:
+   - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins`), selector dinámico de categoría (`connectivity`, `database`, `security`, `vision`, etc.), filtro de búsqueda por texto y lista desplegable con los 196 steps del catálogo. Al seleccionar un step, sincroniza automáticamente su namespace y parámetros.
+   - ✨ **Paso con IA**: Bloque especializado para arrastrar y describir en lenguaje natural el comportamiento deseado. Abre un modal interactivo para ingresar el prompt que el generador utilizará para emitir la función con `@step` y su Context DTO (Dialecto A).
+   - 📄 **Paso Personalizado (.py)**: Bloque con acción de adjunto de archivos Python propios (`.py`). Al hacer clic en el clip o botón, examina el archivo local del usuario, extrae la función decorada y lo empaqueta directamente en `app/states/` al construir el microservicio.
+   - 🔀 **Condición Si / Sino (Condition)**: Bloque C estilizado con campo de expresión de condición y ramas `THEN` y `ELSE` anidadas.
+   - 🔁 **Bucle Repetir (For Loop)**: Bloque de iteración determinista con número de repeticiones y pasos anidados.
+   - ⚡ **Ejecución Paralela (Parallel)**: Bloque de concurrencia con selector de política de fusión de contexto (`accumulate` o `last_wins`).
+   - 📚 **Acceso al Catálogo Completo**: Botón inferior para abrir la documentación completa, parámetros y ejemplos de los 196 steps.
+3. **Área Central de Bloques (Blockly Canvas)**: Espacio de trabajo infinito con zoom, centrado, papelera y sincronización bidireccional inmediata con el IR intermedio.
+4. **Etapa de Simulación (Simulation Stage)**:
    - Controles de ejecución: **Bandera Verde** (🏁 Run) y **Octágono Rojo** (🛑 Stop).
    - Secuencia de ejecución en tiempo real con resaltado visual animado del bloque activo en el canvas.
    - Simulador de Payload de entrada (JSON editable).

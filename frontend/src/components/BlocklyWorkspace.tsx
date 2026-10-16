@@ -118,6 +118,54 @@ function getStepOptions(repoFilter: string, catFilter: string, searchTerm: strin
 export function registerWPipeBlocklyBlocks() {
   if (Blockly.Blocks["wpipe_step"]) return;
 
+  // 0. WPipe Trigger / Event Ingress Block (Scratch Events Gold/Amber)
+  Blockly.Blocks["wpipe_trigger"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("🚀 Disparador del Pipeline:")
+        .appendField(
+          new Blockly.FieldDropdown(
+            [
+              ["🌐 API REST (FastAPI POST /run)", "api"],
+              ["📨 Kafka Consumer (Topic)", "kafka"],
+              ["📦 Redis Stream / Queue (Key)", "redis"],
+              ["⏱️ Cron / Programador (Interval)", "cron"],
+              ["🔗 Webhook Receptor (Endpoint)", "webhook"],
+              ["💻 CLI / Ejecución Local", "cli"],
+            ],
+            function (this: any, newVal: string) {
+              const block = this.getSourceBlock();
+              if (block) {
+                const paramField = block.getField("TRIGGER_PARAM");
+                if (paramField) {
+                  if (newVal === "api") paramField.setValue("/run");
+                  else if (newVal === "kafka") paramField.setValue("events.input");
+                  else if (newVal === "redis") paramField.setValue("wpipe:queue:in");
+                  else if (newVal === "cron") paramField.setValue("*/5 * * * *");
+                  else if (newVal === "webhook") paramField.setValue("/webhook/incoming");
+                  else if (newVal === "cli") paramField.setValue("main.py");
+                }
+              }
+              return newVal;
+            }
+          ),
+          "TRIGGER_TYPE"
+        );
+
+      this.appendDummyInput()
+        .appendField("Ruta / Tópico / Clave:")
+        .appendField(new Blockly.FieldTextInput("/run"), "TRIGGER_PARAM");
+
+      // Hat block: no previous connection, only next connection
+      this.setPreviousStatement(false);
+      this.setNextStatement(true, null);
+      this.setColour(42); // Scratch Events Gold / Amber
+      this.setTooltip(
+        "Disparador de entrada del pipeline: define cómo se recibe la carga inicial (API REST, Kafka, Redis, Cron, etc.)."
+      );
+    },
+  };
+
   // 1. WPipe Step Block (Motion Blue) with Interactive Dropdowns directly inside the block
   Blockly.Blocks["wpipe_step"] = {
     init: function () {
@@ -141,6 +189,10 @@ export function registerWPipeBlocklyBlocks() {
         const block = this.getSourceBlock();
         if (block) {
           block.setFieldValue("ALL", "CAT_FILTER");
+          const stepOpts = getStepOptions(newVal, "ALL", "");
+          if (stepOpts.length > 0 && stepOpts[0][1] !== "none") {
+            block.setFieldValue(stepOpts[0][1], "STEP_NAME");
+          }
         }
         return newVal;
       });
@@ -149,16 +201,28 @@ export function registerWPipeBlocklyBlocks() {
         .appendField("Origen:")
         .appendField(repoDropdown, "REPO_FILTER");
 
+      const catDropdown = new Blockly.FieldDropdown(
+        function (this: any) {
+          const block = this.getSourceBlock();
+          const repo = block ? block.getFieldValue("REPO_FILTER") || "ALL" : "ALL";
+          return getCategoryOptions(repo);
+        },
+        function (this: any, newCat: string) {
+          const block = this.getSourceBlock();
+          if (block) {
+            const repo = block.getFieldValue("REPO_FILTER") || "ALL";
+            const stepOpts = getStepOptions(repo, newCat, "");
+            if (stepOpts.length > 0 && stepOpts[0][1] !== "none") {
+              block.setFieldValue(stepOpts[0][1], "STEP_NAME");
+            }
+          }
+          return newCat;
+        }
+      );
+
       this.appendDummyInput()
         .appendField("Categoría:")
-        .appendField(
-          new Blockly.FieldDropdown(function () {
-            const block = this.getSourceBlock();
-            const repo = block ? block.getFieldValue("REPO_FILTER") || "ALL" : "ALL";
-            return getCategoryOptions(repo);
-          }),
-          "CAT_FILTER"
-        );
+        .appendField(catDropdown, "CAT_FILTER");
 
       this.appendDummyInput()
         .appendField("🔍 Filtro:")
@@ -380,6 +444,59 @@ export function registerWPipeBlocklyBlocks() {
 // Global reference store for workspace injection helper
 let activeWorkspaceRef: Blockly.WorkspaceSvg | null = null;
 
+export function addTriggerBlockToWorkspace(triggerType: string = "api", triggerParam: string = "/run") {
+  if (!activeWorkspaceRef) return;
+  const block = activeWorkspaceRef.newBlock("wpipe_trigger");
+  block.setFieldValue(triggerType, "TRIGGER_TYPE");
+  block.setFieldValue(triggerParam, "TRIGGER_PARAM");
+  block.initSvg();
+  block.render();
+  block.moveBy(150 + Math.floor(Math.random() * 40), 100 + Math.floor(Math.random() * 40));
+  if (typeof (block as any).select === "function") {
+    (block as any).select();
+  }
+}
+
+export function collapseAllBlocksInWorkspace() {
+  if (!activeWorkspaceRef) return;
+  const blocks = activeWorkspaceRef.getAllBlocks(false);
+  blocks.forEach((b) => {
+    if (typeof (b as any).setCollapsed === "function") {
+      (b as any).setCollapsed(true);
+    }
+  });
+}
+
+export function expandAllBlocksInWorkspace() {
+  if (!activeWorkspaceRef) return;
+  const blocks = activeWorkspaceRef.getAllBlocks(false);
+  blocks.forEach((b) => {
+    if (typeof (b as any).setCollapsed === "function") {
+      (b as any).setCollapsed(false);
+    }
+  });
+}
+
+export function zoomFitWorkspace() {
+  if (!activeWorkspaceRef) return;
+  if (typeof (activeWorkspaceRef as any).zoomToFit === "function") {
+    (activeWorkspaceRef as any).zoomToFit();
+  } else {
+    activeWorkspaceRef.setScale(1.0);
+    activeWorkspaceRef.scrollCenter();
+  }
+}
+
+export function undoWorkspace(redo: boolean = false) {
+  if (!activeWorkspaceRef) return;
+  activeWorkspaceRef.undo(redo);
+}
+
+export function clearWorkspace() {
+  if (!activeWorkspaceRef) return;
+  activeWorkspaceRef.clear();
+}
+
 export function addStepBlockToWorkspace(
   initialStepName: string = "HttpRequest",
   initialNamespace: string = "wpipe_steps.connectivity",
@@ -450,7 +567,21 @@ export function getMermaidFromBlocklyWorkspace(): string {
     const type = block.type;
     let branchExits: string[] = [];
 
-    if (type === "wpipe_step") {
+    if (type === "wpipe_trigger") {
+      const trigType = block.getFieldValue("TRIGGER_TYPE") || "api";
+      const trigParam = block.getFieldValue("TRIGGER_PARAM") || "/run";
+      const typeLabels: Record<string, string> = {
+        api: `🚀 API REST: POST ${trigParam}`,
+        kafka: `📨 KAFKA TOPIC: ${trigParam}`,
+        redis: `📦 REDIS QUEUE: ${trigParam}`,
+        cron: `⏱️ CRON JOB: ${trigParam}`,
+        webhook: `🔗 WEBHOOK: ${trigParam}`,
+        cli: `💻 CLI RUNNER`,
+      };
+      const label = typeLabels[trigType] || `🚀 TRIGGER: ${trigType}`;
+      lines.push(`    ${currentId}(["${label}"]):::startTrigger`);
+      branchExits = [currentId];
+    } else if (type === "wpipe_step") {
       const name = block.getFieldValue("STEP_NAME") || "Step";
       lines.push(`    ${currentId}["📦 ${name}"]`);
       branchExits = [currentId];
@@ -544,6 +675,7 @@ export function getMermaidFromBlocklyWorkspace(): string {
     traverseBlock(tb);
   });
 
+  lines.push("    classDef startTrigger fill:#d97706,stroke:#f59e0b,stroke-width:3px,color:#fff,font-weight:bold;");
   lines.push("    classDef aiStep fill:#9333ea,stroke:#c084fc,stroke-width:2px,color:#fff;");
   lines.push("    classDef userStep fill:#0d9488,stroke:#2dd4bf,stroke-width:2px,color:#fff;");
   lines.push("    classDef bgStep fill:#4338ca,stroke:#818cf8,stroke-width:2px,color:#fff;");
@@ -587,7 +719,9 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     const type = block.type;
     const xy = block.getRelativeToSurfaceXY();
     let label = "Step";
-    let nodeType: "step" | "condition" | "for" | "while" | "parallel" | "background" = "step";
+    let nodeType: "trigger" | "step" | "condition" | "for" | "while" | "parallel" | "background" = "step";
+    let triggerType: "api" | "kafka" | "redis" | "cron" | "webhook" | "cli" | undefined = undefined;
+    let triggerParam: string | undefined = undefined;
     let namespace: string | undefined = undefined;
     let funcName: string | undefined = undefined;
     let origin: StepOrigin = "catalog";
@@ -599,7 +733,14 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     let params: Record<string, any> = {};
     let contract = { reads: ["data"], writes: ["result"], inferred: "exact" as const };
 
-    if (type === "wpipe_step") {
+    if (type === "wpipe_trigger") {
+      nodeType = "trigger";
+      triggerType = (block.getFieldValue("TRIGGER_TYPE") || "api") as any;
+      triggerParam = block.getFieldValue("TRIGGER_PARAM") || "/run";
+      label = `Trigger (${(triggerType || "api").toUpperCase()}: ${triggerParam})`;
+      origin = "described";
+      params = { trigger_type: triggerType, trigger_param: triggerParam };
+    } else if (type === "wpipe_step") {
       label = block.getFieldValue("STEP_NAME") || "Step";
       namespace = block.getFieldValue("NAMESPACE") || undefined;
       funcName = label;
@@ -657,6 +798,8 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
       data: {
         label,
         node_type: nodeType,
+        trigger_type: triggerType,
+        trigger_param: triggerParam,
         namespace,
         func_name: funcName,
         origin,
@@ -724,14 +867,33 @@ export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): strin
     return "# 📋 WPipe Studio Execution Work Plan\n\nNo blocks configured in workspace.";
   }
 
+  const triggerBlocks = allBlocks.filter((b) => b.type === "wpipe_trigger");
   const stepBlocks = allBlocks.filter((b) => b.type === "wpipe_step");
   const aiBlocks = allBlocks.filter((b) => b.type === "wpipe_ai_step");
   const userFileBlocks = allBlocks.filter((b) => b.type === "wpipe_user_file_step");
-  const controlBlocks = allBlocks.filter((b) => b.type.startsWith("wpipe_") && !["wpipe_step", "wpipe_ai_step", "wpipe_user_file_step"].includes(b.type));
+  const controlBlocks = allBlocks.filter(
+    (b) =>
+      b.type.startsWith("wpipe_") &&
+      !["wpipe_trigger", "wpipe_step", "wpipe_ai_step", "wpipe_user_file_step"].includes(b.type)
+  );
 
   let md = `# 📋 WPipe Studio Execution Work Plan & Architecture Specification\n\n`;
   md += `> **Generated on:** ${new Date().toISOString().split("T")[0]}\n`;
   md += `> **Pipeline Status:** Verified for Execution\n\n`;
+
+  md += `---
+
+## 0. 🚀 Ingress & Pipeline Triggers (${triggerBlocks.length})
+`;
+  if (triggerBlocks.length === 0) {
+    md += `*Default trigger: API REST (/run)*\n\n`;
+  } else {
+    triggerBlocks.forEach((b, idx) => {
+      const t = b.getFieldValue("TRIGGER_TYPE") || "api";
+      const p = b.getFieldValue("TRIGGER_PARAM") || "/run";
+      md += `#### ${idx + 1}. \`${t.toUpperCase()}\` Ingress\n- **Route / Topic / Key:** \`${p}\`\n\n`;
+    });
+  }
 
   md += `---
 
@@ -806,24 +968,10 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
     registerWPipeBlocklyBlocks();
 
     if (blocklyDivRef.current && !workspaceRef.current) {
-      const toolboxXml = `
-        <xml id="toolbox" style="display: none">
-          <category name="📦 Pasos" colour="#4c97ff">
-            <block type="wpipe_step"></block>
-            <block type="wpipe_ai_step"></block>
-            <block type="wpipe_user_file_step"></block>
-          </category>
-          <category name="🔀 Control" colour="#ffab19">
-            <block type="wpipe_if"></block>
-            <block type="wpipe_if_else"></block>
-            <block type="wpipe_for"></block>
-            <block type="wpipe_parallel"></block>
-          </category>
-        </xml>
-      `;
-
       const ws = Blockly.inject(blocklyDivRef.current, {
-        toolbox: toolboxXml,
+        collapse: true,
+        comments: true,
+        disable: true,
         grid: {
           spacing: 20,
           length: 3,
@@ -845,13 +993,23 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;
 
-      // Starter template stack
+      // Starter template stack with Trigger entrypoint
+      const triggerBlock = ws.newBlock("wpipe_trigger");
+      triggerBlock.setFieldValue("api", "TRIGGER_TYPE");
+      triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
+      triggerBlock.initSvg();
+      triggerBlock.render();
+      triggerBlock.moveBy(80, 50);
+
       const block1 = ws.newBlock("wpipe_step");
       block1.setFieldValue("HttpRequest", "STEP_NAME");
       block1.setFieldValue("wpipe_steps.connectivity", "NAMESPACE");
       block1.initSvg();
       block1.render();
-      block1.moveBy(80, 50);
+
+      if (triggerBlock.nextConnection && block1.previousConnection) {
+        triggerBlock.nextConnection.connect(block1.previousConnection);
+      }
 
       const block2 = ws.newBlock("wpipe_if_else");
       block2.initSvg();

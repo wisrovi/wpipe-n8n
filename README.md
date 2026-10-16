@@ -42,14 +42,19 @@ Si algo falla, no hay ZIP.
 La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux, optimizada para máxima productividad con bloques configurables:
 
 1. **Barra Superior (Top Menu Bar)**: Selector de vistas (Bloques Blockly, Código Python del microservicio, DAG Visual Mermaid), menús de Archivo/Edición (Modo Turbo), título editable del proyecto, botones de verificación AST y descarga del ZIP.
-2. **Paleta de Bloques Optimizada (Streamlined Toolbox)**:
-   - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins`), selector dinámico de categoría (`connectivity`, `database`, `security`, `vision`, etc.), filtro de búsqueda por texto y lista desplegable con los 196 steps del catálogo. Al seleccionar un step, sincroniza automáticamente su namespace y parámetros.
-   - ✨ **Paso con IA**: Bloque especializado para arrastrar y describir en lenguaje natural el comportamiento deseado. Abre un modal interactivo para ingresar el prompt que el generador utilizará para emitir la función con `@step` y su Context DTO (Dialecto A).
-   - 📄 **Paso Personalizado (.py)**: Bloque con acción de adjunto de archivos Python propios (`.py`). Al hacer clic en el clip o botón, examina el archivo local del usuario, extrae la función decorada y lo empaqueta directamente en `app/states/` al construir el microservicio.
-   - 🔀 **Condición Si / Sino (Condition)**: Bloque C estilizado con campo de expresión de condición y ramas `THEN` y `ELSE` anidadas.
-   - 🔁 **Bucle Repetir (For Loop)**: Bloque de iteración determinista con número de repeticiones y pasos anidados.
-   - ⚡ **Ejecución Paralela (Parallel)**: Bloque de concurrencia con selector de política de fusión de contexto (`accumulate` o `last_wins`).
-   - 📚 **Acceso al Catálogo Completo**: Botón inferior para abrir la documentación completa, parámetros y ejemplos de los 196 steps.
+2. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
+   - Diseño visual de auténticas piezas de puzzle Scratch con pestañas de conexión, muescas de encaje y paleta de colores vibrantes sin cajas de texto invasivas.
+   - **Popover descriptivo flotante (Hover Tooltip)**: al posar el cursor sobre cualquier bloque por unos instantes, se despliega una tarjeta enriquecida con la descripción del bloque, los parámetros configurables y el código Python WPipe equivalente.
+   - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins`), selector dinámico de categoría (`connectivity`, `database`, `security`, `vision`, etc.), filtro de búsqueda por texto y lista desplegable con los 196 steps del catálogo (incluyendo plugins comunitarios como `ecam_yolo`).
+   - ✨ **Paso con IA (Dialecto A)**: Bloque para arrastrar y describir en lenguaje natural el comportamiento deseado. Genera la función decorada con `@step` y su Context DTO Pydantic (`app/dto/` y `app/states/`).
+   - 📄 **Paso Personalizado (.py)**: Bloque con acción de adjunto de archivos Python locales (`.py`), empaquetándolos directamente en el microservicio.
+   - 🔀 **Condición Si (Single Branch)**: Bloque de bifurcación condicional simple sin rama else (`Condition(expression=..., branch_true=[...])`).
+   - 🔀 **Condición Si / Sino (Dual Branch)**: Bloque condicional completo con ramas `VERDADERA` y `FALSA`.
+   - 🔁 **Bucle Mientras (While Loop)**: Bloque de repetición condicional continua (`For(validation_expression=..., steps=[...])`).
+   - 🔁 **Bucle Repetir (For Loop)**: Bloque de repetición determinista N veces (`For(iterations=N, steps=[...])`).
+   - ⚡ **Ejecución Paralela (Parallel)**: Bloque de concurrencia con política de fusión de contexto (`accumulate` o `last_wins`).
+   - ⏳ **Segundo Plano (Background)**: Bloque de ejecución asíncrona no bloqueante en hilo secundario (`Background(step=...)`).
+   - 📚 **Acceso al Catálogo Completo**: Modal con documentación completa, parámetros y ejemplos de los 196 steps.
 3. **Área Central de Bloques (Blockly Canvas)**: Espacio de trabajo infinito con zoom, centrado, papelera y sincronización bidireccional inmediata con el IR intermedio.
 4. **Etapa de Simulación (Simulation Stage)**:
    - Controles de ejecución: **Bandera Verde** (🏁 Run) y **Octágono Rojo** (🛑 Stop).

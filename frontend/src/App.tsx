@@ -55,6 +55,7 @@ import {
   Undo,
   Redo,
   Trash2,
+  Edit3,
 } from "lucide-react";
 
 interface ParamSpec {
@@ -327,6 +328,9 @@ export default function App() {
   const [githubFileSearch, setGithubFileSearch] = useState<string>("");
   const [githubShowTreeSidebar, setGithubShowTreeSidebar] = useState<boolean>(true);
   const [githubRawMode, setGithubRawMode] = useState<boolean>(false);
+  const [isEditingFile, setIsEditingFile] = useState<boolean>(false);
+  const [editingFileContent, setEditingFileContent] = useState<string>("");
+  const [customDockerImage, setCustomDockerImage] = useState<string>("");
   const [activeMainTab, setActiveMainTab] = useState<"code" | "simulation" | "flowchart" | "python">("code");
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const toggleFolder = (path: string) =>
@@ -444,6 +448,18 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // Close menu dropdowns on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".menu-dropdown-container")) {
+        setActiveMenu(null);
+      }
+    };
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Register AI and File Upload handlers for Blockly workspace
   useEffect(() => {
     (window as any).onOpenAiPromptModal = (block: any) => {
@@ -535,6 +551,13 @@ export default function App() {
         if (data && Array.isArray(data.files) && data.files.length > 0) {
           setGeneratedFiles(data.files);
           setSelectedFileIdx(0);
+          if (githubViewingFile) {
+            const updatedView = data.files.find((f: any) => f.path === githubViewingFile.path);
+            if (updatedView) {
+              setGithubViewingFile(updatedView);
+              setEditingFileContent(updatedView.content);
+            }
+          }
           setStatusMessage("Microservicio Python actualizado con los bloques del lienzo ✓");
         }
       })
@@ -545,6 +568,53 @@ export default function App() {
       .finally(() => {
         setPreviewLoading(false);
       });
+  };
+
+  // Switch to file editing mode
+  const handleStartEditingFile = () => {
+    if (!githubViewingFile) return;
+    setEditingFileContent(githubViewingFile.content);
+    setIsEditingFile(true);
+  };
+
+  // Save changes to current file
+  const handleSaveFileChanges = () => {
+    if (!githubViewingFile) return;
+    const updatedFiles = generatedFiles.map((f) =>
+      f.path === githubViewingFile.path ? { ...f, content: editingFileContent } : f
+    );
+    setGeneratedFiles(updatedFiles);
+    setGithubViewingFile({ ...githubViewingFile, content: editingFileContent });
+    setIsEditingFile(false);
+    setStatusMessage(`Cambios guardados en ${githubViewingFile.path} ✓`);
+  };
+
+  // Cancel file editing
+  const handleCancelFileEditing = () => {
+    if (githubViewingFile) {
+      setEditingFileContent(githubViewingFile.content);
+    }
+    setIsEditingFile(false);
+  };
+
+  // Docker base image quick selector
+  const handleSelectDockerBaseImage = (imageTag: string) => {
+    if (!githubViewingFile) return;
+    const currentCode = isEditingFile ? editingFileContent : githubViewingFile.content;
+    const fromRegex = /FROM\s+[^\s\n]+/i;
+    let newCode: string;
+    if (fromRegex.test(currentCode)) {
+      newCode = currentCode.replace(fromRegex, `FROM ${imageTag}`);
+    } else {
+      newCode = `FROM ${imageTag}\n` + currentCode;
+    }
+    setEditingFileContent(newCode);
+    const updatedFiles = generatedFiles.map((f) =>
+      f.path === githubViewingFile.path ? { ...f, content: newCode } : f
+    );
+    setGeneratedFiles(updatedFiles);
+    setGithubViewingFile({ ...githubViewingFile, content: newCode });
+    setStatusMessage(`Imagen base de Docker actualizada a '${imageTag}' ✓`);
   };
 
   // Fetch Release Catalog from Backend & Trigger Initial Codegen
@@ -671,24 +741,40 @@ export default function App() {
   // Generate and download microservice ZIP
   const handleGenerateZip = async () => {
     setZipLoading(true);
-    setStatusMessage("Building production microservice ZIP...");
-    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    setStatusMessage("Generando paquete ZIP del microservicio...");
     try {
-      const res = await fetch(`/api/v1/pipeline/generate?project_name=${encodeURIComponent(projectName)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(canvasIr),
-      });
-      if (!res.ok) throw new Error("Failed to generate ZIP");
+      let res: Response;
+      if (generatedFiles && generatedFiles.length > 0) {
+        // Send TargetIR with current files (including any user edits in Dockerfile or code)
+        res = await fetch("/api/v1/pipeline/generate-from-files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_name: projectName,
+            files: generatedFiles,
+          }),
+        });
+      } else {
+        const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+        res = await fetch(`/api/v1/pipeline/generate?project_name=${encodeURIComponent(projectName)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(canvasIr),
+        });
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${projectName}.zip`;
+      document.body.appendChild(a);
       a.click();
-      setStatusMessage(`Downloaded verified microservice ZIP: ${projectName}.zip`);
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setStatusMessage(`Descargado con éxito: ${projectName}.zip ✓`);
     } catch (err: any) {
-      setStatusMessage(`Generate error: ${err.message}`);
+      setStatusMessage(`Error generando ZIP: ${err.message}`);
     } finally {
       setZipLoading(false);
     }
@@ -986,7 +1072,18 @@ export default function App() {
     simulationAbortRef.current = true;
     setIsSimulating(false);
     highlightBlocklyBlock("", "idle");
-    setStatusMessage("🛑 Simulation stopped by user");
+    setSimSteps((prev) =>
+      prev.map((item) => (item.status === "running" ? { ...item, status: "idle" } : item))
+    );
+    setSimLogs((prev) => [
+      ...prev,
+      {
+        time: new Date().toLocaleTimeString(),
+        level: "WARN",
+        msg: "🛑 Simulación detenida por el usuario.",
+      },
+    ]);
+    setStatusMessage("🛑 Simulación detenida por el usuario");
     setCpuUsage(0);
   };
 
@@ -1039,7 +1136,7 @@ export default function App() {
           </div>
 
           {/* File Menu Dropdown */}
-          <div className="relative">
+          <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "file" ? null : "file")}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
@@ -1142,7 +1239,7 @@ export default function App() {
           </div>
 
           {/* Edit Menu Dropdown */}
-          <div className="relative">
+          <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "edit" ? null : "edit")}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
@@ -1357,6 +1454,29 @@ export default function App() {
             >
               <span>💻 Microservicio Python</span>
             </button>
+
+            {/* Quick Simulation Start / Stop Controls */}
+            <div className="flex items-center space-x-1.5 ml-3 pl-3 border-l border-gray-800">
+              {!isSimulating ? (
+                <button
+                  onClick={handleStartSimulation}
+                  title="Iniciar simulación en vivo paso a paso"
+                  className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/50 rounded-md text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Play size={12} className="fill-current text-emerald-400" />
+                  <span>Simular</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopSimulation}
+                  title="Detener la simulación inmediatamente"
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 rounded-md text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-lg animate-pulse"
+                >
+                  <Square size={12} className="fill-current" />
+                  <span>Detener (🛑)</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center space-x-3 text-[11px] font-mono">
@@ -2283,69 +2403,174 @@ export default function App() {
 
                         {/* File Action Buttons */}
                         <div className="flex items-center space-x-1.5">
-                          <button
-                            onClick={() => setGithubRawMode(!githubRawMode)}
-                            className={`px-2.5 py-1 rounded text-xs font-mono font-semibold transition cursor-pointer border ${
-                              githubRawMode
-                                ? "bg-sky-950 text-sky-300 border-sky-700"
-                                : "bg-[#21262d] text-gray-300 border-[#30363d] hover:bg-[#30363d]"
-                            }`}
-                          >
-                            {githubRawMode ? "Formato Código" : "Raw"}
-                          </button>
+                          {isEditingFile ? (
+                            <>
+                              <button
+                                onClick={handleSaveFileChanges}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
+                                title="Guardar cambios en el archivo"
+                              >
+                                <Save size={13} />
+                                <span>Guardar Cambios</span>
+                              </button>
+                              <button
+                                onClick={handleCancelFileEditing}
+                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                                title="Descartar cambios"
+                              >
+                                <span>✕ Cancelar</span>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={handleStartEditingFile}
+                                className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
+                                title="Editar el código de este archivo directamente"
+                              >
+                                <Edit3 size={13} />
+                                <span>Editar</span>
+                              </button>
 
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(githubViewingFile.content);
-                              setStatusMessage(`Copiado ${githubViewingFile.path} al portapapeles`);
-                            }}
-                            className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
-                          >
-                            <Copy size={12} />
-                            <span>Copiar</span>
-                          </button>
+                              <button
+                                onClick={() => setGithubRawMode(!githubRawMode)}
+                                className={`px-2.5 py-1 rounded text-xs font-mono font-semibold transition cursor-pointer border ${
+                                  githubRawMode
+                                    ? "bg-sky-950 text-sky-300 border-sky-700"
+                                    : "bg-[#21262d] text-gray-300 border-[#30363d] hover:bg-[#30363d]"
+                                }`}
+                              >
+                                {githubRawMode ? "Formato Código" : "Raw"}
+                              </button>
 
-                          <button
-                            onClick={() => {
-                              const blob = new Blob([githubViewingFile.content], { type: "text/plain;charset=utf-8" });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = githubViewingFile.path.split("/").pop() || "file.txt";
-                              a.click();
-                              setStatusMessage(`Descargado ${githubViewingFile.path}`);
-                            }}
-                            className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
-                          >
-                            <Download size={12} />
-                            <span>Descargar</span>
-                          </button>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(githubViewingFile.content);
+                                  setStatusMessage(`Copiado ${githubViewingFile.path} al portapapeles`);
+                                }}
+                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <Copy size={12} />
+                                <span>Copiar</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  const blob = new Blob([githubViewingFile.content], { type: "text/plain;charset=utf-8" });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = githubViewingFile.path.split("/").pop() || "file.txt";
+                                  a.click();
+                                  setStatusMessage(`Descargado ${githubViewingFile.path}`);
+                                }}
+                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <Download size={12} />
+                                <span>Descargar</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 
-                      {/* Code Content with Line Numbers Gutter */}
-                      <div className="flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117]">
-                        {!githubRawMode ? (
-                          <>
-                            {/* Line Numbers Column */}
-                            <div className="bg-[#0d1117] border-r border-[#30363d] py-3 px-3 text-right text-gray-600 select-none font-mono text-xs">
-                              {githubViewingFile.content.split("\n").map((_, i) => (
-                                <div key={i} className="leading-relaxed">
-                                  {i + 1}
-                                </div>
-                              ))}
-                            </div>
-                            {/* Code Text */}
-                            <pre className="py-3 px-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
+                      {/* Docker Base Image Quick Selector */}
+                      {githubViewingFile.path.endsWith("Dockerfile") && (
+                        <div className="bg-[#121824] border-b border-[#30363d] px-4 py-2 flex items-center justify-between flex-wrap gap-2 text-xs">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-amber-400 font-bold font-mono flex items-center gap-1.5">
+                              🐳 Imagen Base:
+                            </span>
+                            {[
+                              { label: "Python 3.11-slim (Predeterminada)", tag: "python:3.11-slim" },
+                              { label: "Python 3.12-slim", tag: "python:3.12-slim" },
+                              { label: "Python 3.10-slim", tag: "python:3.10-slim" },
+                              { label: "Python 3.11 Full", tag: "python:3.11" },
+                              { label: "NVIDIA CUDA 12.1", tag: "nvidia/cuda:12.1.0-runtime-ubuntu22.04" },
+                              { label: "FastAPI Prod", tag: "tiangolo/uvicorn-gunicorn-fastapi:python3.11-slim" },
+                            ].map((preset) => {
+                              const active = (isEditingFile ? editingFileContent : githubViewingFile.content).includes(preset.tag);
+                              return (
+                                <button
+                                  key={preset.tag}
+                                  onClick={() => handleSelectDockerBaseImage(preset.tag)}
+                                  className={`px-2 py-0.5 rounded text-[11px] font-mono transition cursor-pointer border ${
+                                    active
+                                      ? "bg-amber-500/20 text-amber-300 border-amber-500/60 font-bold"
+                                      : "bg-[#21262d] text-gray-300 border-[#30363d] hover:bg-[#30363d] hover:text-white"
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              placeholder="Personalizada (ej: my-repo:tag)..."
+                              value={customDockerImage}
+                              onChange={(e) => setCustomDockerImage(e.target.value)}
+                              className="bg-[#010409] border border-[#30363d] rounded px-2 py-0.5 text-[11px] font-mono text-gray-200 focus:outline-none focus:border-amber-400 w-52"
+                            />
+                            <button
+                              onClick={() => {
+                                if (customDockerImage.trim()) {
+                                  handleSelectDockerBaseImage(customDockerImage.trim());
+                                  setCustomDockerImage("");
+                                }
+                              }}
+                              disabled={!customDockerImage.trim()}
+                              className="px-2 py-0.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-black font-bold rounded text-[11px] transition cursor-pointer"
+                            >
+                              Aplicar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Code Content or Editor */}
+                      {isEditingFile ? (
+                        <div className="flex-1 flex flex-col bg-[#090d13] overflow-hidden relative">
+                          <div className="bg-[#111620] px-4 py-1.5 border-b border-[#30363d] text-[11px] text-gray-400 font-mono flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-sky-400">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                              Modo Edición: modifica el código libremente y pulsa "Guardar Cambios".
+                            </span>
+                            <span>{editingFileContent.split("\n").length} líneas</span>
+                          </div>
+                          <textarea
+                            value={editingFileContent}
+                            onChange={(e) => setEditingFileContent(e.target.value)}
+                            spellCheck={false}
+                            className="flex-1 w-full p-4 bg-[#090d13] text-gray-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
+                            style={{ tabSize: 4 }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117]">
+                          {!githubRawMode ? (
+                            <>
+                              {/* Line Numbers Column */}
+                              <div className="bg-[#0d1117] border-r border-[#30363d] py-3 px-3 text-right text-gray-600 select-none font-mono text-xs">
+                                {githubViewingFile.content.split("\n").map((_, i) => (
+                                  <div key={i} className="leading-relaxed">
+                                    {i + 1}
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Code Text */}
+                              <pre className="py-3 px-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
+                                {githubViewingFile.content}
+                              </pre>
+                            </>
+                          ) : (
+                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
                               {githubViewingFile.content}
                             </pre>
-                          </>
-                        ) : (
-                          <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
-                            {githubViewingFile.content}
-                          </pre>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (

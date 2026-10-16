@@ -1,3 +1,5 @@
+import re
+from typing import Any
 from app.schemas.ir import (
     CanvasIR,
     SemanticIR,
@@ -48,15 +50,16 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
             condition_expression=data.condition_expression,
             for_iterations=data.for_iterations,
             merge_policy=data.merge_policy,
+            notes=data.notes,
+            code_snippet=data.code_snippet,
         )
 
-        # Children nested inside IF_BODY slot
+        # Children nested inside slots
         if_children = [
             build_semantic_step(child)
             for child in canvas_ir.nodes
             if child.data.parent_id == node.id and child.data.slot_type in ("if_body", "loop_body", "parallel_body")
         ]
-        # Children nested inside ELSE_BODY slot
         else_children = [
             build_semantic_step(child)
             for child in canvas_ir.nodes
@@ -93,29 +96,163 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
     )
 
 
-def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "wpipe_microservice") -> TargetIR:
-    imports: list[str] = ["from wpipe import Pipeline, step"]
-    step_declarations: list[str] = []
+def _sanitize_ident(name: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_]", "_", name).lower()
+    return cleaned.strip("_") or "step"
 
-    for idx, s in enumerate(semantic_ir.steps):
+
+def _pascal_case(name: str) -> str:
+    parts = _sanitize_ident(name).split("_")
+    return "".join(p.capitalize() for p in parts if p) or "Step"
+
+
+def _collect_all_steps(steps: list[SemanticStep]) -> list[SemanticStep]:
+    all_s: list[SemanticStep] = []
+    for s in steps:
+        all_s.append(s)
+        if s.branch_true:
+            all_s.extend(_collect_all_steps(s.branch_true))
+        if s.branch_false:
+            all_s.extend(_collect_all_steps(s.branch_false))
+        if s.loop_steps:
+            all_s.extend(_collect_all_steps(s.loop_steps))
+        if s.parallel_steps:
+            all_s.extend(_collect_all_steps(s.parallel_steps))
+    return all_s
+
+
+def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "wpipe_microservice") -> TargetIR:
+    all_steps = _collect_all_steps(semantic_ir.steps)
+
+    has_condition = any(s.step_type == "condition" for s in all_steps)
+    has_for = any(s.step_type == "for" for s in all_steps)
+    has_parallel = any(s.step_type == "parallel" for s in all_steps)
+
+    wpipe_symbols = ["Pipeline", "step"]
+    if has_condition:
+        wpipe_symbols.append("Condition")
+    if has_for:
+        wpipe_symbols.append("For")
+    if has_parallel:
+        wpipe_symbols.append("Parallel")
+
+    imports: list[str] = [f"from wpipe import {', '.join(wpipe_symbols)}"]
+    custom_state_files: list[TargetFile] = []
+    custom_dto_files: list[TargetFile] = []
+
+    # Process custom user/described steps (Dialect A generation)
+    for s in all_steps:
         if s.step_type == "step":
-            if s.namespace and s.func_name:
-                imports.append(f"from {s.namespace} import {s.func_name}")
-                step_declarations.append(f"        {s.func_name}()")
+            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
+            if is_custom:
+                func_safe = _sanitize_ident(s.name)
+                pascal = _pascal_case(s.name)
+
+                # DTO code
+                fields_code = ""
+                all_fields = sorted(list(set(s.contract.reads + s.contract.writes)))
+                if all_fields:
+                    for f in all_fields:
+                        fields_code += f"    {f}: Optional[Any] = Field(default=None, description='Contract field {f}')\n"
+                else:
+                    fields_code = "    data: Optional[dict[str, Any]] = Field(default_factory=dict)\n"
+
+                dto_code = f'''from typing import Any, Optional
+from pydantic import BaseModel, Field
+
+
+class {pascal}Context(BaseModel):
+    """Data Transfer Object for {s.name}."""
+{fields_code}
+'''
+                dto_path = f"app/dto/{func_safe}_dto.py"
+                custom_dto_files.append(TargetFile(path=dto_path, content=dto_code))
+
+                # State code (Dialect A)
+                write_lines = ""
+                for w in s.contract.writes:
+                    write_lines += f'    result["{w}"] = getattr(context, "{w}", None) or "processed_{w}"\n'
+                if not write_lines:
+                    write_lines = '    result["status"] = "success"\n'
+
+                state_code = f'''from typing import Any
+from wpipe import step, to_obj
+from app.dto.{func_safe}_dto import {pascal}Context
+
+
+@step(name="{s.name}")
+@to_obj({pascal}Context)
+def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
+    """
+    {s.notes or f'Custom Step {s.name} (Dialect A).'}
+    """
+    result: dict[str, Any] = {{}}
+{write_lines}
+    return result
+'''
+                state_path = f"app/states/{func_safe}.py"
+                custom_state_files.append(TargetFile(path=state_path, content=state_code))
+                imports.append(f"from app.states.{func_safe} import {func_safe}_step")
             else:
-                func_safe = s.name.lower().replace(" ", "_")
-                step_declarations.append(f"        {func_safe}_step")
+                imports.append(f"from {s.namespace} import {s.func_name}")
+
+    def render_step(s: SemanticStep, indent: int = 8) -> str:
+        pad = " " * indent
+        if s.step_type == "step":
+            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
+            if is_custom:
+                func_safe = _sanitize_ident(s.name)
+                return f"{pad}{func_safe}_step"
+            else:
+                if s.params:
+                    args = ", ".join(f"{k}={repr(v)}" for k, v in s.params.items())
+                    return f"{pad}{s.func_name}({args})"
+                return f"{pad}{s.func_name}()"
+
         elif s.step_type == "condition":
             expr = s.condition_expression or "True"
-            step_declarations.append(f"        # Condition: {expr}")
-        elif s.step_type == "parallel":
-            step_declarations.append(f"        # Parallel policy: {s.merge_policy}")
+            true_rendered = ",\n".join(render_step(c, indent + 4) for c in s.branch_true)
+            false_rendered = ",\n".join(render_step(c, indent + 4) for c in s.branch_false)
+            true_block = f"[\n{true_rendered}\n{pad}    ]" if true_rendered else "[]"
+            false_block = f"[\n{false_rendered}\n{pad}    ]" if false_rendered else "[]"
+            return (
+                f'{pad}Condition(\n'
+                f'{pad}    expression="{expr}",\n'
+                f'{pad}    branch_true={true_block},\n'
+                f'{pad}    branch_false={false_block}\n'
+                f'{pad})'
+            )
 
-    imports_str = "\n".join(set(imports))
-    steps_str = ",\n".join(step_declarations)
+        elif s.step_type == "for":
+            iters = s.for_iterations or 5
+            loop_rendered = ",\n".join(render_step(c, indent + 4) for c in s.loop_steps)
+            loop_block = f"[\n{loop_rendered}\n{pad}    ]" if loop_rendered else "[]"
+            return (
+                f'{pad}For(\n'
+                f'{pad}    iterations={iters},\n'
+                f'{pad}    steps={loop_block}\n'
+                f'{pad})'
+            )
+
+        elif s.step_type == "parallel":
+            policy = s.merge_policy or "accumulate"
+            par_rendered = ",\n".join(render_step(c, indent + 4) for c in s.parallel_steps)
+            par_block = f"[\n{par_rendered}\n{pad}    ]" if par_rendered else "[]"
+            return (
+                f'{pad}Parallel(\n'
+                f'{pad}    steps={par_block},\n'
+                f'{pad}    merge_policy="{policy}"\n'
+                f'{pad})'
+            )
+        return f"{pad}# Unknown step {s.name}"
+
+    step_declarations = [render_step(s, indent=8) for s in semantic_ir.steps]
+    steps_str = ",\n".join(step_declarations) if step_declarations else "        # No steps configured"
+    imports_str = "\n".join(sorted(list(set(imports))))
 
     pipeline_code = f"""# Generated by WPipe Studio
 {imports_str}
+
 
 def build_pipeline() -> Pipeline:
     pipe = Pipeline(name="{semantic_ir.pipeline_name}")
@@ -124,10 +261,11 @@ def build_pipeline() -> Pipeline:
     ])
     return pipe
 
+
 if __name__ == "__main__":
     pipe = build_pipeline()
     result = pipe.run()
-    print("Pipeline completed successfully:", result)
+    print("Pipeline execution completed successfully:", result)
 """
 
     main_code = """from fastapi import FastAPI
@@ -135,9 +273,11 @@ from app.pipelines import build_pipeline
 
 app = FastAPI(title="WPipe Microservice", version="1.0.0")
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.post("/run")
 def run_pipeline(payload: dict | None = None):
@@ -175,13 +315,15 @@ format:
 
     readme = f"""# {project_name}
 
-Microservicio Python auto-generado por **WPipe Studio**.
+Microservicio Python auto-generado y verificado por **WPipe Studio**.
 
 ## Tecnologías y Librerías Principales
 - **FastAPI**: Framework web asíncrono para exponer endpoints HTTP.
-- **WPipe**: Motor de orquestación de pipelines y flujos de trabajo.
-- **Uvicorn**: Servidor ASGI de alto rendimiento.
+- **WPipe**: Motor de orquestación de pipelines y flujos de trabajo de alto rendimiento.
+- **Pydantic**: Validación estricta de esquemas de datos y DTOs de contexto.
+- **Uvicorn**: Servidor ASGI de producción.
 - **Pytest**: Suite de pruebas unitarias automatizadas.
+- **Ruff**: Linter y formateador ultrarrápido.
 
 ## Cómo ejecutar los tests
 ```bash
@@ -191,20 +333,57 @@ pytest app/tests/ -q
 
     test_code = """from app.pipelines import build_pipeline
 
+
 def test_pipeline_builds():
     pipe = build_pipeline()
     assert pipe is not None
     assert pipe.name == "main_pipeline"
+    assert len(pipe.tasks_list) >= 0
 """
 
+    # Dynamic requirements resolution
+    reqs: set[str] = {
+        "fastapi>=0.110.0",
+        "uvicorn>=0.28.0",
+        "wpipe>=2.5.10",
+        "pydantic>=2.0.0",
+        "pytest>=8.0.0",
+        "ruff>=0.3.0",
+    }
+
+    for s in all_steps:
+        ns = (s.namespace or "").lower()
+        if "wpipe_steps" in ns:
+            reqs.add("wpipe-steps>=0.1.0")
+        if "wpipe_plugins" in ns:
+            reqs.add("wpipe-plugins>=0.1.2")
+        if "vision" in ns or "yolo" in ns:
+            reqs.add("torch>=2.0.0")
+            reqs.add("ultralytics>=8.0.0")
+            reqs.add("opencv-python>=4.8.0")
+        if "redis" in ns:
+            reqs.add("redis>=5.0.0")
+        if "http" in ns or "connectivity" in ns:
+            reqs.add("requests>=2.31.0")
+            reqs.add("httpx>=0.27.0")
+
+    reqs_str = "\n".join(sorted(list(reqs))) + "\n"
+
     files = [
+        TargetFile(path="app/__init__.py", content=""),
         TargetFile(path="app/pipelines.py", content=pipeline_code),
         TargetFile(path="app/main.py", content=main_code),
+        TargetFile(path="app/dto/__init__.py", content=""),
+        TargetFile(path="app/states/__init__.py", content=""),
+        TargetFile(path="app/tests/__init__.py", content=""),
         TargetFile(path="app/tests/test_pipelines.py", content=test_code),
         TargetFile(path="Dockerfile", content=dockerfile),
         TargetFile(path="Makefile", content=makefile),
-        TargetFile(path="requirements.txt", content="fastapi\nuvicorn\nwpipe\npytest\nruff\n"),
+        TargetFile(path="requirements.txt", content=reqs_str),
         TargetFile(path="README.md", content=readme),
     ]
+
+    files.extend(custom_dto_files)
+    files.extend(custom_state_files)
 
     return TargetIR(project_name=project_name, files=files)

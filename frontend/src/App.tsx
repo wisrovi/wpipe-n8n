@@ -406,11 +406,11 @@ export default function App() {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     hoverTimerRef.current = setTimeout(() => {
       setHoveredPaletteBlock(block);
-      setPaletteTooltipPos({
-        top: Math.max(70, Math.min(window.innerHeight - 360, rect.top - 20)),
-        left: rect.right + 12,
-      });
-    }, 280);
+      const estHeight = 390;
+      const top = Math.max(60, Math.min(window.innerHeight - estHeight - 20, rect.top - 15));
+      const left = Math.min(window.innerWidth - 410, rect.right + 14);
+      setPaletteTooltipPos({ top, left });
+    }, 180);
   };
 
   const handleBlockMouseLeave = () => {
@@ -517,7 +517,37 @@ export default function App() {
     }, 150);
   }, []);
 
-  // Fetch Release Catalog from Backend
+  // Synchronize Python Preview with current workspace blocks
+  const handleSyncPythonCode = () => {
+    setPreviewLoading(true);
+    setStatusMessage("Sincronizando microservicio Python con el lienzo actual...");
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    fetch("/api/v1/pipeline/transform", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(canvasIr),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data && Array.isArray(data.files) && data.files.length > 0) {
+          setGeneratedFiles(data.files);
+          setSelectedFileIdx(0);
+          setStatusMessage("Microservicio Python actualizado con los bloques del lienzo ✓");
+        }
+      })
+      .catch((err) => {
+        console.error("Transform error:", err);
+        setStatusMessage(`Error sincronizando código: ${err.message}`);
+      })
+      .finally(() => {
+        setPreviewLoading(false);
+      });
+  };
+
+  // Fetch Release Catalog from Backend & Trigger Initial Codegen
   useEffect(() => {
     fetch("/api/v1/catalog/steps")
       .then((res) => res.json())
@@ -530,7 +560,20 @@ export default function App() {
       .catch((err) => {
         console.error("Failed to load catalog steps:", err);
       });
+
+    // Ensure microservice files are generated from initial canvas
+    const timer = setTimeout(() => {
+      handleSyncPythonCode();
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
+
+  // Load Python Preview when switching to python tab
+  useEffect(() => {
+    if (activeMainTab === "python") {
+      handleSyncPythonCode();
+    }
+  }, [activeMainTab]);
 
   // Register window event handler for Blockly block config click
   useEffect(() => {
@@ -595,40 +638,6 @@ export default function App() {
         });
     }
   }, [activeMainTab, mermaidCode]);
-
-  // Synchronize Python Preview with current workspace blocks
-  const handleSyncPythonCode = () => {
-    setPreviewLoading(true);
-    setStatusMessage("Sincronizando microservicio Python con el lienzo actual...");
-    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
-    fetch("/api/v1/pipeline/transform", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(canvasIr),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.files) {
-          setGeneratedFiles(data.files);
-          setSelectedFileIdx(0);
-          setStatusMessage("Microservicio Python actualizado con los bloques del lienzo ✓");
-        }
-      })
-      .catch((err) => {
-        console.error("Transform error:", err);
-        setStatusMessage(`Error sincronizando código: ${err.message}`);
-      })
-      .finally(() => {
-        setPreviewLoading(false);
-      });
-  };
-
-  // Load Python Preview when switching to python tab
-  useEffect(() => {
-    if (activeMainTab === "python") {
-      handleSyncPythonCode();
-    }
-  }, [activeMainTab, catalog]);
 
   // Switch to Flowchart view
   const handleOpenFlowchart = () => {
@@ -1440,17 +1449,17 @@ export default function App() {
                   cat: "trigger",
                   name: "Lanzador de Pipeline",
                   icon: "🚀",
-                  badge: "Inicio / Hat",
+                  badge: "Disparador Ingress",
                   isHat: true,
                   gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
                   tabColor: "bg-amber-500 border-amber-300/80",
                   description:
-                    "Define el punto de entrada o evento de disparo del pipeline: API REST FastAPI (POST /run), Kafka Consumer (Topic), Redis Queue, Cron Job o CLI local.",
-                  params: "Tipo de disparador (API, Kafka, Redis, Cron, CLI) y Parámetro (Ruta / Tópico / Clave)",
-                  pythonSnippet: '@app.post("/run")\ndef run_pipeline(payload: RequestPayload):\n    return pipe.run(payload.dict())',
+                    "Punto de entrada oficial del microservicio WPipe. Define el disparador inicial que recibe la carga de trabajo y activa el pipeline: API REST FastAPI (POST /run), Kafka Topic Consumer, cola Redis Stream, Cron Job periódico o comando CLI.",
+                  params: "Tipo (API / Kafka / Redis / Cron / CLI), Parámetro de ruta/tópico/clave",
+                  pythonSnippet: '@app.post("/run")\ndef run_pipeline(payload: dict):\n    return pipe.run(payload)',
                   action: () => {
                     addTriggerBlockToWorkspace();
-                    setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas");
+                    setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas ✓");
                   },
                 },
                 // 2. Paso de Catálogo
@@ -1459,17 +1468,17 @@ export default function App() {
                   cat: "steps",
                   name: "Paso de Catálogo",
                   icon: "📦",
-                  badge: "Oficial & Plugins",
+                  badge: "wpipe-steps Oficial & Plugins",
                   isHat: false,
                   gradient: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-400/80 shadow-blue-950/50",
                   tabColor: "bg-blue-600 border-blue-400/80",
                   description:
-                    "Inserta un paso ejecutable verificado del catálogo (196 pasos oficiales de wpipe-steps y plugins como ecam_yolo o rss_parser). Incluye selectores directos de origen (Official/Plugin), categoría, búsqueda y selector de estado.",
+                    "Inserta un paso modular verificado de la suite WPipe (196 pasos oficiales de wpipe-steps y plugins comunitarios como ecam_yolo o rss_parser). Incluye selectores directos de origen (Official/Plugin), categoría y filtro de búsqueda.",
                   params: "Origen (Official/Plugin), Categoría, Filtro de texto, Estado, Namespace",
                   pythonSnippet: 'pipe.set_steps([\n    HttpRequest(url="https://api.site.com/v1"),\n    ImageECamYOLO(conf=0.25)\n])',
                   action: () => {
                     addStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso de Catálogo' al canvas");
+                    setStatusMessage("Añadido 'Paso de Catálogo' al canvas ✓");
                   },
                 },
                 // 3. Paso con IA
@@ -1478,17 +1487,17 @@ export default function App() {
                   cat: "steps",
                   name: "Paso con IA",
                   icon: "✨",
-                  badge: "Dialecto A",
+                  badge: "Dialecto A (@step + DTO)",
                   isHat: false,
                   gradient: "from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-400/80 shadow-purple-950/50",
                   tabColor: "bg-purple-600 border-purple-400/80",
                   description:
-                    "Genera un estado personalizado mediante IA a partir de tu prompt descriptivo en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A (@step + Context DTO en app/dto/ y app/states/).",
+                    "Genera un estado personalizado para WPipe a partir de una descripción en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A: función @step en app/states/ y contrato Pydantic Context DTO en app/dto/.",
                   params: "Nombre del estado, Prompt descriptivo en lenguaje natural",
-                  pythonSnippet: '@step(name="ai_state")\n@to_obj(AiContext)\ndef ai_state_step(context: AiContext) -> dict:\n    # Generated by AI\n    return {"processed": True}',
+                  pythonSnippet: '@step(name="custom_ai")\n@to_obj(CustomContext)\ndef custom_ai_step(context: CustomContext) -> dict:\n    # Auto-generado por IA\n    return {"processed": True}',
                   action: () => {
                     addAiStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso con IA' al canvas");
+                    setStatusMessage("Añadido 'Paso con IA' al canvas ✓");
                   },
                 },
                 // 4. Paso Personalizado (.py)
@@ -1497,17 +1506,17 @@ export default function App() {
                   cat: "steps",
                   name: "Paso Personalizado (.py)",
                   icon: "📄",
-                  badge: "Archivo Local",
+                  badge: "Archivo Python Local",
                   isHat: false,
                   gradient: "from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 border-teal-400/80 shadow-teal-950/50",
                   tabColor: "bg-teal-600 border-teal-400/80",
                   description:
-                    "Adjunta tu propio archivo Python (.py) local para integrarlo directamente en app/states/ al empaquetar el microservicio generado, preservando tu lógica original intacta.",
-                  params: "Archivo Python (.py) adjunto, nombre de la función exportada",
-                  pythonSnippet: 'from app.states.custom_code import my_custom_step\n\npipe.set_steps([my_custom_step])',
+                    "Adjunta un archivo Python propio (.py) con tus funciones de negocio. WPipe Studio lo integra automáticamente en app/states/ al generar el microservicio empaquetado, preservando tu código original.",
+                  params: "Archivo Python (.py) adjunto, función exportada",
+                  pythonSnippet: 'from app.states.custom_module import my_custom_step\n\npipe.set_steps([my_custom_step])',
                   action: () => {
                     addUserFileStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas");
+                    setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas ✓");
                   },
                 },
                 // 5. Condición (Si)
@@ -1516,17 +1525,17 @@ export default function App() {
                   cat: "control",
                   name: "Condición (Si)",
                   icon: "🔀",
-                  badge: "Bifurcación Simple",
+                  badge: "Control Condition Simple",
                   isHat: false,
                   gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
                   tabColor: "bg-amber-500 border-amber-300/80",
                   description:
-                    "Evalúa una condición booleana sobre las variables del contexto. Si es True, ejecuta la rama contenida. Omite la rama falsa, permitiendo pipelines limpios y directos.",
-                  params: "Expresión condicional de evaluación (ej. status_code == 200)",
+                    "Bloque Condition de WPipe. Evalúa una expresión condicional booleana sobre el contexto de datos; si es True, ejecuta la rama contenida. Omite la rama falsa para flujos limpios y directos.",
+                  params: "Expresión condicional booleana (ej. status_code == 200)",
                   pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_success_step]\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_if");
-                    setStatusMessage("Añadida 'Condición Si (Simple)' al canvas");
+                    setStatusMessage("Añadida 'Condición Si' al canvas ✓");
                   },
                 },
                 // 6. Condición (Si / Sino)
@@ -1535,17 +1544,17 @@ export default function App() {
                   cat: "control",
                   name: "Condición (Si / Sino)",
                   icon: "⚖️",
-                  badge: "Bifurcación Dual",
+                  badge: "Control Condition Dual",
                   isHat: false,
                   gradient: "from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border-amber-400/80 shadow-amber-950/50",
                   tabColor: "bg-amber-600 border-amber-400/80",
                   description:
-                    "Bifurcación condicional de WPipe con ramas verdaderas y falsas separadas (`branch_true` y `branch_false`).",
-                  params: "Expresión booleana, rama verdadera y rama falsa",
+                    "Bifurcación completa en WPipe. Ejecuta la rama branch_true si la condición es verdadera (True), o la rama branch_false si es falsa (False), facilitando el manejo de contingencias o errores.",
+                  params: "Expresión condicional, rama verdadera y rama falsa",
                   pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_step],\n    branch_false=[error_handler_step]\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_if_else");
-                    setStatusMessage("Añadida 'Condición Si / Sino' al canvas");
+                    setStatusMessage("Añadida 'Condición Si / Sino' al canvas ✓");
                   },
                 },
                 // 7. Bucle Mientras (While)
@@ -1554,17 +1563,17 @@ export default function App() {
                   cat: "loops",
                   name: "Bucle Mientras (While)",
                   icon: "🔁",
-                  badge: "Bucle Condicional",
+                  badge: "Bucle Condicional While",
                   isHat: false,
                   gradient: "from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 border-orange-400/80 shadow-orange-950/50",
                   tabColor: "bg-orange-600 border-orange-400/80",
                   description:
-                    "Repite los pasos contenidos de forma continua mientras la condición booleana especificada se mantenga en True, con protección automática ante bucles infinitos.",
-                  params: "Condición booleana de continuación (ej. retry_count < 3)",
+                    "Repite los pasos contenidos continuamente mientras la condición sea True. El motor WPipe incorpora control automático de iteraciones y prevención de bloqueos infinitos.",
+                  params: "Expresión condicional de continuación (ej. retry_count < 3)",
                   pythonSnippet: 'Condition(\n    expression="retry_count < 3",\n    branch_true=[retry_step]\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_while");
-                    setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas");
+                    setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas ✓");
                   },
                 },
                 // 8. Bucle Repetir (For)
@@ -1573,17 +1582,17 @@ export default function App() {
                   cat: "loops",
                   name: "Bucle Repetir (For)",
                   icon: "🔢",
-                  badge: "Bucle Contador",
+                  badge: "Iterador Fijo For",
                   isHat: false,
                   gradient: "from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 border-orange-300/80 shadow-orange-950/50",
                   tabColor: "bg-orange-500 border-orange-300/80",
                   description:
-                    "Ejecuta los pasos contenidos un número fijo y determinado de iteraciones de forma secuencial y determinista en WPipe.",
-                  params: "Número de iteraciones (ej. 5), pasos a repetir",
+                    "Bloque For nativo de WPipe. Ejecuta los pasos contenidos un número exacto de iteraciones de manera secuencial y determinista, pasando el contexto actualizado en cada vuelta.",
+                  params: "Número entero de iteraciones (ej. 5), pasos contenidos",
                   pythonSnippet: 'For(\n    iterations=5,\n    steps=[process_batch_step]\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_for");
-                    setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas");
+                    setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas ✓");
                   },
                 },
                 // 9. Ejecución Paralela
@@ -1592,17 +1601,17 @@ export default function App() {
                   cat: "parallel",
                   name: "Ejecución Paralela",
                   icon: "⚡",
-                  badge: "Concurrencia",
+                  badge: "Concurrencia Multi-hilo",
                   isHat: false,
                   gradient: "from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 border-emerald-400/80 shadow-emerald-950/50",
                   tabColor: "bg-emerald-600 border-emerald-400/80",
                   description:
-                    "Ejecuta múltiples pasos de forma simultánea en ramas paralelas, fusionando los resultados concurrentes en el contexto global según la política elegida (accumulate o last_wins).",
-                  params: "Pasos paralelos, Política de fusión (accumulate o last_wins)",
+                    "Bloque Parallel de WPipe. Despacha múltiples ramas de pasos concurrentemente y fusiona los resultados en el contexto común según la política seleccionada (accumulate o last_wins).",
+                  params: "Ramas paralelas de pasos, Política de fusión (accumulate / last_wins)",
                   pythonSnippet: 'Parallel(\n    steps=[step_fetch_user, step_fetch_orders],\n    merge_policy="accumulate"\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_parallel");
-                    setStatusMessage("Añadida 'Ejecución Paralela' al canvas");
+                    setStatusMessage("Añadida 'Ejecución Paralela' al canvas ✓");
                   },
                 },
                 // 10. Tarea en Segundo Plano (Background)
@@ -1611,17 +1620,17 @@ export default function App() {
                   cat: "parallel",
                   name: "Segundo Plano (Background)",
                   icon: "⏳",
-                  badge: "No Bloqueante",
+                  badge: "Hilo Asíncrono No Bloqueante",
                   isHat: false,
                   gradient: "from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 border-indigo-400/80 shadow-indigo-950/50",
                   tabColor: "bg-indigo-600 border-indigo-400/80",
                   description:
-                    "Lanza un paso en un hilo asíncrono secundario sin esperar su finalización ni bloquear el avance del flujo principal del pipeline (ideal para logs, auditoría o notificaciones).",
-                  params: "Paso asíncrono a ejecutar en background",
+                    "Bloque Background de WPipe. Ejecuta un paso en un hilo en segundo plano sin esperar su finalización ni bloquear el avance del pipeline principal (ideal para telemetría, auditoría o alertas).",
+                  params: "Paso asíncrono a lanzar en segundo plano",
                   pythonSnippet: 'Background(\n    step=audit_logging_step\n)',
                   action: () => {
                     addControlBlockToWorkspace("wpipe_background");
-                    setStatusMessage("Añadida 'Tarea en Segundo Plano (Background)' al canvas");
+                    setStatusMessage("Añadida 'Tarea en Segundo Plano' al canvas ✓");
                   },
                 },
               ]
@@ -1634,7 +1643,10 @@ export default function App() {
                 .map((b) => (
                   <div
                     key={b.id}
-                    onClick={b.action}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      b.action();
+                    }}
                     onMouseEnter={(e) => handleBlockMouseEnter(b, e)}
                     onMouseLeave={handleBlockMouseLeave}
                     className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
@@ -2911,47 +2923,47 @@ export default function App() {
       {hoveredPaletteBlock && paletteTooltipPos && (
         <div
           style={{ top: paletteTooltipPos.top, left: paletteTooltipPos.left }}
-          className="fixed z-50 w-80 p-4 rounded-2xl bg-[#090d16]/95 border border-gray-700/80 shadow-2xl backdrop-blur-md pointer-events-none animate-in fade-in zoom-in-95 duration-150 ring-1 ring-white/10"
+          className="fixed z-50 w-96 p-4 rounded-2xl bg-gray-950/98 border border-sky-500/70 shadow-2xl backdrop-blur-xl pointer-events-none ring-1 ring-sky-500/30 text-gray-100 animate-in fade-in zoom-in-95 duration-150"
         >
-          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-800">
+          <div className="flex items-center justify-between mb-2.5 pb-2.5 border-b border-gray-800">
             <div className="flex items-center gap-2">
-              <span className="text-lg drop-shadow">{hoveredPaletteBlock.icon}</span>
-              <span className="font-extrabold text-xs text-white tracking-wide">
+              <span className="text-xl drop-shadow">{hoveredPaletteBlock.icon}</span>
+              <span className="font-extrabold text-sm text-white tracking-wide">
                 {hoveredPaletteBlock.name}
               </span>
             </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-gray-800 text-sky-400 border border-gray-700">
+            <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-sky-950/80 text-sky-300 border border-sky-700/60">
               {hoveredPaletteBlock.badge}
             </span>
           </div>
 
-          <p className="text-[11px] text-gray-300 leading-relaxed mb-3">
+          <p className="text-xs text-slate-200 leading-relaxed mb-3">
             {hoveredPaletteBlock.description}
           </p>
 
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div>
-              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                ⚙️ Configuración / Parámetros:
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <span>⚙️</span> Parámetros / Propiedades:
               </div>
-              <div className="text-[10px] text-gray-200 font-mono bg-gray-900/90 px-2.5 py-1.5 rounded-lg border border-gray-800">
+              <div className="text-xs text-amber-200 font-mono bg-gray-900/90 px-3 py-1.5 rounded-lg border border-gray-800 leading-snug">
                 {hoveredPaletteBlock.params}
               </div>
             </div>
 
             <div>
-              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                🐍 Equivalente en Python (WPipe):
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <span>🐍</span> Equivalente WPipe Python:
               </div>
-              <pre className="text-[10px] text-sky-300 font-mono bg-black/70 p-2.5 rounded-lg border border-gray-800 overflow-x-auto whitespace-pre-wrap leading-tight">
+              <pre className="text-xs text-emerald-300 font-mono bg-black/85 p-3 rounded-lg border border-gray-800 overflow-x-auto whitespace-pre-wrap leading-relaxed">
                 {hoveredPaletteBlock.pythonSnippet}
               </pre>
             </div>
           </div>
 
-          <div className="mt-3 pt-2 border-t border-gray-800/80 flex items-center justify-between text-[10px] text-sky-400 font-semibold">
-            <span>👆 Haz clic para añadir al Canvas</span>
-            <span className="text-gray-500 font-mono">WPipe Studio</span>
+          <div className="mt-3 pt-2 border-t border-gray-800/80 flex items-center justify-between text-xs text-sky-400 font-semibold">
+            <span>👆 Haz clic para añadir al lienzo</span>
+            <span className="text-gray-500 font-mono text-[11px]">WPipe OS</span>
           </div>
         </div>
       )}

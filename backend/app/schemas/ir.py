@@ -116,6 +116,8 @@ class SemanticStep(BaseModel):
     loop_steps: list["SemanticStep"] = Field(default_factory=list)
     parallel_steps: list["SemanticStep"] = Field(default_factory=list)
     merge_policy: Literal["accumulate", "last_wins"] = "accumulate"
+    notes: str | None = None
+    code_snippet: str | None = None
 
 
 class SemanticIR(BaseModel):

@@ -138,3 +138,41 @@ def test_transform_while_and_background_endpoint():
     assert 'validation_expression="retry_count < 3"' in pipe_file["content"]
     assert "Background(" in pipe_file["content"]
 
+
+def test_transform_kafka_trigger_endpoint():
+    kafka_ir = {
+        "nodes": [
+            {
+                "id": "node_trigger",
+                "type": "default",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "label": "Kafka Consumer",
+                    "node_type": "trigger",
+                    "trigger_type": "kafka",
+                    "trigger_param": "orders_topic",
+                }
+            },
+            {
+                "id": "node_step",
+                "type": "default",
+                "position": {"x": 0, "y": 100},
+                "data": {
+                    "label": "HttpRequest",
+                    "node_type": "step",
+                    "namespace": "wpipe_steps.connectivity.http_request",
+                    "func_name": "HttpRequest",
+                }
+            }
+        ],
+        "edges": [{"id": "e1", "source": "node_trigger", "target": "node_step"}],
+        "viewport": {"x": 0, "y": 0, "zoom": 1}
+    }
+    response = client.post("/api/v1/pipeline/transform", json=kafka_ir)
+    assert response.status_code == 200
+    res = response.json()
+    main_file = next(f for f in res["files"] if f["path"] == "app/main.py")
+    assert "orders_topic" in main_file["content"]
+    assert "consume_loop" in main_file["content"]
+
+

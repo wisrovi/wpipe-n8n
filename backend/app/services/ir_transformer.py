@@ -1,16 +1,18 @@
 import re
-from typing import Any
+
 from app.schemas.ir import (
     CanvasIR,
     SemanticIR,
     SemanticStep,
-    TargetIR,
-    TargetFile,
     StepOrigin,
+    TargetFile,
+    TargetIR,
 )
 
 
-def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main_pipeline") -> SemanticIR:
+def transform_canvas_to_semantic(
+    canvas_ir: CanvasIR, pipeline_name: str = "main_pipeline"
+) -> SemanticIR:
     node_map = {node.id: node for node in canvas_ir.nodes}
     adj: dict[str, list[str]] = {node.id: [] for node in canvas_ir.nodes}
     in_degree: dict[str, int] = {node.id: 0 for node in canvas_ir.nodes}
@@ -60,7 +62,8 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
         if_children = [
             build_semantic_step(child)
             for child in canvas_ir.nodes
-            if child.data.parent_id == node.id and child.data.slot_type in ("if_body", "loop_body", "parallel_body", "background_body")
+            if child.data.parent_id == node.id
+            and child.data.slot_type in ("if_body", "loop_body", "parallel_body", "background_body")
         ]
         else_children = [
             build_semantic_step(child)
@@ -123,7 +126,9 @@ def _collect_all_steps(steps: list[SemanticStep]) -> list[SemanticStep]:
     return all_s
 
 
-def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "wpipe_microservice") -> TargetIR:
+def transform_semantic_to_target(
+    semantic_ir: SemanticIR, project_name: str = "wpipe_microservice"
+) -> TargetIR:
     all_steps = _collect_all_steps(semantic_ir.steps)
 
     has_condition = any(s.step_type == "condition" for s in all_steps)
@@ -150,7 +155,9 @@ def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "w
     # Process custom user/described steps (Dialect A generation or user-imported files)
     for s in all_steps:
         if s.step_type == "step":
-            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
+            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (
+                s.namespace and s.func_name
+            )
             if is_custom:
                 func_safe = _sanitize_ident(s.name)
                 pascal = _pascal_case(s.name)
@@ -177,7 +184,9 @@ def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "w
                         for f in all_fields:
                             fields_code += f"    {f}: Optional[Any] = Field(default=None, description='Contract field {f}')\n"
                     else:
-                        fields_code = "    data: Optional[dict[str, Any]] = Field(default_factory=dict)\n"
+                        fields_code = (
+                            "    data: Optional[dict[str, Any]] = Field(default_factory=dict)\n"
+                        )
 
                     dto_code = f'''from typing import Any, Optional
 from pydantic import BaseModel, Field
@@ -206,7 +215,7 @@ from app.dto.{func_safe}_dto import {pascal}Context
 @to_obj({pascal}Context)
 def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
     """
-    {s.notes or f'Custom Step {s.name} (Dialect A).'}
+    {s.notes or f"Custom Step {s.name} (Dialect A)."}
     """
     result: dict[str, Any] = {{}}
 {write_lines}
@@ -221,7 +230,9 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
     def render_step(s: SemanticStep, indent: int = 8) -> str:
         pad = " " * indent
         if s.step_type == "step":
-            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
+            is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (
+                s.namespace and s.func_name
+            )
             if is_custom:
                 func_safe = _sanitize_ident(s.name)
                 func_name = custom_func_names.get(s.step_id, f"{func_safe}_step")
@@ -240,40 +251,35 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
             false_block = f"[\n{false_rendered}\n{pad}    ]" if false_rendered else "[]"
             if s.branch_false:
                 return (
-                    f'{pad}Condition(\n'
+                    f"{pad}Condition(\n"
                     f'{pad}    expression="{expr}",\n'
-                    f'{pad}    branch_true={true_block},\n'
-                    f'{pad}    branch_false={false_block}\n'
-                    f'{pad})'
+                    f"{pad}    branch_true={true_block},\n"
+                    f"{pad}    branch_false={false_block}\n"
+                    f"{pad})"
                 )
             else:
                 return (
-                    f'{pad}Condition(\n'
+                    f"{pad}Condition(\n"
                     f'{pad}    expression="{expr}",\n'
-                    f'{pad}    branch_true={true_block}\n'
-                    f'{pad})'
+                    f"{pad}    branch_true={true_block}\n"
+                    f"{pad})"
                 )
 
         elif s.step_type == "for":
             iters = s.for_iterations or 5
             loop_rendered = ",\n".join(render_step(c, indent + 4) for c in s.loop_steps)
             loop_block = f"[\n{loop_rendered}\n{pad}    ]" if loop_rendered else "[]"
-            return (
-                f'{pad}For(\n'
-                f'{pad}    iterations={iters},\n'
-                f'{pad}    steps={loop_block}\n'
-                f'{pad})'
-            )
+            return f"{pad}For(\n{pad}    iterations={iters},\n{pad}    steps={loop_block}\n{pad})"
 
         elif s.step_type == "while":
             expr = s.condition_expression or "True"
             loop_rendered = ",\n".join(render_step(c, indent + 4) for c in s.loop_steps)
             loop_block = f"[\n{loop_rendered}\n{pad}    ]" if loop_rendered else "[]"
             return (
-                f'{pad}For(\n'
+                f"{pad}For(\n"
                 f'{pad}    validation_expression="{expr}",\n'
-                f'{pad}    steps={loop_block}\n'
-                f'{pad})'
+                f"{pad}    steps={loop_block}\n"
+                f"{pad})"
             )
 
         elif s.step_type == "parallel":
@@ -281,26 +287,24 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
             par_rendered = ",\n".join(render_step(c, indent + 4) for c in s.parallel_steps)
             par_block = f"[\n{par_rendered}\n{pad}    ]" if par_rendered else "[]"
             return (
-                f'{pad}Parallel(\n'
-                f'{pad}    steps={par_block},\n'
+                f"{pad}Parallel(\n"
+                f"{pad}    steps={par_block},\n"
                 f'{pad}    merge_policy="{policy}"\n'
-                f'{pad})'
+                f"{pad})"
             )
 
         elif s.step_type == "background":
             if s.loop_steps:
                 child = s.loop_steps[0]
                 child_rendered = render_step(child, indent=0).strip()
-                return (
-                    f'{pad}Background(\n'
-                    f'{pad}    step={child_rendered}\n'
-                    f'{pad})'
-                )
+                return f"{pad}Background(\n{pad}    step={child_rendered}\n{pad})"
             return f"{pad}# Background (no step assigned)"
 
     execution_steps = [s for s in semantic_ir.steps if s.step_type != "trigger"]
     step_declarations = [render_step(s, indent=8) for s in execution_steps]
-    steps_str = ",\n".join(step_declarations) if step_declarations else "        # No steps configured"
+    steps_str = (
+        ",\n".join(step_declarations) if step_declarations else "        # No steps configured"
+    )
     imports_str = "\n".join(sorted(list(set(imports))))
 
     pipeline_code = f"""# Generated by WPipe Studio
@@ -326,7 +330,11 @@ if __name__ == "__main__":
     trigger_param = (trigger_step.trigger_param if trigger_step else "/run") or "/run"
 
     if trigger_type == "kafka":
-        topic_name = trigger_param if trigger_param and not trigger_param.startswith("/") else "pipeline_events"
+        topic_name = (
+            trigger_param
+            if trigger_param and not trigger_param.startswith("/")
+            else "pipeline_events"
+        )
         main_code = f'''import asyncio
 from app.pipelines import build_pipeline
 
@@ -343,7 +351,11 @@ if __name__ == "__main__":
     asyncio.run(consume_loop())
 '''
     elif trigger_type == "redis":
-        queue_name = trigger_param if trigger_param and not trigger_param.startswith("/") else "pipeline_queue"
+        queue_name = (
+            trigger_param
+            if trigger_param and not trigger_param.startswith("/")
+            else "pipeline_queue"
+        )
         main_code = f'''from app.pipelines import build_pipeline
 
 
@@ -476,15 +488,109 @@ def test_pipeline_builds():
 
     reqs_str = "\n".join(sorted(list(reqs))) + "\n"
 
+    app_init_content = '''"""
+WPipe Microservice Package.
+Auto-generated and validated by WPipe Studio.
+"""
+
+__version__ = "1.0.0"
+__all__ = ["pipelines", "main"]
+'''
+
+    dto_imports: list[str] = []
+    dto_exports: list[str] = []
+    for f in custom_dto_files:
+        mod_name = f.path.replace("app/dto/", "").replace(".py", "")
+        match_cls = re.findall(r"class\s+([a-zA-Z0-9_]+)\(BaseModel\):", f.content)
+        for cls in match_cls:
+            dto_imports.append(f"from app.dto.{mod_name} import {cls}")
+            dto_exports.append(f'    "{cls}",')
+
+    if dto_imports:
+        dto_init_content = f'''"""
+Data Transfer Objects (DTO) for WPipe pipeline states.
+"""
+
+{chr(10).join(dto_imports)}
+
+__all__ = [
+{chr(10).join(dto_exports)}
+]
+'''
+    else:
+        dto_init_content = '''"""
+Data Transfer Objects (DTO) for WPipe pipeline states.
+"""
+
+__all__: list[str] = []
+'''
+
+    state_imports: list[str] = []
+    state_exports: list[str] = []
+    for f in custom_state_files:
+        mod_name = f.path.replace("app/states/", "").replace(".py", "")
+        match_fn = re.findall(r"def\s+([a-zA-Z0-9_]+)\s*\(", f.content)
+        for fn in match_fn:
+            state_imports.append(f"from app.states.{mod_name} import {fn}")
+            state_exports.append(f'    "{fn}",')
+
+    if state_imports:
+        state_init_content = f'''"""
+Custom WPipe pipeline states and execution steps.
+"""
+
+{chr(10).join(state_imports)}
+
+__all__ = [
+{chr(10).join(state_exports)}
+]
+'''
+    else:
+        state_init_content = '''"""
+Custom WPipe pipeline states and execution steps.
+"""
+
+__all__: list[str] = []
+'''
+
+    tests_init_content = '''"""
+Automated unit test suite for WPipe Microservice.
+"""
+'''
+
+    docker_compose = f"""version: "3.8"
+
+services:
+  microservice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: {project_name}-service
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+"""
+
     files = [
-        TargetFile(path="app/__init__.py", content=""),
+        TargetFile(path="app/__init__.py", content=app_init_content),
         TargetFile(path="app/pipelines.py", content=pipeline_code),
         TargetFile(path="app/main.py", content=main_code),
-        TargetFile(path="app/dto/__init__.py", content=""),
-        TargetFile(path="app/states/__init__.py", content=""),
-        TargetFile(path="app/tests/__init__.py", content=""),
+        TargetFile(path="app/dto/__init__.py", content=dto_init_content),
+        TargetFile(path="app/states/__init__.py", content=state_init_content),
+        TargetFile(path="app/tests/__init__.py", content=tests_init_content),
         TargetFile(path="app/tests/test_pipelines.py", content=test_code),
         TargetFile(path="Dockerfile", content=dockerfile),
+        TargetFile(path="docker-compose.yml", content=docker_compose),
         TargetFile(path="Makefile", content=makefile),
         TargetFile(path="requirements.txt", content=reqs_str),
         TargetFile(path="README.md", content=readme),

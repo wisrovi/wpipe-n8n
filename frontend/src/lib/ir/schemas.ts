@@ -15,7 +15,9 @@ export type ContextContract = z.infer<typeof ContextContractSchema>;
 
 export const NodeDataSchema = z.object({
   label: z.string(),
-  node_type: z.enum(["step", "condition", "for", "while", "parallel", "background"]).default("step"),
+  node_type: z.enum(["trigger", "step", "condition", "for", "while", "parallel", "background"]).default("step"),
+  trigger_type: z.enum(["api", "kafka", "redis", "cron", "webhook", "cli"]).nullable().optional(),
+  trigger_param: z.string().nullable().optional(),
   namespace: z.string().nullable().optional(),
   func_name: z.string().nullable().optional(),
   origin: StepOriginSchema.default("catalog"),

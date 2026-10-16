@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import * as Blockly from "blockly";
+import { CanvasIR, CanvasNode, CanvasEdge, StepOrigin } from "../lib/ir/schemas";
 
 // Define custom block shapes and categories for WPipe Studio Scratch workspace
 export function registerWPipeBlocklyBlocks() {
@@ -231,6 +232,143 @@ export function getMermaidFromBlocklyWorkspace(): string {
   });
 
   return lines.join("\n");
+}
+
+export function highlightBlocklyBlock(stepName: string, state: "running" | "success" | "error" | "idle") {
+  if (!activeWorkspaceRef) return;
+  const blocks = activeWorkspaceRef.getAllBlocks(false);
+  blocks.forEach((b) => {
+    const name = b.getFieldValue("STEP_NAME") || b.type;
+    const svgRoot = b.getSvgRoot();
+    if (svgRoot) {
+      if (state !== "idle" && (name.toLowerCase().includes(stepName.toLowerCase()) || stepName.toLowerCase().includes(name.toLowerCase()))) {
+        if (state === "running") {
+          svgRoot.style.filter = "drop-shadow(0 0 12px #fbbf24)";
+        } else if (state === "success") {
+          svgRoot.style.filter = "drop-shadow(0 0 12px #22c55e)";
+        } else if (state === "error") {
+          svgRoot.style.filter = "drop-shadow(0 0 12px #ef4444)";
+        }
+      } else if (state === "idle") {
+        svgRoot.style.filter = "none";
+      }
+    }
+  });
+}
+
+export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
+  if (!activeWorkspaceRef) {
+    return { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+  }
+  const topBlocks = activeWorkspaceRef.getTopBlocks(true);
+  const nodes: CanvasNode[] = [];
+  const edges: CanvasEdge[] = [];
+  let nodeIdx = 1;
+
+  function processBlock(block: Blockly.Block, parentId: string | null = null, slotType: any = null): { entryId: string; exitNodes: string[] } {
+    const currentId = `node_${nodeIdx++}`;
+    const type = block.type;
+    const xy = block.getRelativeToSurfaceXY();
+    let label = "Step";
+    let nodeType: "step" | "condition" | "for" | "parallel" = "step";
+    let namespace: string | undefined = undefined;
+    let funcName: string | undefined = undefined;
+    let origin: StepOrigin = "catalog";
+    let conditionExpression: string | undefined = undefined;
+    let forIterations: number | undefined = undefined;
+    let mergePolicy: "accumulate" | "last_wins" = "accumulate";
+    let params: Record<string, any> = {};
+    let contract = { reads: ["data"], writes: ["result"], inferred: "exact" as const };
+
+    if (type === "wpipe_step") {
+      label = block.getFieldValue("STEP_NAME") || "Step";
+      namespace = block.getFieldValue("NAMESPACE") || undefined;
+      funcName = label;
+      const catMatch = catalog.find((c) => c.name === label || c.func_name === label);
+      if (catMatch) {
+        origin = catMatch.repo === "User" ? "user_imported" : "catalog";
+        namespace = catMatch.namespace || namespace;
+      }
+    } else if (type === "wpipe_if" || type === "wpipe_if_else") {
+      nodeType = "condition";
+      label = "IF Condition";
+      conditionExpression = block.getFieldValue("CONDITION") || "status == 200";
+      origin = "described";
+    } else if (type === "wpipe_for") {
+      nodeType = "for";
+      label = "FOR Loop";
+      forIterations = Number(block.getFieldValue("ITERATIONS")) || 5;
+      origin = "described";
+    } else if (type === "wpipe_while") {
+      nodeType = "condition";
+      label = "WHILE Loop";
+      conditionExpression = block.getFieldValue("CONDITION") || "True";
+      origin = "described";
+    } else if (type === "wpipe_parallel") {
+      nodeType = "parallel";
+      label = "PARALLEL";
+      origin = "described";
+    }
+
+    const canvasNode: CanvasNode = {
+      id: currentId,
+      type: "default",
+      position: { x: xy.x, y: xy.y },
+      data: {
+        label,
+        node_type: nodeType,
+        namespace,
+        func_name: funcName,
+        origin,
+        params,
+        contract,
+        condition_expression: conditionExpression,
+        for_iterations: forIterations,
+        merge_policy: mergePolicy,
+        parent_id: parentId || undefined,
+        slot_type: slotType || undefined,
+      },
+    };
+    nodes.push(canvasNode);
+
+    let branchExits: string[] = [];
+
+    const doInput = block.getInput("DO");
+    if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+      let childSlot: any = "if_body";
+      if (nodeType === "for") childSlot = "loop_body";
+      else if (nodeType === "parallel") childSlot = "parallel_body";
+      const childRes = processBlock(doInput.connection.targetBlock()!, currentId, childSlot);
+      edges.push({ id: `e_${currentId}_${childRes.entryId}`, source: currentId, target: childRes.entryId });
+      branchExits.push(...childRes.exitNodes);
+    } else {
+      branchExits.push(currentId);
+    }
+
+    const elseInput = block.getInput("ELSE");
+    if (elseInput && elseInput.connection && elseInput.connection.targetBlock()) {
+      const elseRes = processBlock(elseInput.connection.targetBlock()!, currentId, "else_body");
+      edges.push({ id: `e_${currentId}_${elseRes.entryId}`, source: currentId, target: elseRes.entryId });
+      branchExits.push(...elseRes.exitNodes);
+    }
+
+    let finalExits = branchExits;
+    if (block.nextConnection && block.nextConnection.targetBlock()) {
+      const nextRes = processBlock(block.nextConnection.targetBlock()!, parentId, slotType);
+      branchExits.forEach((exId) => {
+        edges.push({ id: `e_${exId}_${nextRes.entryId}`, source: exId, target: nextRes.entryId });
+      });
+      finalExits = nextRes.exitNodes;
+    }
+
+    return { entryId: currentId, exitNodes: finalExits };
+  }
+
+  topBlocks.forEach((tb) => {
+    processBlock(tb);
+  });
+
+  return { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 } };
 }
 
 export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): string {

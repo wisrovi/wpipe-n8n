@@ -139,8 +139,9 @@ def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "w
     imports: list[str] = [f"from wpipe import {', '.join(wpipe_symbols)}"]
     custom_state_files: list[TargetFile] = []
     custom_dto_files: list[TargetFile] = []
+    custom_func_names: dict[str, str] = {}
 
-    # Process custom user/described steps (Dialect A generation)
+    # Process custom user/described steps (Dialect A generation or user-imported files)
     for s in all_steps:
         if s.step_type == "step":
             is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
@@ -148,16 +149,31 @@ def transform_semantic_to_target(semantic_ir: SemanticIR, project_name: str = "w
                 func_safe = _sanitize_ident(s.name)
                 pascal = _pascal_case(s.name)
 
-                # DTO code
-                fields_code = ""
-                all_fields = sorted(list(set(s.contract.reads + s.contract.writes)))
-                if all_fields:
-                    for f in all_fields:
-                        fields_code += f"    {f}: Optional[Any] = Field(default=None, description='Contract field {f}')\n"
-                else:
-                    fields_code = "    data: Optional[dict[str, Any]] = Field(default_factory=dict)\n"
+                # If the user attached a concrete .py file with code_snippet, preserve their code directly
+                if s.code_snippet and s.code_snippet.strip():
+                    user_code = s.code_snippet.strip() + "\n"
+                    match_def = re.search(r"def\s+([a-zA-Z0-9_]+)\s*\(", user_code)
+                    actual_func = match_def.group(1) if match_def else f"{func_safe}_step"
+                    custom_func_names[s.step_id] = actual_func
 
-                dto_code = f'''from typing import Any, Optional
+                    state_path = f"app/states/{func_safe}.py"
+                    custom_state_files.append(TargetFile(path=state_path, content=user_code))
+                    imports.append(f"from app.states.{func_safe} import {actual_func}")
+                else:
+                    # AI-described or scaffolded step: emit Dialect A DTO + typed state
+                    actual_func = f"{func_safe}_step"
+                    custom_func_names[s.step_id] = actual_func
+
+                    # DTO code
+                    fields_code = ""
+                    all_fields = sorted(list(set(s.contract.reads + s.contract.writes)))
+                    if all_fields:
+                        for f in all_fields:
+                            fields_code += f"    {f}: Optional[Any] = Field(default=None, description='Contract field {f}')\n"
+                    else:
+                        fields_code = "    data: Optional[dict[str, Any]] = Field(default_factory=dict)\n"
+
+                    dto_code = f'''from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
@@ -165,17 +181,17 @@ class {pascal}Context(BaseModel):
     """Data Transfer Object for {s.name}."""
 {fields_code}
 '''
-                dto_path = f"app/dto/{func_safe}_dto.py"
-                custom_dto_files.append(TargetFile(path=dto_path, content=dto_code))
+                    dto_path = f"app/dto/{func_safe}_dto.py"
+                    custom_dto_files.append(TargetFile(path=dto_path, content=dto_code))
 
-                # State code (Dialect A)
-                write_lines = ""
-                for w in s.contract.writes:
-                    write_lines += f'    result["{w}"] = getattr(context, "{w}", None) or "processed_{w}"\n'
-                if not write_lines:
-                    write_lines = '    result["status"] = "success"\n'
+                    # State code (Dialect A)
+                    write_lines = ""
+                    for w in s.contract.writes:
+                        write_lines += f'    result["{w}"] = getattr(context, "{w}", None) or "processed_{w}"\n'
+                    if not write_lines:
+                        write_lines = '    result["status"] = "success"\n'
 
-                state_code = f'''from typing import Any
+                    state_code = f'''from typing import Any
 from wpipe import step, to_obj
 from app.dto.{func_safe}_dto import {pascal}Context
 
@@ -190,9 +206,9 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
 {write_lines}
     return result
 '''
-                state_path = f"app/states/{func_safe}.py"
-                custom_state_files.append(TargetFile(path=state_path, content=state_code))
-                imports.append(f"from app.states.{func_safe} import {func_safe}_step")
+                    state_path = f"app/states/{func_safe}.py"
+                    custom_state_files.append(TargetFile(path=state_path, content=state_code))
+                    imports.append(f"from app.states.{func_safe} import {func_safe}_step")
             else:
                 imports.append(f"from {s.namespace} import {s.func_name}")
 
@@ -202,7 +218,8 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
             is_custom = s.origin in (StepOrigin.DESCRIBED, StepOrigin.USER_IMPORTED) or not (s.namespace and s.func_name)
             if is_custom:
                 func_safe = _sanitize_ident(s.name)
-                return f"{pad}{func_safe}_step"
+                func_name = custom_func_names.get(s.step_id, f"{func_safe}_step")
+                return f"{pad}{func_name}"
             else:
                 if s.params:
                     args = ", ".join(f"{k}={repr(v)}" for k, v in s.params.items())

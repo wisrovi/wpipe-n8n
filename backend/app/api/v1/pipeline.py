@@ -28,25 +28,56 @@ def transform_pipeline(canvas_ir: CanvasIR, project_name: str = "wpipe_microserv
 
 @router.post("/dry-run")
 def dry_run_pipeline(canvas_ir: CanvasIR) -> dict[str, Any]:
+    import ast
+
     semantic_ir = transform_canvas_to_semantic(canvas_ir)
     target_ir = transform_semantic_to_target(semantic_ir)
-    
-    # Verification gates summary
+
+    # Perform syntax checks on all generated python files
+    syntax_ok = True
+    syntax_errors: list[str] = []
+    for file in target_ir.files:
+        if file.path.endswith(".py"):
+            try:
+                ast.parse(file.content, filename=file.path)
+            except SyntaxError as err:
+                syntax_ok = False
+                syntax_errors.append(f"{file.path}:{err.lineno}: {err.msg}")
+
     gates = {
         "dag_acyclic": True,
-        "syntax_check": True,
+        "syntax_check": syntax_ok,
         "linter_ruff": True,
         "mypy_typecheck": True,
         "pytest_pass": True,
-        "dry_run_pipeline": True,
+        "dry_run_pipeline": syntax_ok,
     }
-    
+
+    # Simulation execution timeline for frontend Stage runner
+    simulation_steps = [
+        {
+            "id": s.step_id,
+            "name": s.name,
+            "type": s.step_type,
+            "reads": s.contract.reads,
+            "writes": s.contract.writes,
+            "origin": s.origin,
+            "namespace": s.namespace,
+            "func_name": s.func_name,
+        }
+        for s in semantic_ir.steps
+    ]
+
+    status = "PASSED" if syntax_ok else "FAILED"
+
     return {
-        "status": "PASSED",
+        "status": status,
         "gates": gates,
+        "errors": syntax_errors,
         "pipeline_name": semantic_ir.pipeline_name,
         "steps_count": len(semantic_ir.steps),
         "files_generated": [f.path for f in target_ir.files],
+        "simulation_steps": simulation_steps,
     }
 
 

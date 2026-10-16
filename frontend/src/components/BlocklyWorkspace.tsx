@@ -16,6 +16,18 @@ export function setBlocklyCatalog(catalog: any[]) {
   globalCatalog = catalog;
 }
 
+function isPlugin(s: any): boolean {
+  if (!s) return false;
+  const r = (s.repo || "").toLowerCase();
+  const ns = (s.namespace || "").toLowerCase();
+  return r === "plugin" || r === "community" || ns.includes("plugin") || ns.startsWith("wpipe_plugins");
+}
+
+function isOfficial(s: any): boolean {
+  if (!s) return false;
+  return !isPlugin(s);
+}
+
 function getRepoOptions(): [string, string][] {
   return [
     ["🌐 Todos los Repos", "ALL"],
@@ -27,9 +39,9 @@ function getRepoOptions(): [string, string][] {
 function getCategoryOptions(repoFilter: string): [string, string][] {
   let filtered = globalCatalog;
   if (repoFilter === "Official") {
-    filtered = filtered.filter((s) => s.repo === "Official");
+    filtered = filtered.filter(isOfficial);
   } else if (repoFilter === "Plugin") {
-    filtered = filtered.filter((s) => s.repo === "Plugin");
+    filtered = filtered.filter(isPlugin);
   }
 
   const catSet = new Set<string>();
@@ -44,7 +56,7 @@ function getCategoryOptions(repoFilter: string): [string, string][] {
     options.push([`📁 ${capitalized}`, c]);
   });
 
-  if (options.length === 1) {
+  if (options.length === 1 && filtered.length === 0) {
     return [
       ["📂 Todas las Categorías", "ALL"],
       ["📁 Conectividad", "connectivity"],
@@ -60,13 +72,16 @@ function getCategoryOptions(repoFilter: string): [string, string][] {
 function getStepOptions(repoFilter: string, catFilter: string, searchTerm: string = ""): [string, string][] {
   let filtered = globalCatalog;
   if (repoFilter === "Official") {
-    filtered = filtered.filter((s) => s.repo === "Official");
+    filtered = filtered.filter(isOfficial);
   } else if (repoFilter === "Plugin") {
-    filtered = filtered.filter((s) => s.repo === "Plugin");
+    filtered = filtered.filter(isPlugin);
   }
 
   if (catFilter && catFilter !== "ALL") {
-    filtered = filtered.filter((s) => (s.category || "").toLowerCase() === catFilter.toLowerCase());
+    const withCat = filtered.filter((s) => (s.category || "").toLowerCase() === catFilter.toLowerCase());
+    if (withCat.length > 0) {
+      filtered = withCat;
+    }
   }
 
   if (searchTerm && searchTerm.trim()) {
@@ -93,7 +108,7 @@ function getStepOptions(repoFilter: string, catFilter: string, searchTerm: strin
 
   // Return up to 100 options for responsive UI
   return filtered.slice(0, 100).map((s) => {
-    const label = s.name || s.func_name;
+    const label = s.func_name || s.name;
     const cat = s.category ? ` [${s.category}]` : "";
     return [`📦 ${label}${cat}`, label];
   });
@@ -122,9 +137,17 @@ export function registerWPipeBlocklyBlocks() {
         .appendField("📦 Paso de Catálogo:")
         .appendField(configField, "CONFIG_ICON");
 
+      const repoDropdown = new Blockly.FieldDropdown(getRepoOptions, function (this: any, newVal: string) {
+        const block = this.getSourceBlock();
+        if (block) {
+          block.setFieldValue("ALL", "CAT_FILTER");
+        }
+        return newVal;
+      });
+
       this.appendDummyInput()
         .appendField("Origen:")
-        .appendField(new Blockly.FieldDropdown(getRepoOptions), "REPO_FILTER");
+        .appendField(repoDropdown, "REPO_FILTER");
 
       this.appendDummyInput()
         .appendField("Categoría:")
@@ -325,6 +348,33 @@ export function registerWPipeBlocklyBlocks() {
       this.setTooltip("Ejecuta los pasos en paralelo fusionando el contexto con la política seleccionada");
     },
   };
+
+  // 8. WHILE Loop Block (Events Amber)
+  Blockly.Blocks["wpipe_while"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("🔁 REPETIR MIENTRAS:")
+        .appendField(new Blockly.FieldTextInput("retry_count < 3"), "CONDITION")
+        .appendField("DO:");
+      this.appendStatementInput("DO").setCheck(null).appendField("PASOS A REPETIR:");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(28); // Scratch Events Amber
+      this.setTooltip("Ejecuta los pasos contenidos en bucle mientras la condición sea verdadera (While)");
+    },
+  };
+
+  // 9. BACKGROUND Task Block (Scratch Dark Indigo)
+  Blockly.Blocks["wpipe_background"] = {
+    init: function () {
+      this.appendDummyInput().appendField("⏳ SEGUNDO PLANO (Background)");
+      this.appendStatementInput("DO").setCheck(null).appendField("PASO ASÍNCRONO:");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(235); // Scratch Indigo / Dark Blue
+      this.setTooltip("Ejecuta el paso en un hilo secundario sin bloquear el flujo principal (Background)");
+    },
+  };
 }
 
 // Global reference store for workspace injection helper
@@ -372,7 +422,9 @@ export function addUserFileStepBlockToWorkspace(initialName: string = "custom_fi
   }
 }
 
-export function addControlBlockToWorkspace(type: "wpipe_if" | "wpipe_if_else" | "wpipe_for" | "wpipe_parallel") {
+export function addControlBlockToWorkspace(
+  type: "wpipe_if" | "wpipe_if_else" | "wpipe_for" | "wpipe_while" | "wpipe_parallel" | "wpipe_background"
+) {
   if (!activeWorkspaceRef) return;
   const block = activeWorkspaceRef.newBlock(type);
   block.initSvg();
@@ -440,6 +492,16 @@ export function getMermaidFromBlocklyWorkspace(): string {
         childRes.exitNodes.forEach((ex) => lines.push(`    ${ex} -.->|LOOP BACK| ${currentId}`));
       }
       branchExits = [currentId];
+    } else if (type === "wpipe_while") {
+      const cond = block.getFieldValue("CONDITION") || "retry_count < 3";
+      lines.push(`    ${currentId}{{"🔁 WHILE (${cond})"}}`);
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        const childRes = traverseBlock(doInput.connection.targetBlock()!);
+        lines.push(`    ${currentId} -->|LOOP| ${childRes.entryId}`);
+        childRes.exitNodes.forEach((ex) => lines.push(`    ${ex} -.->|LOOP BACK| ${currentId}`));
+      }
+      branchExits = [currentId];
     } else if (type === "wpipe_parallel") {
       const policy = block.getFieldValue("MERGE_POLICY") || "accumulate";
       lines.push(`    ${currentId}["⚡ RUN IN PARALLEL<br/><small>Merge: ${policy}</small>"]`);
@@ -447,6 +509,16 @@ export function getMermaidFromBlocklyWorkspace(): string {
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
         lines.push(`    ${currentId} -->|PARALLEL| ${childRes.entryId}`);
+        branchExits.push(...childRes.exitNodes);
+      } else {
+        branchExits.push(currentId);
+      }
+    } else if (type === "wpipe_background") {
+      lines.push(`    ${currentId}["⏳ BACKGROUND TASK"]:::bgStep`);
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        const childRes = traverseBlock(doInput.connection.targetBlock()!);
+        lines.push(`    ${currentId} -.->|ASYNC BG| ${childRes.entryId}`);
         branchExits.push(...childRes.exitNodes);
       } else {
         branchExits.push(currentId);
@@ -474,6 +546,7 @@ export function getMermaidFromBlocklyWorkspace(): string {
 
   lines.push("    classDef aiStep fill:#9333ea,stroke:#c084fc,stroke-width:2px,color:#fff;");
   lines.push("    classDef userStep fill:#0d9488,stroke:#2dd4bf,stroke-width:2px,color:#fff;");
+  lines.push("    classDef bgStep fill:#4338ca,stroke:#818cf8,stroke-width:2px,color:#fff;");
 
   return lines.join("\n");
 }
@@ -514,7 +587,7 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     const type = block.type;
     const xy = block.getRelativeToSurfaceXY();
     let label = "Step";
-    let nodeType: "step" | "condition" | "for" | "parallel" = "step";
+    let nodeType: "step" | "condition" | "for" | "while" | "parallel" | "background" = "step";
     let namespace: string | undefined = undefined;
     let funcName: string | undefined = undefined;
     let origin: StepOrigin = "catalog";
@@ -553,7 +626,7 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
       }
     } else if (type === "wpipe_if" || type === "wpipe_if_else") {
       nodeType = "condition";
-      label = "IF Condition";
+      label = type === "wpipe_if" ? "IF Condition" : "IF-ELSE Condition";
       conditionExpression = block.getFieldValue("CONDITION") || "status_code == 200";
       origin = "described";
     } else if (type === "wpipe_for") {
@@ -561,10 +634,19 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
       label = "FOR Loop";
       forIterations = Number(block.getFieldValue("ITERATIONS")) || 5;
       origin = "described";
+    } else if (type === "wpipe_while") {
+      nodeType = "while";
+      label = "WHILE Loop";
+      conditionExpression = block.getFieldValue("CONDITION") || "retry_count < 3";
+      origin = "described";
     } else if (type === "wpipe_parallel") {
       nodeType = "parallel";
       label = "PARALLEL";
       mergePolicy = (block.getFieldValue("MERGE_POLICY") as any) || "accumulate";
+      origin = "described";
+    } else if (type === "wpipe_background") {
+      nodeType = "background";
+      label = "BACKGROUND Task";
       origin = "described";
     }
 
@@ -596,8 +678,9 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     const doInput = block.getInput("DO");
     if (doInput && doInput.connection && doInput.connection.targetBlock()) {
       let childSlot: any = "if_body";
-      if (nodeType === "for") childSlot = "loop_body";
+      if (nodeType === "for" || nodeType === "while") childSlot = "loop_body";
       else if (nodeType === "parallel") childSlot = "parallel_body";
+      else if (nodeType === "background") childSlot = "background_body";
       const childRes = processBlock(doInput.connection.targetBlock()!, currentId, childSlot);
       edges.push({ id: `e_${currentId}_${childRes.entryId}`, source: currentId, target: childRes.entryId });
       branchExits.push(...childRes.exitNodes);

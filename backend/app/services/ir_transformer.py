@@ -42,6 +42,8 @@ def transform_canvas_to_semantic(canvas_ir: CanvasIR, pipeline_name: str = "main
             step_id=node.id,
             name=data.label,
             step_type=data.node_type,
+            trigger_type=data.trigger_type,
+            trigger_param=data.trigger_param,
             namespace=data.namespace,
             func_name=data.func_name,
             origin=data.origin,
@@ -296,7 +298,8 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
                 )
             return f"{pad}# Background (no step assigned)"
 
-    step_declarations = [render_step(s, indent=8) for s in semantic_ir.steps]
+    execution_steps = [s for s in semantic_ir.steps if s.step_type != "trigger"]
+    step_declarations = [render_step(s, indent=8) for s in execution_steps]
     steps_str = ",\n".join(step_declarations) if step_declarations else "        # No steps configured"
     imports_str = "\n".join(sorted(list(set(imports))))
 
@@ -318,7 +321,61 @@ if __name__ == "__main__":
     print("Pipeline execution completed successfully:", result)
 """
 
-    main_code = """from fastapi import FastAPI
+    trigger_step = next((s for s in semantic_ir.steps if s.step_type == "trigger"), None)
+    trigger_type = (trigger_step.trigger_type if trigger_step else "api") or "api"
+    trigger_param = (trigger_step.trigger_param if trigger_step else "/run") or "/run"
+
+    if trigger_type == "kafka":
+        topic_name = trigger_param if trigger_param and not trigger_param.startswith("/") else "pipeline_events"
+        main_code = f'''import asyncio
+from app.pipelines import build_pipeline
+
+
+async def consume_loop():
+    print("Starting Kafka consumer worker for topic: {topic_name}")
+    pipe = build_pipeline()
+    demo_payload = {{"event": "kafka_trigger_event", "topic": "{topic_name}"}}
+    result = pipe.run(demo_payload)
+    print("Processed message:", result)
+
+
+if __name__ == "__main__":
+    asyncio.run(consume_loop())
+'''
+    elif trigger_type == "redis":
+        queue_name = trigger_param if trigger_param and not trigger_param.startswith("/") else "pipeline_queue"
+        main_code = f'''from app.pipelines import build_pipeline
+
+
+def run_worker():
+    print("Starting Redis queue worker for: {queue_name}")
+    pipe = build_pipeline()
+    demo_payload = {{"source": "redis_queue", "queue": "{queue_name}"}}
+    result = pipe.run(demo_payload)
+    print("Processed job from Redis:", result)
+
+
+if __name__ == "__main__":
+    run_worker()
+'''
+    elif trigger_type == "cron":
+        cron_expr = trigger_param or "*/5 * * * *"
+        main_code = f'''from app.pipelines import build_pipeline
+
+
+def scheduled_run():
+    print("Executing scheduled WPipe pipeline ({cron_expr})...")
+    pipe = build_pipeline()
+    result = pipe.run({{"trigger": "cron", "schedule": "{cron_expr}"}})
+    print("Scheduled execution completed:", result)
+
+
+if __name__ == "__main__":
+    scheduled_run()
+'''
+    else:
+        endpoint_path = trigger_param if trigger_param.startswith("/") else f"/{trigger_param}"
+        main_code = f'''from fastapi import FastAPI
 from app.pipelines import build_pipeline
 
 app = FastAPI(title="WPipe Microservice", version="1.0.0")
@@ -326,15 +383,15 @@ app = FastAPI(title="WPipe Microservice", version="1.0.0")
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {{"status": "ok"}}
 
 
-@app.post("/run")
+@app.post("{endpoint_path}")
 def run_pipeline(payload: dict | None = None):
     pipe = build_pipeline()
-    result = pipe.run(payload or {})
-    return {"status": "success", "result": result}
-"""
+    result = pipe.run(payload or {{}})
+    return {{"status": "success", "result": result}}
+'''
 
     dockerfile = """FROM python:3.11-slim
 WORKDIR /app

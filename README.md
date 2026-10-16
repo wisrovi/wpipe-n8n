@@ -61,6 +61,8 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - ⏳ **Segundo Plano (Background)**: Bloque de ejecución asíncrona no bloqueante en hilo secundario (`Background(step=...)`).
 4. **Área Central de Bloques (Blockly Canvas)**:
    - Espacio de trabajo infinito con permanencia en DOM (no se destruye al alternar pestañas).
+   - **Colapsado individual directo en cada bloque (`[-]` / `[+]`)**: cada bloque del lienzo dispone de un botón visible e interactivo en su cabecera para colapsarse sobre sí mismo en una fila compacta informativa, además de soportar doble-clic en el bloque para alternar su estado.
+   - **Inserción y auto-conexión inteligente**: al hacer clic sobre cualquier bloque en la paleta lateral, el bloque se posiciona de forma visible en el área de trabajo o se conecta automáticamente al final de la cadena de ejecución o al bloque seleccionado.
    - Barra de herramientas flotante sobre el lienzo con botones rápidos: Centrar, Colapsar todo, Expandir todo, Deshacer, Limpiar y Guía FAQ.
 5. **Pestaña Dedicada de Simulación & Depuración (Simulation Stage)**:
    - Laboratorio de pruebas a pantalla completa (100% del ancho para máxima legibilidad).

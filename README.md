@@ -26,12 +26,31 @@ Si algo falla, no hay ZIP.
 
 - **FastAPI**: Framework web asíncrono de alto rendimiento para la API backend (`/api/v1`).
 - **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`).
-- **React 19 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines.
+- **React 18 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines y etapa de simulación.
+- **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0.
+- **Lucide React (`lucide-react`)**: Iconografía para la barra superior, categorías y controles de ejecución.
+- **Mermaid & @xyflow/react**: Visualización de grafos dirigidos (DAG) y arquitectura de pipelines.
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
-- **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con Glassmorphic Dark UI.
-- **Google Fonts (Outfit & Plus Jakarta Sans)**: Sistema tipográfico premium para encabezados y cuerpo de texto.
-- **Pytest**: Suite de pruebas automatizadas con cobertura de código.
+- **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
+- **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>90%).
 - **Docker**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
+
+---
+
+## Interfaz Visual y Modo Simulación (Estilo Scratux 3.0)
+
+La interfaz de `wpipe-studio` replica fielmente la distribución de elementos de Scratch 3.0 / Scratux:
+
+1. **Barra Superior (Top Menu Bar)**: Marca, selector de vistas (Bloques, Código Python, DAG Visual), menús de Archivo/Edición, título editable del pipeline, botones de exportación JSON/ZIP y ejecución de verificación.
+2. **Franja Vertical de Categorías (60px Category Strip)**: Puntos circulares de color para cada categoría de steps (`Steps`, `Vision`, `NLP`, `Logic`, `Control`, `Database`, `MCP`, `Output`) y botón inferior `[+]` de Librería de Extensiones para buscar e integrar cualquiera de los 196 steps del catálogo.
+3. **Cajón de Bloques (240px Block Flyout)**: Lista deslizable con buscador integrado para arrastrar bloques hacia el canvas central.
+4. **Área Central de Bloques (Blockly Canvas)**: Espacio de trabajo infinito con zoom, centrado, papelera y sincronización bidireccional inmediata con el IR intermedio.
+5. **Etapa de Simulación (Simulation Stage)**:
+   - Controles de ejecución: **Bandera Verde** (🏁 Run) y **Octágono Rojo** (🛑 Stop).
+   - Secuencia de ejecución en tiempo real con resaltado visual animado del bloque activo en el canvas.
+   - Simulador de Payload de entrada (JSON editable).
+   - Inspector de Contexto en vivo: tabla comparativa de variables `read` y `write` con diff visual de estados.
+   - Consola de logs de ejecución y medidores de tiempo.
 
 ---
 
@@ -43,7 +62,12 @@ cd backend
 python3 -m pytest -q
 ```
 
-### 2. Ejecución dentro del contenedor Docker
+### 2. Cálculo de cobertura de código
+```bash
+./run_coverage.sh
+```
+
+### 3. Ejecución dentro del contenedor Docker
 ```bash
 ./run_tests_docker.sh
 ```
@@ -54,8 +78,8 @@ python3 -m pytest -q
 
 | | |
 |---|---|
-| **Fase** | Sprint 0 completado — Cimientos, IR Pydantic/Zod, Catalog Service y Canvas UI. |
-| **Ecosistema** | Vive en `wpipe_os/` junto a `wpipe` 2.5.8, `wpipe-steps` (**196 steps**), `wpipe-plugins`, `wpipe-mcp` 0.4.1 (11 tools MCP), `wpipe-api`. |
+| **Fase** | Sprint 0 completado — Cimientos, IR Pydantic/Zod, Catalog Service, Scratux 3.0 Canvas UI, Codegen de bloques de control (`Condition`, `For`, `Parallel`), DTOs Dialecto A y Modo Simulación. |
+| **Ecosistema** | Vive en `wpipe_os/` junto a `wpipe` 2.5.10, `wpipe-steps` (**196 steps**), `wpipe-plugins`, `wpipe-mcp` 0.4.1 (11 tools MCP), `wpipe-api`. |
 | **Catálogo** | `steps_catalog.json` es el **manifiesto de release**: fuente de verdad. No se copia; se consulta por GET con cache por hash (`sha256`). |
 
 ---

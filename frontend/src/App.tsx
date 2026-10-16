@@ -157,6 +157,28 @@ export default function App() {
   const [targetUserFileBlock, setTargetUserFileBlock] = useState<any | null>(null);
   const userFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Block Palette Hover Tooltip State
+  const [hoveredPaletteBlock, setHoveredPaletteBlock] = useState<any | null>(null);
+  const [paletteTooltipPos, setPaletteTooltipPos] = useState<{ top: number; left: number } | null>(null);
+  const hoverTimerRef = useRef<any>(null);
+
+  const handleBlockMouseEnter = (block: any, e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredPaletteBlock(block);
+      setPaletteTooltipPos({
+        top: Math.max(70, Math.min(window.innerHeight - 360, rect.top - 20)),
+        left: rect.right + 12,
+      });
+    }, 280);
+  };
+
+  const handleBlockMouseLeave = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    setHoveredPaletteBlock(null);
+  };
+
   // Catalog Data
   const [catalog, setCatalog] = useState<CatalogStep[]>([]);
   const [userStates, setUserStates] = useState<CatalogStep[]>([]);
@@ -847,37 +869,56 @@ export default function App() {
                     </div>
                     <span className="font-extrabold text-xs text-gray-200">Paleta de Bloques</span>
                   </div>
-                  <span className="text-[10px] text-gray-500 font-mono">6 Bloques</span>
+                  <span className="text-[10px] text-gray-500 font-mono">9 Bloques</span>
                 </div>
 
                 {/* Blocks List */}
                 <div className="flex-1 overflow-y-auto p-3 space-y-4">
                   {/* Section 1: Pasos & Estados */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                      <span>Pasos & Estados</span>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 shadow-sm shadow-blue-500/50"></span>
+                        <span>Pasos & Estados</span>
+                      </div>
+                      <span className="text-[9px] font-mono text-gray-500">3 tipos</span>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {/* 1. Paso de Catálogo */}
                       <div
                         onClick={() => {
                           addStepBlockToWorkspace();
                           setStatusMessage("Añadido 'Paso de Catálogo' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-blue-950/40 to-blue-900/20 border border-blue-500/40 hover:border-blue-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Paso de Catálogo",
+                              icon: "📦",
+                              badge: "Oficial & Plugins",
+                              description:
+                                "Inserta un paso ejecutable verificado del catálogo (196 pasos oficiales de wpipe-steps y plugins comunitarios como ecam_yolo). Incluye selectores interactivos directos de origen (Official/Plugin), categoría, búsqueda y selector de estado.",
+                              params: "Origen (Official/Plugin), Categoría, Filtro de texto, Estado, Namespace",
+                              pythonSnippet: 'pipe.set_steps([\n    HttpRequest(url="https://api.site.com/v1"),\n    WafFilterStep()\n])',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-blue-300">
-                            <span className="w-5 h-5 rounded-md bg-blue-500 flex items-center justify-center text-white text-[11px]">📦</span>
-                            <span>Paso de Catálogo</span>
-                          </span>
-                          <span className="text-[10px] text-blue-400 group-hover:text-blue-300 font-mono font-bold">+ Añadir</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-blue-600 border-t border-l border-r border-blue-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border border-blue-400/80 shadow-md shadow-blue-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">📦</span>
+                            <span className="text-xs font-bold tracking-tight">Paso de Catálogo</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          196 pasos oficiales y plugins. Filtra por repo, categoría y selecciona el step en el mismo bloque.
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
 
                       {/* 2. Paso con IA */}
@@ -886,18 +927,34 @@ export default function App() {
                           addAiStepBlockToWorkspace();
                           setStatusMessage("Añadido 'Paso con IA' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-purple-950/40 to-purple-900/20 border border-purple-500/40 hover:border-purple-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Paso con IA (Dialecto A)",
+                              icon: "✨",
+                              badge: "Generador IA",
+                              description:
+                                "Genera un estado personalizado mediante IA a partir de tu prompt descriptivo en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A (@step + Context DTO en app/dto/ y app/states/).",
+                              params: "Nombre del estado, Prompt descriptivo, Campos de lectura/escritura",
+                              pythonSnippet: '@step(name="ai_state")\n@to_obj(AiContext)\ndef ai_state_step(context: AiContext) -> dict:\n    ...',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-purple-300">
-                            <span className="w-5 h-5 rounded-md bg-purple-600 flex items-center justify-center text-white text-[11px]">✨</span>
-                            <span>Paso con IA</span>
-                          </span>
-                          <span className="text-[10px] text-purple-400 group-hover:text-purple-300 font-mono font-bold">+ Añadir</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-purple-600 border-t border-l border-r border-purple-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border border-purple-400/80 shadow-md shadow-purple-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">✨</span>
+                            <span className="text-xs font-bold tracking-tight">Paso con IA</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Describe en texto lo que debe hacer y la IA generará el código Dialecto A y Context DTO.
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
 
                       {/* 3. Paso Personalizado (.py) */}
@@ -906,88 +963,263 @@ export default function App() {
                           addUserFileStepBlockToWorkspace();
                           setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-teal-950/40 to-teal-900/20 border border-teal-500/40 hover:border-teal-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Paso Personalizado (.py)",
+                              icon: "📄",
+                              badge: "Archivo Local",
+                              description:
+                                "Adjunta tu propio archivo Python (.py) local para integrarlo directamente en app/states/ al empaquetar el microservicio generado, preservando tu lógica original.",
+                              params: "Archivo Python (.py) adjunto, nombre de la función exportada",
+                              pythonSnippet: 'from app.states.custom_code import custom_step\n\npipe.set_steps([custom_step])',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-teal-300">
-                            <span className="w-5 h-5 rounded-md bg-teal-600 flex items-center justify-center text-white text-[11px]">📄</span>
-                            <span>Paso Personalizado</span>
-                          </span>
-                          <span className="text-[10px] text-teal-400 group-hover:text-teal-300 font-mono font-bold">+ Adjuntar</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-teal-600 border-t border-l border-r border-teal-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 border border-teal-400/80 shadow-md shadow-teal-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">📄</span>
+                            <span className="text-xs font-bold tracking-tight">Paso Personalizado</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Adjunta tu archivo Python (.py) para usarlo directamente al construir el microservicio.
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
                     </div>
                   </div>
 
                   {/* Section 2: Control de Flujo */}
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                      <span>Control de Flujo</span>
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50"></span>
+                        <span>Control de Flujo</span>
+                      </div>
+                      <span className="text-[9px] font-mono text-gray-500">6 tipos</span>
                     </div>
 
-                    <div className="space-y-2">
-                      {/* 4. Condición Si / Sino */}
+                    <div className="space-y-2.5">
+                      {/* 4. Condición Si (sin else) */}
+                      <div
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_if");
+                          setStatusMessage("Añadida 'Condición Si (sin else)' al canvas");
+                        }}
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Condición Si (Simple)",
+                              icon: "🔀",
+                              badge: "Bifurcación Simple",
+                              description:
+                                "Evalúa una condición booleana sobre las variables del contexto. Si es True, ejecuta la rama contenida. Omite la rama falsa, permitiendo pipelines limpios y directos.",
+                              params: "Expresión condicional de evaluación (ej. status_code == 200)",
+                              pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_step]\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-amber-500 border-t border-l border-r border-amber-300/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border border-amber-300/80 shadow-md shadow-amber-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">🔀</span>
+                            <span className="text-xs font-bold tracking-tight">Condición (Si)</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
+                        </div>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
+                      </div>
+
+                      {/* 5. Condición Si / Sino (Dual) */}
                       <div
                         onClick={() => {
                           addControlBlockToWorkspace("wpipe_if_else");
                           setStatusMessage("Añadida 'Condición Si / Sino' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/40 to-amber-900/20 border border-amber-500/40 hover:border-amber-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Condición Si / Sino (Dual)",
+                              icon: "🔀",
+                              badge: "Bifurcación Dual",
+                              description:
+                                "Bifurcación lógica completa: ejecuta la rama VERDADERA si la condición evalúa a True, o la rama FALSA si evalúa a False.",
+                              params: "Expresión booleana, pasos rama verdadera, pasos rama falsa",
+                              pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[handle_success],\n    branch_false=[handle_error]\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-amber-300">
-                            <span className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center text-white text-[11px]">🔀</span>
-                            <span>Condición (Si / Sino)</span>
-                          </span>
-                          <span className="text-[10px] text-amber-400 group-hover:text-amber-300 font-mono font-bold">+ Añadir</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-amber-600 border-t border-l border-r border-amber-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border border-amber-400/80 shadow-md shadow-amber-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">🔀</span>
+                            <span className="text-xs font-bold tracking-tight">Condición (Si / Sino)</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Bifurcación lógica con ramas THEN y ELSE anidadas (Condition).
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
 
-                      {/* 5. Bucle Repetir */}
+                      {/* 6. Bucle Mientras (While) */}
+                      <div
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_while");
+                          setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas");
+                        }}
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Bucle Mientras (While)",
+                              icon: "🔁",
+                              badge: "Bucle Condicional",
+                              description:
+                                "Ejecuta los pasos en bucle mientras la expresión de validación continúe evaluando a verdadero (True). Mapea directamente al bucle For(validation_expression=...) nativo de WPipe.",
+                              params: "Expresión de validación condicional (ej. retry_count < 3), pasos a repetir",
+                              pythonSnippet: 'For(\n    validation_expression="retry_count < 3",\n    steps=[fetch_data_retry]\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-orange-600 border-t border-l border-r border-orange-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 border border-orange-400/80 shadow-md shadow-orange-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">🔁</span>
+                            <span className="text-xs font-bold tracking-tight">Bucle Mientras (While)</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
+                        </div>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
+                      </div>
+
+                      {/* 7. Bucle Repetir (For) */}
                       <div
                         onClick={() => {
                           addControlBlockToWorkspace("wpipe_for");
                           setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-orange-950/40 to-orange-900/20 border border-orange-500/40 hover:border-orange-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Bucle Repetir (For)",
+                              icon: "🔁",
+                              badge: "Bucle Contador",
+                              description:
+                                "Ejecuta los pasos contenidos un número fijo y determinado de iteraciones de forma secuencial y determinista en WPipe.",
+                              params: "Número de iteraciones (ej. 5), pasos a repetir",
+                              pythonSnippet: 'For(\n    iterations=5,\n    steps=[process_batch_step]\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-orange-300">
-                            <span className="w-5 h-5 rounded-md bg-orange-600 flex items-center justify-center text-white text-[11px]">🔁</span>
-                            <span>Bucle Repetir (For)</span>
-                          </span>
-                          <span className="text-[10px] text-orange-400 group-hover:text-orange-300 font-mono font-bold">+ Añadir</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-orange-500 border-t border-l border-r border-orange-300/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 border border-orange-300/80 shadow-md shadow-orange-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">🔁</span>
+                            <span className="text-xs font-bold tracking-tight">Bucle Repetir (For)</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Ejecuta los pasos contenidos N veces de manera determinista (For).
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
 
-                      {/* 6. Ejecución Paralela */}
+                      {/* 8. Ejecución Paralela */}
                       <div
                         onClick={() => {
                           addControlBlockToWorkspace("wpipe_parallel");
                           setStatusMessage("Añadida 'Ejecución Paralela' al canvas");
                         }}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-emerald-900/20 border border-emerald-500/40 hover:border-emerald-400 text-white cursor-pointer hover:scale-[1.02] shadow-sm transition group"
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Ejecución Paralela",
+                              icon: "⚡",
+                              badge: "Concurrencia",
+                              description:
+                                "Ejecuta múltiples pasos de forma simultánea o en ramas paralelas, fusionando los resultados concurrentes en el contexto global según la política elegida (accumulate o last_wins).",
+                              params: "Pasos paralelos, Política de fusión (accumulate o last_wins)",
+                              pythonSnippet: 'Parallel(\n    steps=[step_fetch_user, step_fetch_orders],\n    merge_policy="accumulate"\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-300">
-                            <span className="w-5 h-5 rounded-md bg-emerald-600 flex items-center justify-center text-white text-[11px]">⚡</span>
-                            <span>Ejecución Paralela</span>
-                          </span>
-                          <span className="text-[10px] text-emerald-400 group-hover:text-emerald-300 font-mono font-bold">+ Añadir</span>
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-emerald-600 border-t border-l border-r border-emerald-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 border border-emerald-400/80 shadow-md shadow-emerald-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">⚡</span>
+                            <span className="text-xs font-bold tracking-tight">Ejecución Paralela</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
                         </div>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Ejecución concurrente con política de fusión accumulate o last_wins (Parallel).
-                        </p>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
+                      </div>
+
+                      {/* 9. Tarea en Segundo Plano (Background) */}
+                      <div
+                        onClick={() => {
+                          addControlBlockToWorkspace("wpipe_background");
+                          setStatusMessage("Añadida 'Tarea en Segundo Plano (Background)' al canvas");
+                        }}
+                        onMouseEnter={(e) =>
+                          handleBlockMouseEnter(
+                            {
+                              name: "Segundo Plano (Background)",
+                              icon: "⏳",
+                              badge: "No Bloqueante",
+                              description:
+                                "Lanza un paso en un hilo asíncrono secundario sin esperar su finalización ni bloquear el avance del flujo principal del pipeline (ideal para logs, auditoría o notificaciones).",
+                              params: "Paso asíncrono a ejecutar en background",
+                              pythonSnippet: 'Background(\n    step=audit_logging_step\n)',
+                            },
+                            e
+                          )
+                        }
+                        onMouseLeave={handleBlockMouseLeave}
+                        className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        <div className="w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 bg-indigo-600 border-t border-l border-r border-indigo-400/80 shadow-sm" />
+                        <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 border border-indigo-400/80 shadow-md shadow-indigo-950/50 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">⏳</span>
+                            <span className="text-xs font-bold tracking-tight">Segundo Plano</span>
+                          </div>
+                          <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition">
+                            +
+                          </div>
+                        </div>
+                        <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
                       </div>
                     </div>
                   </div>
@@ -1727,6 +1959,55 @@ export default function App() {
                 Guardar y Aplicar al Bloque
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. PALETTE HOVER TOOLTIP POPOVER */}
+      {hoveredPaletteBlock && paletteTooltipPos && (
+        <div
+          style={{ top: paletteTooltipPos.top, left: paletteTooltipPos.left }}
+          className="fixed z-50 w-80 p-4 rounded-2xl bg-[#090d16]/95 border border-gray-700/80 shadow-2xl backdrop-blur-md pointer-events-none animate-in fade-in zoom-in-95 duration-150 ring-1 ring-white/10"
+        >
+          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-800">
+            <div className="flex items-center gap-2">
+              <span className="text-lg drop-shadow">{hoveredPaletteBlock.icon}</span>
+              <span className="font-extrabold text-xs text-white tracking-wide">
+                {hoveredPaletteBlock.name}
+              </span>
+            </div>
+            <span className="text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-gray-800 text-sky-400 border border-gray-700">
+              {hoveredPaletteBlock.badge}
+            </span>
+          </div>
+
+          <p className="text-[11px] text-gray-300 leading-relaxed mb-3">
+            {hoveredPaletteBlock.description}
+          </p>
+
+          <div className="space-y-2">
+            <div>
+              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                ⚙️ Configuración / Parámetros:
+              </div>
+              <div className="text-[10px] text-gray-200 font-mono bg-gray-900/90 px-2.5 py-1.5 rounded-lg border border-gray-800">
+                {hoveredPaletteBlock.params}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                🐍 Equivalente en Python (WPipe):
+              </div>
+              <pre className="text-[10px] text-sky-300 font-mono bg-black/70 p-2.5 rounded-lg border border-gray-800 overflow-x-auto whitespace-pre-wrap leading-tight">
+                {hoveredPaletteBlock.pythonSnippet}
+              </pre>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-gray-800/80 flex items-center justify-between text-[10px] text-sky-400 font-semibold">
+            <span>👆 Haz clic para añadir al Canvas</span>
+            <span className="text-gray-500 font-mono">WPipe Studio</span>
           </div>
         </div>
       )}

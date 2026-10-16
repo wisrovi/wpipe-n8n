@@ -75,3 +75,66 @@ def test_generate_microservice_zip_endpoint():
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     assert len(response.content) > 0
+
+
+def test_transform_while_and_background_endpoint():
+    while_bg_ir = {
+        "nodes": [
+            {
+                "id": "node_while",
+                "type": "default",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "label": "While Loop",
+                    "node_type": "while",
+                    "condition_expression": "retry_count < 3",
+                }
+            },
+            {
+                "id": "node_child_1",
+                "type": "default",
+                "position": {"x": 0, "y": 50},
+                "data": {
+                    "label": "FetchRetry",
+                    "node_type": "step",
+                    "namespace": "wpipe_steps.connectivity.http_request",
+                    "func_name": "HttpRequest",
+                    "parent_id": "node_while",
+                    "slot_type": "loop_body"
+                }
+            },
+            {
+                "id": "node_bg",
+                "type": "default",
+                "position": {"x": 0, "y": 100},
+                "data": {
+                    "label": "Background Task",
+                    "node_type": "background"
+                }
+            },
+            {
+                "id": "node_child_2",
+                "type": "default",
+                "position": {"x": 0, "y": 150},
+                "data": {
+                    "label": "LogStep",
+                    "node_type": "step",
+                    "namespace": "wpipe_steps.security.waf",
+                    "func_name": "WafFilterStep",
+                    "parent_id": "node_bg",
+                    "slot_type": "background_body"
+                }
+            }
+        ],
+        "edges": [],
+        "viewport": {"x": 0, "y": 0, "zoom": 1}
+    }
+    response = client.post("/api/v1/pipeline/transform", json=while_bg_ir)
+    assert response.status_code == 200
+    res = response.json()
+    pipe_file = next(f for f in res["files"] if f["path"] == "app/pipelines.py")
+    assert "Background" in pipe_file["content"]
+    assert "For" in pipe_file["content"]
+    assert 'validation_expression="retry_count < 3"' in pipe_file["content"]
+    assert "Background(" in pipe_file["content"]
+

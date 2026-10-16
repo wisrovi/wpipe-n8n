@@ -79,10 +79,16 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Barra interactiva de migas de pan (breadcrumbs) con segmentos clicables (`wpipe_microservice / app / dto / step_dto.py`).
      - Banner de commit estilo GitHub con autor, mensaje de commit, hash y badge de verificación.
      - Vista de tabla de directorio con iconos tipados (🐍 Python, 🐳 Docker, ⚙️ Config/TOML, 📝 Markdown, 💻 Shell script), commit message por archivo, tamaños y enlace `..` para subir de carpeta.
-     - Visor de archivos (Blob viewer) con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
+     - Visor de archivos (Blob viewer) interactivo con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
+     - **Edición en Navegador**: Botón para editar cualquier archivo generado directamente en el navegador con un editor de código oscuro y botón de `Guardar Cambios (💾)` que actualiza el microservicio en memoria.
+     - **Selector Rápido de Imagen Base Docker**: Barra interactiva sobre `Dockerfile` para alternar entre presets (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) o ingresar tags personalizados con reemplazo reactivo de la directiva `FROM`.
+     - **Generación Automática de `docker-compose.yml` y `__init__.py`**: Incluye orquestación Docker con healthcheck HTTP y archivos `__init__.py` estructurados con versiones y exports.
+     - **Descarga de Paquete (.zip)**: Endpoint `/api/v1/pipeline/generate-from-files` que preserva las ediciones manuales del usuario en el archivo ZIP descargado.
      - Previsualización incrustada de `README.md` bajo la tabla de directorio.
      - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
      - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
+7. **Lienzo Inicial Hello World con los 10 Bloques**:
+   - Al cargar o recargar el lienzo, se precarga automáticamente un flujo simple "Hello World" que demuestra la integración de los 10 bloques (Trigger Ingress, Step HttpRequest, AI Step, User File Step, IF, Parallel con MySQLQuery, IF-ELSE con For, Background con RedisGet, y While con NmapScanStep).
 
 ---
 

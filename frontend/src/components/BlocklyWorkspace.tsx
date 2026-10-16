@@ -1129,7 +1129,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;
 
-      // Starter template stack with Trigger entrypoint
+      // Starter template stack with Trigger entrypoint and all 10 blocks (Hello World pipeline)
       const triggerBlock = ws.newBlock("wpipe_trigger");
       triggerBlock.setFieldValue("api", "TRIGGER_TYPE");
       triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
@@ -1138,36 +1138,134 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       attachBlockCollapseBehavior(triggerBlock);
       triggerBlock.moveBy(80, 50);
 
+      // 1. Paso de Catálogo (HttpRequest)
       const block1 = ws.newBlock("wpipe_step");
       block1.setFieldValue("HttpRequest", "STEP_NAME");
       block1.setFieldValue("wpipe_steps.connectivity", "NAMESPACE");
       block1.initSvg();
       block1.render();
       attachBlockCollapseBehavior(block1);
-
       if (triggerBlock.nextConnection && block1.previousConnection) {
         triggerBlock.nextConnection.connect(block1.previousConnection);
       }
 
-      const block2 = ws.newBlock("wpipe_if_else");
-      block2.initSvg();
-      block2.render();
-      attachBlockCollapseBehavior(block2);
-
-      if (block1.nextConnection && block2.previousConnection) {
-        block1.nextConnection.connect(block2.previousConnection);
+      // 2. Paso con IA (ai_sentiment_step)
+      const blockAi = ws.newBlock("wpipe_ai_step");
+      blockAi.setFieldValue("ai_sentiment_step", "STEP_NAME");
+      blockAi.setFieldValue("Clasificar sentimiento del texto de entrada", "AI_PROMPT");
+      blockAi.initSvg();
+      blockAi.render();
+      attachBlockCollapseBehavior(blockAi);
+      if (block1.nextConnection && blockAi.previousConnection) {
+        block1.nextConnection.connect(blockAi.previousConnection);
       }
 
-      const block3 = ws.newBlock("wpipe_step");
-      block3.setFieldValue("ImageECamYOLO", "STEP_NAME");
-      block3.setFieldValue("wpipe_plugins.vision", "NAMESPACE");
-      block3.initSvg();
-      block3.render();
-      attachBlockCollapseBehavior(block3);
+      // 3. Paso Personalizado (.py) (custom_cleaner_step)
+      const blockUser = ws.newBlock("wpipe_user_file_step");
+      blockUser.setFieldValue("custom_cleaner_step", "STEP_NAME");
+      blockUser.setFieldValue("cleaner_state.py", "FILE_NAME");
+      blockUser.initSvg();
+      blockUser.render();
+      attachBlockCollapseBehavior(blockUser);
+      if (blockAi.nextConnection && blockUser.previousConnection) {
+        blockAi.nextConnection.connect(blockUser.previousConnection);
+      }
 
-      const doInput = block2.getInput("DO");
-      if (doInput && doInput.connection && block3.previousConnection) {
-        doInput.connection.connect(block3.previousConnection);
+      // 4. Condición Si simple (wpipe_if)
+      const blockIf = ws.newBlock("wpipe_if");
+      blockIf.setFieldValue("is_valid == True", "CONDITION");
+      blockIf.initSvg();
+      blockIf.render();
+      attachBlockCollapseBehavior(blockIf);
+      if (blockUser.nextConnection && blockIf.previousConnection) {
+        blockUser.nextConnection.connect(blockIf.previousConnection);
+      }
+
+      // 5. Ejecución Paralela (wpipe_parallel) dentro de la condición Si
+      const blockParallel = ws.newBlock("wpipe_parallel");
+      blockParallel.setFieldValue("accumulate", "MERGE_POLICY");
+      blockParallel.initSvg();
+      blockParallel.render();
+      attachBlockCollapseBehavior(blockParallel);
+      const ifDo = blockIf.getInput("DO");
+      if (ifDo && ifDo.connection && blockParallel.previousConnection) {
+        ifDo.connection.connect(blockParallel.previousConnection);
+      }
+
+      // 6. Paso dentro del bloque paralelo (MySQLQuery)
+      const blockDb = ws.newBlock("wpipe_step");
+      blockDb.setFieldValue("MySQLQuery", "STEP_NAME");
+      blockDb.setFieldValue("wpipe_steps.storage", "NAMESPACE");
+      blockDb.initSvg();
+      blockDb.render();
+      attachBlockCollapseBehavior(blockDb);
+      const parDo = blockParallel.getInput("DO");
+      if (parDo && parDo.connection && blockDb.previousConnection) {
+        parDo.connection.connect(blockDb.previousConnection);
+      }
+
+      // 7. Condición Si / Sino dual (wpipe_if_else)
+      const blockIfElse = ws.newBlock("wpipe_if_else");
+      blockIfElse.setFieldValue("status_code == 200", "CONDITION");
+      blockIfElse.initSvg();
+      blockIfElse.render();
+      attachBlockCollapseBehavior(blockIfElse);
+      if (blockIf.nextConnection && blockIfElse.previousConnection) {
+        blockIf.nextConnection.connect(blockIfElse.previousConnection);
+      }
+
+      // 8. Bucle Repetir (wpipe_for) en la rama verdadera
+      const blockFor = ws.newBlock("wpipe_for");
+      blockFor.setFieldValue("3", "ITERATIONS");
+      blockFor.initSvg();
+      blockFor.render();
+      attachBlockCollapseBehavior(blockFor);
+      const ifElseDo = blockIfElse.getInput("DO");
+      if (ifElseDo && ifElseDo.connection && blockFor.previousConnection) {
+        ifElseDo.connection.connect(blockFor.previousConnection);
+      }
+
+      // 9. Tarea en Segundo Plano (wpipe_background) dentro del bucle For
+      const blockBg = ws.newBlock("wpipe_background");
+      blockBg.initSvg();
+      blockBg.render();
+      attachBlockCollapseBehavior(blockBg);
+      const forDo = blockFor.getInput("DO");
+      if (forDo && forDo.connection && blockBg.previousConnection) {
+        forDo.connection.connect(blockBg.previousConnection);
+      }
+
+      const blockBgTask = ws.newBlock("wpipe_step");
+      blockBgTask.setFieldValue("RedisGet", "STEP_NAME");
+      blockBgTask.setFieldValue("wpipe_steps.storage", "NAMESPACE");
+      blockBgTask.initSvg();
+      blockBgTask.render();
+      attachBlockCollapseBehavior(blockBgTask);
+      const bgDo = blockBg.getInput("DO");
+      if (bgDo && bgDo.connection && blockBgTask.previousConnection) {
+        bgDo.connection.connect(blockBgTask.previousConnection);
+      }
+
+      // 10. Bucle Mientras (wpipe_while) en la rama falsa de If-Else
+      const blockWhile = ws.newBlock("wpipe_while");
+      blockWhile.setFieldValue("retry_count < 3", "CONDITION");
+      blockWhile.initSvg();
+      blockWhile.render();
+      attachBlockCollapseBehavior(blockWhile);
+      const ifElseElse = blockIfElse.getInput("ELSE");
+      if (ifElseElse && ifElseElse.connection && blockWhile.previousConnection) {
+        ifElseElse.connection.connect(blockWhile.previousConnection);
+      }
+
+      const blockRetryStep = ws.newBlock("wpipe_step");
+      blockRetryStep.setFieldValue("NmapScanStep", "STEP_NAME");
+      blockRetryStep.setFieldValue("wpipe_steps.network", "NAMESPACE");
+      blockRetryStep.initSvg();
+      blockRetryStep.render();
+      attachBlockCollapseBehavior(blockRetryStep);
+      const whileDo = blockWhile.getInput("DO");
+      if (whileDo && whileDo.connection && blockRetryStep.previousConnection) {
+        whileDo.connection.connect(blockRetryStep.previousConnection);
       }
 
       ws.addChangeListener((e) => {

@@ -1,6 +1,7 @@
 """Schemas for User Authentication, Multi-tenant Workspaces, and Projects."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -10,7 +11,7 @@ class UserProfile(BaseModel):
     name: str
     role: str
     avatar: str
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class UserRegisterRequest(BaseModel):

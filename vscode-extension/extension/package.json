@@ -1,0 +1,105 @@
+{
+  "name": "wpipe-studio-vscode",
+  "displayName": "WPipe Studio — Visual Pipeline Canvas & Compiler",
+  "description": "Visual block-based pipeline designer and microservice generator for WPipe inside VS Code.",
+  "version": "1.0.0",
+  "publisher": "wisrovi",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other",
+    "Linters"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCustomEditor:wpipe.canvasEditor",
+    "onCommand:wpipe.openCanvas",
+    "onCommand:wpipe.newPipeline",
+    "onCommand:wpipe.activateLicense"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "wpipe.openCanvas",
+        "title": "WPipe: Abrir Lienzo de Bloques",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.newPipeline",
+        "title": "WPipe: Crear Nuevo Pipeline Visual",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.activateLicense",
+        "title": "WPipe: Activar Clave de Licencia Pro",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.checkLicenseStatus",
+        "title": "WPipe: Ver Estado de Licencia",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.compileCurrentPipeline",
+        "title": "WPipe: Compilar Pipeline a Python",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.startDaemon",
+        "title": "WPipe: Iniciar Motor Nativo (wpipe-engine)",
+        "category": "WPipe"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "wpipe.canvasEditor",
+        "displayName": "WPipe Pipeline Canvas",
+        "selector": [
+          {
+            "filenamePattern": "*.wpipe"
+          },
+          {
+            "filenamePattern": "*.wpipe.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "WPipe Studio",
+      "properties": {
+        "wpipe.daemonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Ruta absoluta al binario ejecutable wpipe-engine (dejar vacío para auto-detectar)."
+        },
+        "wpipe.daemonTransport": {
+          "type": "string",
+          "enum": ["auto", "socket", "http"],
+          "default": "auto",
+          "description": "Protocolo de transporte IPC para hablar con el daemon local."
+        },
+        "wpipe.apiEndpoint": {
+          "type": "string",
+          "default": "https://api.wisrovi.dev",
+          "description": "Servidor de autoridad de licencias Cloudflare."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "author": "William Rodriguez <wisrovi@wisrovi.dev> (https://wisrovi.dev)",
+  "license": "Proprietary",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.0"
+  }
+}

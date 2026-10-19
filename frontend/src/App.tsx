@@ -82,8 +82,9 @@ export interface UserProfile {
   username: string;
   name: string;
   role: string;
-  avatar_color: string;
-  created_at: string;
+  avatar?: string;
+  avatar_color?: string;
+  created_at?: string;
 }
 
 export interface ProjectSummary {
@@ -91,8 +92,10 @@ export interface ProjectSummary {
   name: string;
   description: string;
   owner_id: string;
-  docker_image: string;
-  node_count: number;
+  docker_image?: string;
+  protocol?: string;
+  node_count?: number;
+  step_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -102,10 +105,12 @@ export interface ProjectDetail {
   name: string;
   description: string;
   owner_id: string;
-  docker_image: string;
+  docker_image?: string;
+  protocol?: string;
   canvas_ir: CanvasIR | null;
-  files: { path: string; content: string }[];
-  node_count: number;
+  files?: { path: string; content: string }[];
+  generated_files?: { path: string; content: string }[];
+  node_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -434,14 +439,27 @@ export default function App() {
 
   // Multi-Tenant User & Projects State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(() => localStorage.getItem("studio_session_token"));
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
   const [userProjects, setUserProjects] = useState<ProjectSummary[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
 
-  // Modals for Projects and Auth
+  // Natural Login / Register Form State
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [loginUsername, setLoginUsername] = useState<string>("");
+  const [loginPassword, setLoginPassword] = useState<string>("");
+  const [registerUsername, setRegisterUsername] = useState<string>("");
+  const [registerPassword, setRegisterPassword] = useState<string>("");
+  const [registerName, setRegisterName] = useState<string>("");
+  const [registerRole, setRegisterRole] = useState<string>("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [showUserMenu, setShowUserMenu] = useState<boolean>(false);
+
+  // Modals for Projects
   const [showProjectsModal, setShowProjectsModal] = useState<boolean>(false);
-  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [projectSearch, setProjectSearch] = useState<string>("");
 
   // New Project Form in ProjectsModal
@@ -449,12 +467,6 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState<string>("");
   const [newProjectDesc, setNewProjectDesc] = useState<string>("");
   const [newProjectDockerImage, setNewProjectDockerImage] = useState<string>("python:3.11-slim");
-
-  // New User Form in AuthModal
-  const [isRegisteringUser, setIsRegisteringUser] = useState<boolean>(false);
-  const [newUsername, setNewUsername] = useState<string>("");
-  const [newUserName, setNewUserName] = useState<string>("");
-  const [newUserRole, setNewUserRole] = useState<string>("");
 
   // FAQ Modal
   const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
@@ -793,37 +805,93 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Load User Identity and Microservices on Mount
-  useEffect(() => {
-    const savedUserId = localStorage.getItem("studio_user_id") || "usr_william";
-    fetch("/api/v1/auth/me", {
-      headers: { "X-User-ID": savedUserId },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((user: UserProfile | null) => {
-        if (user && user.id) {
-          setCurrentUser(user);
-          localStorage.setItem("studio_user_id", user.id);
-          fetchUserProjects(user.id);
-        }
-      })
-      .catch((err) => console.error("Error loading user:", err));
+  // User Avatar Background Color Helper
+  const getUserColor = (user?: UserProfile | null) => {
+    if (user?.avatar_color) return user.avatar_color;
+    const username = user?.username || "user";
+    const colors = ["#0284c7", "#4f46e5", "#059669", "#db2777", "#d97706", "#7c3aed", "#e11d48"];
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+      hash = username.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
 
-    fetch("/api/v1/auth/users")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((users: UserProfile[]) => {
-        if (Array.isArray(users)) setAvailableUsers(users);
+  // Helper for Authenticated Requests
+  const getAuthHeaders = (overrideToken?: string) => {
+    const headers: Record<string, string> = {};
+    const token = overrideToken || sessionToken || localStorage.getItem("studio_session_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+      headers["X-Session-Token"] = token;
+    }
+    if (currentUser?.id) {
+      headers["X-User-ID"] = currentUser.id;
+    }
+    return headers;
+  };
+
+  // Check Active Session Token and Load Identity on Mount
+  useEffect(() => {
+    const token = localStorage.getItem("studio_session_token");
+    if (!token) {
+      setIsCheckingAuth(false);
+      setCurrentUser(null);
+      // Fetch public users list for quick demo presets
+      fetch("/api/v1/auth/users")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((users: UserProfile[]) => {
+          if (Array.isArray(users)) setAvailableUsers(users);
+        })
+        .catch(() => {});
+      return;
+    }
+
+    fetch("/api/v1/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Session-Token": token,
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Invalid session token");
+        return res.json();
       })
-      .catch((err) => console.error("Error loading user list:", err));
+      .then((user: UserProfile) => {
+        setCurrentUser(user);
+        setSessionToken(token);
+        localStorage.setItem("studio_user_id", user.id);
+        fetchUserProjects(user.id, token);
+      })
+      .catch(() => {
+        // Token was invalid or expired
+        localStorage.removeItem("studio_session_token");
+        setSessionToken(null);
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        setIsCheckingAuth(false);
+        fetch("/api/v1/auth/users")
+          .then((res) => (res.ok ? res.json() : []))
+          .then((users: UserProfile[]) => {
+            if (Array.isArray(users)) setAvailableUsers(users);
+          })
+          .catch(() => {});
+      });
   }, []);
 
   // Fetch Projects for a Specific User
-  const fetchUserProjects = async (userId?: string) => {
-    const targetUid = userId || currentUser?.id || "usr_william";
+  const fetchUserProjects = async (userId?: string, tokenOverride?: string) => {
+    const targetUid = userId || currentUser?.id;
+    if (!targetUid) return;
     try {
-      const res = await fetch("/api/v1/projects", {
-        headers: { "X-User-ID": targetUid },
-      });
+      const headers: Record<string, string> = { "X-User-ID": targetUid };
+      const token = tokenOverride || sessionToken || localStorage.getItem("studio_session_token");
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+        headers["X-Session-Token"] = token;
+      }
+      const res = await fetch("/api/v1/projects", { headers });
       if (res.ok) {
         const data: ProjectSummary[] = await res.json();
         setUserProjects(data);
@@ -835,19 +903,22 @@ export default function App() {
 
   // Open / Load a Microservice Project into Workspace
   const handleOpenProject = async (projectId: string) => {
-    const targetUid = currentUser?.id || "usr_william";
+    if (!currentUser) return;
     try {
       setStatusMessage("Cargando microservicio...");
       const res = await fetch(`/api/v1/projects/${projectId}`, {
-        headers: { "X-User-ID": targetUid },
+        headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("No se pudo cargar el microservicio");
       const project: ProjectDetail = await res.json();
       setActiveProjectId(project.id);
       setProjectName(project.name);
-      setCustomDockerImage(project.docker_image);
-      if (project.files && project.files.length > 0) {
-        setGeneratedFiles(project.files);
+      setCustomDockerImage(project.docker_image || "python:3.11-slim");
+      const files = (project.generated_files && project.generated_files.length > 0)
+        ? project.generated_files
+        : ((project as any).files || []);
+      if (files.length > 0) {
+        setGeneratedFiles(files);
         setSelectedFileIdx(0);
         setGithubViewingFile(null);
         setGithubCurrentDir("");
@@ -880,13 +951,12 @@ export default function App() {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            "X-User-ID": currentUser.id,
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({
             name: projectName,
-            docker_image: customDockerImage || "python:3.11-slim",
             canvas_ir: canvasIr,
-            files: generatedFiles,
+            generated_files: generatedFiles,
           }),
         });
         if (!res.ok) throw new Error("Error al actualizar microservicio");
@@ -898,14 +968,14 @@ export default function App() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-User-ID": currentUser.id,
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({
             name: projectName,
             description: `Microservicio ${projectName} creado desde el lienzo`,
-            docker_image: customDockerImage || "python:3.11-slim",
+            protocol: "fastapi",
             canvas_ir: canvasIr,
-            files: generatedFiles,
+            generated_files: generatedFiles,
           }),
         });
         if (!res.ok) throw new Error("Error al crear microservicio");
@@ -936,21 +1006,21 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-ID": currentUser.id,
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({
           name: cleanName,
           description: newProjectDesc.trim() || `Microservicio ${cleanName}`,
-          docker_image: newProjectDockerImage.trim() || "python:3.11-slim",
+          protocol: "fastapi",
           canvas_ir: canvasIr,
-          files: generatedFiles,
+          generated_files: generatedFiles,
         }),
       });
       if (!res.ok) throw new Error("Error al crear microservicio");
       const created: ProjectDetail = await res.json();
       setActiveProjectId(created.id);
       setProjectName(created.name);
-      setCustomDockerImage(created.docker_image);
+      setCustomDockerImage(created.docker_image || "python:3.11-slim");
       await fetchUserProjects(currentUser.id);
       setIsCreatingProject(false);
       setNewProjectName("");
@@ -969,7 +1039,7 @@ export default function App() {
       setStatusMessage("Duplicando microservicio...");
       const res = await fetch(`/api/v1/projects/${projectId}/duplicate`, {
         method: "POST",
-        headers: { "X-User-ID": currentUser.id },
+        headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Error al duplicar");
       const duplicated: ProjectDetail = await res.json();
@@ -987,7 +1057,7 @@ export default function App() {
     try {
       const res = await fetch(`/api/v1/projects/${projectId}`, {
         method: "DELETE",
-        headers: { "X-User-ID": currentUser.id },
+        headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Error al eliminar");
       if (activeProjectId === projectId) {
@@ -1000,47 +1070,136 @@ export default function App() {
     }
   };
 
-  // Switch Active User Identity
-  const handleSwitchUser = async (user: UserProfile) => {
-    setCurrentUser(user);
-    localStorage.setItem("studio_user_id", user.id);
-    setShowAuthModal(false);
-    setActiveProjectId(null);
-    setStatusMessage(`Sesión cambiada a ${user.name} (${user.role})`);
-    await fetchUserProjects(user.id);
+  // Natural Login with Username and Password
+  const handleNaturalLogin = async (
+    e?: React.FormEvent,
+    overrideUsername?: string,
+    overridePassword?: string
+  ) => {
+    if (e) e.preventDefault();
+    const u = (overrideUsername || loginUsername).trim();
+    const p = overridePassword || loginPassword;
+    if (!u || !p) {
+      setAuthError("Por favor ingresa usuario y contraseña.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Usuario o contraseña incorrectos.");
+      }
+
+      const data = await res.json();
+      localStorage.setItem("studio_session_token", data.token);
+      localStorage.setItem("studio_user_id", data.user.id);
+      setSessionToken(data.token);
+      setCurrentUser(data.user);
+      setLoginPassword("");
+      setStatusMessage(`Bienvenido de nuevo, ${data.user.name} ✓`);
+
+      // Load user projects and immediately show projects modal to view all microservices
+      await fetchUserProjects(data.user.id, data.token);
+      setShowProjectsModal(true);
+    } catch (err: any) {
+      setAuthError(err.message || "Error al iniciar sesión.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
-  // Register New User Identity
-  const handleRegisterUser = async (e: React.FormEvent) => {
+  // Natural Register New User Identity
+  const handleNaturalRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUsername.trim() || !newUserName.trim()) return;
+    const u = registerUsername.trim().toLowerCase();
+    const p = registerPassword;
+    const n = registerName.trim();
+    const r = registerRole.trim() || "Developer";
+
+    if (!u || !p || !n) {
+      setAuthError("Por favor completa nombre, usuario y contraseña.");
+      return;
+    }
+    if (p.length < 4) {
+      setAuthError("La contraseña debe tener al menos 4 caracteres.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
     try {
       const res = await fetch("/api/v1/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: newUsername.trim().toLowerCase(),
-          name: newUserName.trim(),
-          role: newUserRole.trim() || "Developer",
-        }),
+        body: JSON.stringify({ username: u, password: p, name: n, role: r }),
       });
-      if (!res.ok) throw new Error("Error al registrar usuario");
-      const registered: UserProfile = await res.json();
-      setCurrentUser(registered);
-      localStorage.setItem("studio_user_id", registered.id);
-      setIsRegisteringUser(false);
-      setNewUsername("");
-      setNewUserName("");
-      setNewUserRole("");
-      setShowAuthModal(false);
-      setActiveProjectId(null);
-      const usersRes = await fetch("/api/v1/auth/users");
-      if (usersRes.ok) setAvailableUsers(await usersRes.json());
-      await fetchUserProjects(registered.id);
-      setStatusMessage(`Usuario ${registered.name} registrado e iniciado con éxito ✓`);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Error al registrar la cuenta.");
+      }
+
+      const data = await res.json();
+      localStorage.setItem("studio_session_token", data.token);
+      localStorage.setItem("studio_user_id", data.user.id);
+      setSessionToken(data.token);
+      setCurrentUser(data.user);
+      setRegisterUsername("");
+      setRegisterPassword("");
+      setRegisterName("");
+      setRegisterRole("");
+      setStatusMessage(`Cuenta creada para ${data.user.name} ✓`);
+
+      // Refresh users list
+      fetch("/api/v1/auth/users")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((users: UserProfile[]) => setAvailableUsers(users))
+        .catch(() => {});
+
+      // Load user projects and immediately show projects modal
+      await fetchUserProjects(data.user.id, data.token);
+      setShowProjectsModal(true);
     } catch (err: any) {
-      setStatusMessage(`Error al registrar: ${err.message}`);
+      setAuthError(err.message || "Error al registrar usuario.");
+    } finally {
+      setAuthLoading(false);
     }
+  };
+
+  // Session Termination / Logout
+  const handleLogout = async () => {
+    const token = sessionToken || localStorage.getItem("studio_session_token");
+    if (token) {
+      try {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Session-Token": token,
+          },
+        });
+      } catch (err) {
+        console.warn("Logout request failed:", err);
+      }
+    }
+
+    localStorage.removeItem("studio_session_token");
+    localStorage.removeItem("studio_user_id");
+    setSessionToken(null);
+    setCurrentUser(null);
+    setActiveProjectId(null);
+    setUserProjects([]);
+    setShowUserMenu(false);
+    setShowProjectsModal(false);
+    setStatusMessage("Sesión finalizada. Hasta pronto.");
   };
 
   // Load Python Preview when switching to python tab
@@ -1952,28 +2111,92 @@ export default function App() {
 
           <div className="h-5 w-px bg-gray-800 mx-1" />
 
-          {/* User Profile Pill & Login / Switcher */}
-          <button
-            onClick={() => setShowAuthModal(true)}
-            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
-            title="Cambiar usuario o iniciar sesión multi-tenant"
-          >
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
-              style={{ backgroundColor: currentUser?.avatar_color || "#38bdf8" }}
+          {/* User Profile Pill & Session Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
+              title="Perfil de usuario y sesión"
             >
-              {(currentUser?.name || "W")[0].toUpperCase()}
-            </div>
-            <div className="flex flex-col text-left leading-none">
-              <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[100px] truncate">
-                {currentUser?.name || "William R."}
-              </span>
-              <span className="text-[9px] text-gray-400 font-mono max-w-[100px] truncate">
-                {currentUser?.role || "AI Leader"}
-              </span>
-            </div>
-            <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-200" />
-          </button>
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
+                style={{ backgroundColor: getUserColor(currentUser) }}
+              >
+                {(currentUser?.name || "W")[0].toUpperCase()}
+              </div>
+              <div className="flex flex-col text-left leading-none">
+                <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[100px] truncate">
+                  {currentUser?.name || "Usuario"}
+                </span>
+                <span className="text-[9px] text-gray-400 font-mono max-w-[100px] truncate">
+                  {currentUser?.role || "Developer"}
+                </span>
+              </div>
+              <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-200" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showUserMenu && (
+              <div className="absolute right-0 mt-2 w-64 bg-[#0b0f19] border border-sky-800/80 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in duration-150">
+                <div className="px-3.5 py-2.5 border-b border-gray-800/80">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white shadow-md"
+                      style={{ backgroundColor: getUserColor(currentUser) }}
+                    >
+                      {(currentUser?.name || "W")[0].toUpperCase()}
+                    </div>
+                    <div className="overflow-hidden">
+                      <div className="font-bold text-xs text-white truncate">{currentUser?.name}</div>
+                      <div className="text-[10px] font-mono text-sky-400 truncate">@{currentUser?.username}</div>
+                      <div className="text-[10px] text-gray-400 truncate">{currentUser?.role}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] font-mono text-gray-400 bg-gray-950 px-2 py-1 rounded border border-gray-800/80 truncate">
+                    📁 media/workspaces/{currentUser?.id}/
+                  </div>
+                </div>
+
+                <div className="p-1 space-y-0.5">
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowProjectsModal(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <Folder size={14} className="text-amber-400" />
+                    <span>Mis Microservicios ({userProjects.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowProjectsModal(true);
+                      setIsCreatingProject(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <FolderPlus size={14} className="text-sky-400" />
+                    <span>Nuevo Microservicio</span>
+                  </button>
+
+                  <div className="h-px bg-gray-800/80 my-1" />
+
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      handleLogout();
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-rose-400 hover:text-rose-200 hover:bg-rose-950/60 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <LogOut size={14} />
+                    <span>Cerrar Sesión</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -3456,7 +3679,7 @@ export default function App() {
                   </div>
                   <p className="text-xs text-gray-400">
                     Espacio privado de <strong className="text-gray-200">{currentUser?.name || "William R."}</strong> (
-                    <span className="font-mono text-[11px] text-sky-400/90">backend/data/workspaces/{currentUser?.id || "usr_william"}/</span>)
+                    <span className="font-mono text-[11px] text-sky-400/90">media/workspaces/{currentUser?.id || "usr_william"}/</span>)
                   </p>
                 </div>
               </div>
@@ -3681,194 +3904,250 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. MULTI-TENANT USER IDENTITY & LOGIN MODAL */}
-      {showAuthModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-[#0b0f19] border border-sky-800/70 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-lg shadow-md shadow-purple-600/20">
-                  👤
-                </div>
-                <div>
-                  <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
-                    Identidad de Usuario (Multi-Tenant)
-                  </h3>
-                  <p className="text-xs text-gray-400">
-                    Cambia de usuario o registra uno nuevo. Cada usuario cuenta con un espacio de microservicios estrictamente aislado.
-                  </p>
-                </div>
+      {/* 5. NATURAL FULL-SCREEN LOGIN / REGISTRATION OVERLAY */}
+      {!currentUser && (
+        <div className="fixed inset-0 z-50 bg-[#07090e] flex flex-col items-center justify-center p-4 aurora-bg select-none animate-in fade-in duration-200">
+          {/* Subtle glowing backdrops */}
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="w-full max-w-md bg-[#0b0f19]/95 border border-sky-800/70 rounded-2xl p-7 shadow-2xl backdrop-blur-xl relative z-10 flex flex-col space-y-4">
+            {/* Brand Header */}
+            <div className="text-center space-y-1.5">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-sky-500/25 mb-2">
+                W
               </div>
+              <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-indigo-200 to-purple-300 font-heading tracking-tight">
+                WPipe Studio
+              </h2>
+              <p className="text-xs text-gray-400">
+                Orquestación Visual de Microservicios Python
+              </p>
+            </div>
+
+            {/* Auth Mode Tabs */}
+            <div className="grid grid-cols-2 p-1 bg-gray-950 rounded-xl border border-gray-800 text-xs font-bold">
               <button
+                type="button"
                 onClick={() => {
-                  setShowAuthModal(false);
-                  setIsRegisteringUser(false);
+                  setAuthMode("login");
+                  setAuthError(null);
                 }}
-                className="text-gray-400 hover:text-white font-bold p-1 text-lg rounded-lg hover:bg-gray-800/60 transition cursor-pointer"
+                className={`py-2 rounded-lg transition cursor-pointer ${
+                  authMode === "login"
+                    ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
               >
-                ✕
+                Iniciar Sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("register");
+                  setAuthError(null);
+                }}
+                className={`py-2 rounded-lg transition cursor-pointer ${
+                  authMode === "register"
+                    ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                    : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                Crear Cuenta
               </button>
             </div>
 
-            {/* Current Active User Banner */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/60 via-indigo-950/40 to-gray-900 border border-sky-600/40 flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black text-white shadow-md"
-                  style={{ backgroundColor: currentUser?.avatar_color || "#38bdf8" }}
-                >
-                  {(currentUser?.name || "W")[0].toUpperCase()}
-                </div>
+            {/* Error Banner */}
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-600/60 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle size={15} className="shrink-0 text-rose-400" />
+                <span className="flex-1">{authError}</span>
+              </div>
+            )}
+
+            {/* Iniciar Sesión Form */}
+            {authMode === "login" && (
+              <form onSubmit={(e) => handleNaturalLogin(e)} className="space-y-3">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-white">{currentUser?.name || "William R."}</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                      @{currentUser?.username || "william.rodriguez"}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-300">{currentUser?.role || "AI Leader & Solutions Architect"}</span>
+                  <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                    Usuario
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ej: william.rodriguez"
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition font-mono"
+                  />
                 </div>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-700/60">
-                SESIÓN ACTIVA
-              </span>
-            </div>
 
-            {/* Switch User Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-                  <Users size={14} className="text-sky-400" /> Cambiar a otro usuario del sistema:
-                </span>
-                <span className="text-[10px] text-gray-500 font-mono">{availableUsers.length} disponibles</span>
-              </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition"
+                  />
+                </div>
 
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                {availableUsers.map((user) => {
-                  const isCurrent = currentUser?.id === user.id;
-                  return (
-                    <div
-                      key={user.id}
-                      onClick={() => !isCurrent && handleSwitchUser(user)}
-                      className={`p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
-                        isCurrent
-                          ? "bg-sky-950/40 border-sky-500/60 shadow-sm"
-                          : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700 hover:bg-gray-900/60"
-                      }`}
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 cursor-pointer mt-1 disabled:opacity-50"
+                >
+                  {authLoading ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <User size={14} />
+                  )}
+                  <span>{authLoading ? "Autenticando..." : "Iniciar Sesión"}</span>
+                </button>
+
+                {/* Quick Presets / Demo Accounts */}
+                <div className="pt-2 border-t border-gray-800/80">
+                  <span className="text-[10px] font-bold text-gray-400 block mb-1.5 text-center uppercase tracking-wider">
+                    Cuentas de prueba rápidas:
+                  </span>
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleNaturalLogin(undefined, "william.rodriguez", "admin123")}
+                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm"
-                          style={{ backgroundColor: user.avatar_color }}
-                        >
-                          {user.name[0].toUpperCase()}
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-sky-600 flex items-center justify-center text-[10px] font-bold text-white">
+                          WR
                         </div>
                         <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold text-gray-200">{user.name}</span>
-                            <span className="text-[10px] text-gray-500 font-mono">@{user.username}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-400 block">{user.role}</span>
+                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">William R.</div>
+                          <div className="text-[10px] text-gray-500 font-mono">@william.rodriguez</div>
                         </div>
                       </div>
+                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">admin123 →</span>
+                    </button>
 
-                      {isCurrent ? (
-                        <span className="text-[10px] text-sky-400 font-bold font-mono">Activo</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="px-2 py-0.5 bg-gray-800 hover:bg-sky-600 text-gray-300 hover:text-white rounded text-[10px] font-semibold transition"
-                        >
-                          Seleccionar
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => handleNaturalLogin(undefined, "developer", "dev123")}
+                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] font-bold text-white">
+                          DE
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">Dev Team</div>
+                          <div className="text-[10px] text-gray-500 font-mono">@developer</div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">dev123 →</span>
+                    </button>
 
-            {/* Register New User Section */}
-            <div className="pt-2 border-t border-gray-800/80">
-              {!isRegisteringUser ? (
+                    <button
+                      type="button"
+                      onClick={() => handleNaturalLogin(undefined, "guest", "guest123")}
+                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-bold text-white">
+                          GU
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">Invitado</div>
+                          <div className="text-[10px] text-gray-500 font-mono">@guest</div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">guest123 →</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Crear Cuenta Form */}
+            {authMode === "register" && (
+              <form onSubmit={handleNaturalRegister} className="space-y-2.5">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                    Nombre Completo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ej: Elena Vance"
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                      Usuario *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="elena.vance"
+                      value={registerUsername}
+                      onChange={(e) => setRegisterUsername(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                      Contraseña *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={registerPassword}
+                      onChange={(e) => setRegisterPassword(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                    Rol o Cargo
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ML Ops Engineer"
+                    value={registerRole}
+                    onChange={(e) => setRegisterRole(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition"
+                  />
+                </div>
+
                 <button
-                  onClick={() => setIsRegisteringUser(true)}
-                  className="w-full py-2 bg-gray-900/80 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer mt-1 disabled:opacity-50"
                 >
-                  <Plus size={14} className="text-sky-400" />
-                  <span>Registrar Nueva Identidad de Usuario</span>
+                  {authLoading ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                  <span>{authLoading ? "Creando cuenta..." : "Crear Cuenta y Entrar"}</span>
                 </button>
-              ) : (
-                <form onSubmit={handleRegisterUser} className="space-y-3 bg-gray-950/90 p-3.5 border border-sky-600/40 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-300">Registrar Nuevo Usuario</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsRegisteringUser(false)}
-                      className="text-gray-400 hover:text-white text-xs"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
+              </form>
+            )}
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Username *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="maria.dev"
-                        value={newUsername}
-                        onChange={(e) => setNewUsername(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Nombre Completo *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="María Gómez"
-                        value={newUserName}
-                        onChange={(e) => setNewUserName(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Rol / Cargo</label>
-                      <input
-                        type="text"
-                        placeholder="CV Engineer"
-                        value={newUserRole}
-                        onChange={(e) => setNewUserRole(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsRegisteringUser(false)}
-                      className="px-2.5 py-1 bg-gray-800 text-gray-400 rounded-lg text-xs"
-                    >
-                      Descartar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-3 py-1 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-lg text-xs font-bold shadow-md cursor-pointer"
-                    >
-                      Registrar e Iniciar
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            {/* Isolation Note */}
-            <div className="text-[10px] text-gray-500 font-mono pt-1 text-center">
-              🔒 Workspace: backend/data/workspaces/{currentUser?.id}/ • Multi-Tenant SQLite Database
+            {/* Persistence Footer */}
+            <div className="text-[10px] text-gray-500 font-mono text-center pt-2 border-t border-gray-800/80">
+              🔒 Workspace Aislado: ./media/workspaces/{currentUser ? (currentUser as any).id : "usuario"} • Docker Compose
             </div>
           </div>
         </div>

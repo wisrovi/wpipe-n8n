@@ -41,11 +41,11 @@ def transform_canvas_to_semantic(
                 root_adj[src_root].append(tgt_root)
                 root_in_degree[tgt_root] += 1
 
-    # Topological sort prioritizing triggers, then lowest in-degree, then Y position
+    # Topological sort prioritizing triggers (0), middle steps (1), and responses (2)
     queue = sorted(
         [node.id for node in root_nodes if root_in_degree[node.id] == 0],
         key=lambda nid: (
-            0 if node_map[nid].data.node_type == "trigger" else 1,
+            0 if node_map[nid].data.node_type == "trigger" else 2 if node_map[nid].data.node_type == "response" else 1,
             node_map[nid].position.y,
         ),
     )
@@ -60,7 +60,7 @@ def transform_canvas_to_semantic(
                 queue.append(neighbor)
         queue.sort(
             key=lambda nid: (
-                0 if node_map[nid].data.node_type == "trigger" else 1,
+                0 if node_map[nid].data.node_type == "trigger" else 2 if node_map[nid].data.node_type == "response" else 1,
                 node_map[nid].position.y,
             )
         )
@@ -68,7 +68,7 @@ def transform_canvas_to_semantic(
     # Fallback safety: ensure all root nodes are included even if disconnected or cyclic
     for node in sorted(
         root_nodes,
-        key=lambda n: (0 if n.data.node_type == "trigger" else 1, n.position.y),
+        key=lambda n: (0 if n.data.node_type == "trigger" else 2 if n.data.node_type == "response" else 1, n.position.y),
     ):
         if node.id not in ordered_ids:
             ordered_ids.append(node.id)
@@ -122,6 +122,8 @@ def transform_canvas_to_semantic(
             step_type=data.node_type,
             trigger_type=data.trigger_type,
             trigger_param=data.trigger_param,
+            response_type=data.response_type,
+            response_param=data.response_param,
             namespace=data.namespace,
             func_name=data.func_name,
             origin=data.origin,
@@ -365,7 +367,7 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
                 return f"{pad}Background(\n{pad}    step={child_rendered}\n{pad})"
             return f"{pad}# Background (no step assigned)"
 
-    execution_steps = [s for s in semantic_ir.steps if s.step_type != "trigger"]
+    execution_steps = [s for s in semantic_ir.steps if s.step_type not in ("trigger", "response")]
     step_declarations = [render_step(s, indent=8) for s in execution_steps]
     steps_str = (
         ",\n".join(step_declarations) if step_declarations else "        # No steps configured"
@@ -393,6 +395,10 @@ if __name__ == "__main__":
     trigger_step = next((s for s in semantic_ir.steps if s.step_type == "trigger"), None)
     trigger_type = (trigger_step.trigger_type if trigger_step else "api") or "api"
     trigger_param = (trigger_step.trigger_param if trigger_step else "/run") or "/run"
+
+    response_step = next((s for s in semantic_ir.steps if s.step_type == "response"), None)
+    response_type = (response_step.response_type if response_step else "http_json") or "http_json"
+    response_param = (response_step.response_param if response_step else "") or ""
 
     if trigger_type == "kafka":
         topic_name = (
@@ -452,6 +458,29 @@ if __name__ == "__main__":
 '''
     else:
         endpoint_path = trigger_param if trigger_param.startswith("/") else f"/{trigger_param}"
+        if response_type == "file_export":
+            export_file = response_param or "output_result.json"
+            response_logic = f'''import json
+    export_path = "{export_file}"
+    try:
+        with open(export_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, default=str)
+    except Exception as e:
+        print(f"Error exporting results to {{export_path}}: {{e}}")
+    return {{"status": "success", "exported_to": export_path, "result": result}}'''
+        elif response_type == "terminate":
+            response_logic = "return result"
+        elif response_type == "kafka_publish":
+            topic = response_param or "events.output"
+            response_logic = f'''print(f"Publishing result to Kafka topic {topic}: {{result}}")
+    return {{"status": "success", "published_to_kafka": "{topic}", "result": result}}'''
+        elif response_type == "redis_publish":
+            channel = response_param or "wpipe:queue:out"
+            response_logic = f'''print(f"Publishing result to Redis channel {channel}: {{result}}")
+    return {{"status": "success", "published_to_redis": "{channel}", "result": result}}'''
+        else:
+            response_logic = 'return {"status": "success", "result": result}'
+
         main_code = f'''from fastapi import FastAPI
 from app.pipelines import build_pipeline
 
@@ -467,7 +496,7 @@ def health():
 def run_pipeline(payload: dict | None = None):
     pipe = build_pipeline()
     result = pipe.run(payload or {{}})
-    return {{"status": "success", "result": result}}
+    {response_logic}
 '''
 
     dockerfile = """FROM python:3.11-slim

@@ -44,8 +44,8 @@ def _collect_routers() -> list[APIRouter]:
     return collected
 
 
-from app.api.v1.catalog import router as catalog_router
-from app.api.v1.pipeline import router as pipeline_router
+from app.api.v1.catalog import router as catalog_router  # noqa: E402
+from app.api.v1.pipeline import router as pipeline_router  # noqa: E402
 
 router.include_router(catalog_router)
 router.include_router(pipeline_router)

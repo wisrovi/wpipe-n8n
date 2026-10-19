@@ -18,10 +18,10 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
         -v "$DIR:/app" \
         -w /app \
         python:3.11-slim \
-        bash -c "pip install --no-cache-dir pytest pytest-cov pandas requests && pytest tests/ -v --cov=client --cov-report=term-missing --cov-report=html:tests/coverage_html"
+        bash -c "pip install --no-cache-dir pytest pytest-cov pandas requests pydantic wpipe && pytest tests/ -v --cov=client --cov=states --cov=dto --cov=pipelines --cov-report=term-missing"
 else
     echo "⚙️ Docker no disponible o sin permisos de daemon; ejecutando localmente con pytest..."
-    pytest tests/ -v --cov=client --cov-report=term-missing --cov-report=html:tests/coverage_html
+    pytest tests/ -v --cov=client --cov=states --cov=dto --cov=pipelines --cov-report=term-missing
 fi
 
 echo "✅ Pruebas finalizadas con éxito."

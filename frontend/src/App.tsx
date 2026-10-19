@@ -3,6 +3,7 @@ import { CanvasNode, CanvasEdge, CanvasIR, StepOrigin } from "./lib/ir/schemas";
 import {
   BlocklyComponent,
   addTriggerBlockToWorkspace,
+  addResponseBlockToWorkspace,
   addStepBlockToWorkspace,
   addAiStepBlockToWorkspace,
   addUserFileStepBlockToWorkspace,
@@ -901,6 +902,8 @@ export default function App() {
             addControlBlockToWorkspace("wpipe_parallel");
           } else if (n.data?.node_type === "background") {
             addControlBlockToWorkspace("wpipe_background");
+          } else if (n.data?.node_type === "response") {
+            addResponseBlockToWorkspace(n.data.response_type || "http_json", n.data.response_param || '{"status": "success", "data": context}');
           }
         });
         const savedProject = localStorage.getItem("wpipe_studio_saved_project");
@@ -939,6 +942,8 @@ export default function App() {
               addControlBlockToWorkspace("wpipe_parallel");
             } else if (n.data?.node_type === "background") {
               addControlBlockToWorkspace("wpipe_background");
+            } else if (n.data?.node_type === "response") {
+              addResponseBlockToWorkspace(n.data.response_type || "http_json", n.data.response_param || '{"status": "success", "data": context}');
             }
           });
           setStatusMessage(`Cargado pipeline desde '${file.name}' ✓`);
@@ -1221,7 +1226,8 @@ export default function App() {
                       clearWorkspace();
                       addTriggerBlockToWorkspace("api", "/run");
                       addStepBlockToWorkspace("HttpRequest", "wpipe_steps.connectivity");
-                      setStatusMessage("Nuevo pipeline iniciado con Disparador API REST");
+                      addResponseBlockToWorkspace("http_json", '{"status": "success", "data": context}');
+                      setStatusMessage("Nuevo pipeline iniciado con Disparador API REST y Cierre HTTP");
                     }
                     setActiveMenu(null);
                   }}
@@ -1564,8 +1570,8 @@ export default function App() {
           <div className="w-16 bg-[#080c16] border-r border-gray-800/80 flex flex-col justify-between items-center py-2.5 select-none z-20 shrink-0">
             <div className="flex flex-col items-center space-y-2 w-full px-1">
               {[
-                { id: "all", label: "Todos", count: 10, icon: "🌐", dot: "bg-sky-400" },
-                { id: "trigger", label: "Inicio", count: 1, icon: "🚀", dot: "bg-amber-400" },
+                { id: "all", label: "Todos", count: 11, icon: "🌐", dot: "bg-sky-400" },
+                { id: "trigger", label: "Inicio/Fin", count: 2, icon: "🚀", dot: "bg-amber-400" },
                 { id: "steps", label: "Pasos", count: 3, icon: "📦", dot: "bg-blue-500" },
                 { id: "control", label: "Control", count: 2, icon: "🔀", dot: "bg-orange-500" },
                 { id: "loops", label: "Bucles", count: 2, icon: "🔁", dot: "bg-yellow-400" },
@@ -1627,7 +1633,7 @@ export default function App() {
                   <span className="font-extrabold text-xs text-gray-200">Paleta de Bloques</span>
                 </div>
                 <span className="text-[10px] text-gray-400 font-mono">
-                  {categorySearch.trim() ? "Filtrando..." : "10 Bloques"}
+                  {categorySearch.trim() ? "Filtrando..." : "11 Bloques"}
                 </span>
               </div>
               <div className="relative">
@@ -1670,6 +1676,25 @@ export default function App() {
                   action: () => {
                     addTriggerBlockToWorkspace();
                     setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas ✓");
+                  },
+                },
+                // 2. Cierre / Salida del Pipeline (Response)
+                {
+                  id: "response",
+                  cat: "trigger",
+                  name: "Cierre de Pipeline",
+                  icon: "🏁",
+                  badge: "Cierre y Salida Egress",
+                  isCap: true,
+                  gradient: "from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 border-rose-400/80 shadow-rose-950/50",
+                  tabColor: "bg-rose-600 border-rose-400/80",
+                  description:
+                    "Bloque terminal Cap de cierre del microservicio WPipe (base plana terminal). Define la salida o respuesta final: Respuesta HTTP 200 JSON, publicación en tópico Kafka, cola Redis, exportación a archivo o retorno directo del contexto.",
+                  params: "Tipo (HTTP JSON / Kafka / Redis / Archivo / Terminate), Detalle/Payload",
+                  pythonSnippet: 'return JSONResponse(\n    status_code=200,\n    content={"status": "success", "data": context}\n)',
+                  action: () => {
+                    addResponseBlockToWorkspace();
+                    setStatusMessage("Añadido 'Cierre de Pipeline' al canvas ✓");
                   },
                 },
                 // 2. Paso de Catálogo
@@ -2655,9 +2680,12 @@ export default function App() {
                               <span className="font-bold text-gray-200">{editingFileContent.split("\n").length} líneas</span>
                             </div>
                           </div>
-                          <div className="flex-1 flex overflow-hidden">
+                          <div className="flex-1 flex overflow-hidden bg-[#090d13]">
                             {/* Line Numbers for Editor */}
-                            <div className="bg-[#0b0f17] border-r border-[#30363d] py-4 px-3 text-right text-gray-600 select-none font-mono text-xs overflow-hidden shrink-0">
+                            <div
+                              className="editor-line-numbers border-r border-[#30363d] py-4 px-3 text-right select-none font-mono text-xs overflow-hidden shrink-0"
+                              style={{ backgroundColor: "#0b0f17", color: "#6b7280" }}
+                            >
                               {editingFileContent.split("\n").map((_, i) => (
                                 <div key={i} className="leading-relaxed">
                                   {i + 1}
@@ -2671,8 +2699,13 @@ export default function App() {
                               spellCheck={false}
                               autoFocus
                               placeholder="Escribe o edita el código aquí..."
-                              className="flex-1 w-full p-4 bg-[#090d13] text-gray-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
-                              style={{ tabSize: 4 }}
+                              className="code-editor-textarea flex-1 w-full p-4 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
+                              style={{
+                                tabSize: 4,
+                                backgroundColor: "#090d13",
+                                color: "#e6edf3",
+                                caretColor: "#38bdf8",
+                              }}
                             />
                           </div>
                         </div>

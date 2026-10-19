@@ -14,28 +14,104 @@ def transform_canvas_to_semantic(
     canvas_ir: CanvasIR, pipeline_name: str = "main_pipeline"
 ) -> SemanticIR:
     node_map = {node.id: node for node in canvas_ir.nodes}
-    adj: dict[str, list[str]] = {node.id: [] for node in canvas_ir.nodes}
-    in_degree: dict[str, int] = {node.id: 0 for node in canvas_ir.nodes}
 
-    # Separate root level nodes from nested nodes attached to parent C-blocks
+    def get_root_ancestor_id(node_id: str) -> str:
+        curr = node_map.get(node_id)
+        visited: set[str] = set()
+        while curr and curr.data.parent_id and curr.data.parent_id in node_map:
+            if curr.id in visited:
+                break
+            visited.add(curr.id)
+            curr = node_map[curr.data.parent_id]
+        return curr.id if curr else node_id
+
+    # Root level nodes (not enclosed inside a C-block slot)
     root_nodes = [node for node in canvas_ir.nodes if not node.data.parent_id]
+    if not root_nodes and canvas_ir.nodes:
+        root_nodes = list(canvas_ir.nodes)
+
+    root_adj: dict[str, list[str]] = {node.id: [] for node in root_nodes}
+    root_in_degree: dict[str, int] = {node.id: 0 for node in root_nodes}
 
     for edge in canvas_ir.edges:
-        if edge.source in adj and edge.target in in_degree:
-            adj[edge.source].append(edge.target)
-            in_degree[edge.target] += 1
+        src_root = get_root_ancestor_id(edge.source)
+        tgt_root = get_root_ancestor_id(edge.target)
+        if src_root in root_adj and tgt_root in root_in_degree and src_root != tgt_root:
+            if tgt_root not in root_adj[src_root]:
+                root_adj[src_root].append(tgt_root)
+                root_in_degree[tgt_root] += 1
 
-    # Topological sort for execution order
-    queue = [node.id for node in root_nodes if in_degree[node.id] == 0]
+    # Topological sort prioritizing triggers, then lowest in-degree, then Y position
+    queue = sorted(
+        [node.id for node in root_nodes if root_in_degree[node.id] == 0],
+        key=lambda nid: (
+            0 if node_map[nid].data.node_type == "trigger" else 1,
+            node_map[nid].position.y,
+        ),
+    )
     ordered_ids: list[str] = []
 
     while queue:
         curr = queue.pop(0)
         ordered_ids.append(curr)
-        for neighbor in adj.get(curr, []):
-            in_degree[neighbor] -= 1
-            if in_degree[neighbor] == 0 and not node_map[neighbor].data.parent_id:
+        for neighbor in root_adj.get(curr, []):
+            root_in_degree[neighbor] -= 1
+            if root_in_degree[neighbor] == 0:
                 queue.append(neighbor)
+        queue.sort(
+            key=lambda nid: (
+                0 if node_map[nid].data.node_type == "trigger" else 1,
+                node_map[nid].position.y,
+            )
+        )
+
+    # Fallback safety: ensure all root nodes are included even if disconnected or cyclic
+    for node in sorted(
+        root_nodes,
+        key=lambda n: (0 if n.data.node_type == "trigger" else 1, n.position.y),
+    ):
+        if node.id not in ordered_ids:
+            ordered_ids.append(node.id)
+
+    # Helper function to order children in a slot topologically and by position
+    def order_children_for_slot(parent_id: str, slot_type: str) -> list[SemanticStep]:
+        children = [
+            child
+            for child in canvas_ir.nodes
+            if child.data.parent_id == parent_id and child.data.slot_type == slot_type
+        ]
+        if not children:
+            return []
+
+        child_ids = {c.id for c in children}
+        child_adj: dict[str, list[str]] = {c.id: [] for c in children}
+        child_in: dict[str, int] = {c.id: 0 for c in children}
+
+        for edge in canvas_ir.edges:
+            if edge.source in child_ids and edge.target in child_ids:
+                if edge.target not in child_adj[edge.source]:
+                    child_adj[edge.source].append(edge.target)
+                    child_in[edge.target] += 1
+
+        c_queue = sorted(
+            [c.id for c in children if child_in[c.id] == 0],
+            key=lambda cid: node_map[cid].position.y,
+        )
+        c_ordered: list[str] = []
+        while c_queue:
+            c_curr = c_queue.pop(0)
+            c_ordered.append(c_curr)
+            for c_n in child_adj.get(c_curr, []):
+                child_in[c_n] -= 1
+                if child_in[c_n] == 0:
+                    c_queue.append(c_n)
+            c_queue.sort(key=lambda cid: node_map[cid].position.y)
+
+        for c in sorted(children, key=lambda x: x.position.y):
+            if c.id not in c_ordered:
+                c_ordered.append(c.id)
+
+        return [build_semantic_step(node_map[cid]) for cid in c_ordered]
 
     # Helper function to build SemanticStep recursively
     def build_semantic_step(node) -> SemanticStep:
@@ -58,26 +134,15 @@ def transform_canvas_to_semantic(
             code_snippet=data.code_snippet,
         )
 
-        # Children nested inside slots
-        if_children = [
-            build_semantic_step(child)
-            for child in canvas_ir.nodes
-            if child.data.parent_id == node.id
-            and child.data.slot_type in ("if_body", "loop_body", "parallel_body", "background_body")
-        ]
-        else_children = [
-            build_semantic_step(child)
-            for child in canvas_ir.nodes
-            if child.data.parent_id == node.id and child.data.slot_type == "else_body"
-        ]
-
         if data.node_type == "condition":
-            step.branch_true = if_children
-            step.branch_false = else_children
-        elif data.node_type in ("for", "while", "background"):
-            step.loop_steps = if_children
+            step.branch_true = order_children_for_slot(node.id, "if_body")
+            step.branch_false = order_children_for_slot(node.id, "else_body")
+        elif data.node_type in ("for", "while"):
+            step.loop_steps = order_children_for_slot(node.id, "loop_body")
         elif data.node_type == "parallel":
-            step.parallel_steps = if_children
+            step.parallel_steps = order_children_for_slot(node.id, "parallel_body")
+        elif data.node_type == "background":
+            step.loop_steps = order_children_for_slot(node.id, "background_body")
 
         return step
 
@@ -413,23 +478,56 @@ COPY . .
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 """
 
-    makefile = """help:
-\t@echo "Available commands: install, dev, test, lint, format"
+    makefile = f"""# Microservice Makefile for {project_name}
+# Orchestrated by WPipe Studio
 
-install:
-\tpip install -r requirements.txt
+.PHONY: help start stop restart status logs test build shell clean dev-local
 
-dev:
-\tuvicorn app.main:app --reload
+help:
+\t@echo "================================================================"
+\t@echo " 🚀 WPipe Microservice: {project_name}"
+\t@echo "================================================================"
+\t@echo "  make start      - Start microservice container in background (docker-compose up -d --build)"
+\t@echo "  make stop       - Stop microservice container (docker-compose down)"
+\t@echo "  make restart    - Restart running microservice"
+\t@echo "  make status     - View running containers and health checks (docker-compose ps)"
+\t@echo "  make logs       - Tail microservice live output (docker-compose logs -f)"
+\t@echo "  make test       - Execute automated pytest suite inside container"
+\t@echo "  make build      - Build or rebuild Docker container image"
+\t@echo "  make shell      - Open interactive Bash shell inside running microservice"
+\t@echo "  make clean      - Tear down containers, networks and prune volumes"
+\t@echo "  make dev-local  - Run FastAPI pipeline locally with uvicorn (no docker)"
+\t@echo "================================================================"
+
+start:
+\tdocker-compose up -d --build
+
+stop:
+\tdocker-compose down
+
+restart:
+\tdocker-compose restart
+
+status:
+\tdocker-compose ps
+
+logs:
+\tdocker-compose logs -f microservice
 
 test:
-\tpytest app/tests/ -q
+\tdocker-compose run --rm microservice pytest app/tests/ -q
 
-lint:
-\truff check app/
+build:
+\tdocker-compose build
 
-format:
-\truff format app/
+shell:
+\tdocker-compose exec microservice /bin/bash
+
+clean:
+\tdocker-compose down -v --remove-orphans
+
+dev-local:
+\tpython3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
     readme = f"""# {project_name}

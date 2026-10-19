@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 
 from app.schemas.ir import (
     CanvasIR,
@@ -559,20 +560,117 @@ dev-local:
 \tpython3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+    current_year = now_utc.year
+    step_count = len(all_steps)
+    step_names_list = ", ".join([f"`{s.name}`" for s in all_steps[:8]])
+    if len(all_steps) > 8:
+        step_names_list += f" y {len(all_steps) - 8} más..."
+    if not step_names_list:
+        step_names_list = "*(Pipeline modular base)*"
+
     readme = f"""# {project_name}
 
-Microservicio Python auto-generado y verificado por **WPipe Studio**.
+> **Enterprise Python Microservice Orchestration**  
+> Auto-generado, compilado y verificado por **WPipe Studio (wisrovi SUITE)**.
 
-## Tecnologías y Librerías Principales
-- **FastAPI**: Framework web asíncrono para exponer endpoints HTTP.
-- **WPipe**: Motor de orquestación de pipelines y flujos de trabajo de alto rendimiento.
-- **Pydantic**: Validación estricta de esquemas de datos y DTOs de contexto.
-- **Uvicorn**: Servidor ASGI de producción.
-- **Pytest**: Suite de pruebas unitarias automatizadas.
-- **Ruff**: Linter y formateador ultrarrápido.
+---
 
-## Cómo ejecutar los tests
+## ⚖️ Legal Notice, Authorship & Intellectual Property Rights
+
+> [!IMPORTANT]
+> **Aviso Prioritario de Derechos de Autor y Protección de Código**  
+> Este documento establece con carácter vinculante y oficial los **derechos de autor, propiedad intelectual y atribución técnica** del presente microservicio. Este archivo se encuentra protegido contra edición manual en WPipe Studio.
+
+### Plataforma & Ecosistema de Ingeniería
+- **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
+- **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) v2.5.x.
+- **Fecha de Compilación**: `{now_iso}`.
+- **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico).
+
+### Autor & Atribución Profesional
+- **Autor Principal**: **William Rodriguez** (`wisrovi`)
+- **Cargo & Empresa**: **AI Leader & Solutions Architect** en **eCaptureDtech**
+- **Ubicación**: Badajoz, Extremadura, España
+- **Misión & Especialidad**: *Liderazgo en inteligencia artificial avanzada, arquitecturas cloud distribuidas y diseño de motores de orquestación de alto rendimiento.*
+- **Copyright**: © {current_year} **William Rodriguez (wisrovi) / eCaptureDtech**. Todos los derechos reservados / All Rights Reserved.
+
+### Términos de Derechos y Uso
+Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (`@step`) y contratos de orquestación forman parte de la propiedad intelectual de su autor y titulares de derechos reconocidos. Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
+
+---
+
+## 📖 Documentación Técnica del Microservicio
+
+### Descripción General
+El microservicio `{project_name}` expone un flujo de trabajo modular asíncrono y de alto rendimiento, orquestado mediante **WPipe** y servido a través de **FastAPI**.
+
+- **Pipeline Core**: `main_pipeline`
+- **Total de Pasos Ensamblados**: {step_count} bloque(s) de ejecución ({step_names_list}).
+- **Bloques de Control Soportados**: Bifurcaciones condicionales (`Condition`), bucles deterministas o continuos (`For`), y ejecución concurrente en hilos o procesos (`Parallel`).
+- **Contratos de Datos**: Clases Pydantic en `app/dto/` con validación estricta de tipos y serialización de contexto vía `@to_obj`.
+
+### Estructura de Directorios
+```
+{project_name}/
+├── app/
+│   ├── dto/                 # Contratos Pydantic Context DTOs (Dialecto A)
+│   ├── states/              # Funciones de ejecución decoradas con @step
+│   ├── tests/               # Batería automatizada de pruebas unitarias
+│   ├── pipelines.py         # Topología DAG del pipeline WPipe
+│   └── main.py              # Entrypoint FastAPI REST y runners de eventos
+├── Dockerfile               # Contenedor de producción multi-etapa
+├── docker-compose.yml       # Orquestación Docker con healthcheck HTTP
+├── Makefile                 # Automatización de tareas (start, test, logs, shell)
+├── requirements.txt         # Dependencias Python bloqueadas
+└── README.md                # Declaración de derechos y guía técnica (Protegido)
+```
+
+### Tecnologías y Librerías Principales
+- **FastAPI**: Framework web asíncrono moderno y ultrarrápido para APIs REST.
+- **WPipe Engine**: Motor de pipelines con control de memoria, reintentos y métricas.
+- **Pydantic v2**: Validación de datos estricta en tiempo de ejecución.
+- **Uvicorn**: Servidor ASGI de nivel de producción.
+- **Docker & Docker Compose**: Despliegue reproducible y aislado en contenedores.
+- **Pytest**: Suite de pruebas unitarias y calidad continua.
+- **Ruff**: Linter y formateador de código ultrarrápido.
+
+---
+
+## 🚀 Despliegue y Ejecución
+
+### 1. Iniciar con Docker Compose (Recomendado)
 ```bash
+# Construir y levantar el microservicio
+make start
+
+# O directamente con Docker Compose:
+docker-compose up -d --build
+```
+
+### 2. Endpoints y Documentación Interactiva
+- **Ejecutar Pipeline**: `POST /run` (Envío de payload JSON para procesar en el pipeline)
+- **Comprobación de Salud**: `GET /health`
+- **Documentación Swagger UI**: `http://localhost:8000/docs`
+- **Especificación OpenAPI**: `http://localhost:8000/openapi.json`
+
+### 3. Comandos Automatizados del Makefile
+- `make start` — Construye y levanta el microservicio en segundo plano.
+- `make stop` — Detiene y apaga los contenedores.
+- `make restart` — Reinicia los servicios en caliente.
+- `make logs` — Muestra los logs en streaming en tiempo real.
+- `make test` — Ejecuta las pruebas automatizadas dentro del contenedor Docker.
+- `make status` — Consulta el estado y salud del microservicio (`docker-compose ps`).
+- `make shell` — Acceso interactivo Bash dentro del contenedor.
+- `make clean` — Limpieza total de contenedores y volúmenes huérfanos.
+
+### 4. Cómo ejecutar los tests
+```bash
+# Dentro del contenedor Docker:
+make test
+
+# O en entorno local:
 pytest app/tests/ -q
 ```
 """

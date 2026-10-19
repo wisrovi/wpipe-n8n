@@ -45,6 +45,17 @@ class CloudflareAdminClient:
         self.account_id = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID", DEFAULT_ACCOUNT_ID)
         self.database_id = database_id or os.environ.get("CLOUDFLARE_D1_DATABASE_ID", DEFAULT_DATABASE_ID)
         self.api_token = api_token or os.environ.get("CLOUDFLARE_API_TOKEN", "")
+        if not self.api_token:
+            wrangler_cfg = os.path.expanduser("~/.config/.wrangler/config/default.toml")
+            if os.path.exists(wrangler_cfg):
+                try:
+                    with open(wrangler_cfg, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip().startswith("oauth_token"):
+                                self.api_token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                                break
+                except Exception:
+                    pass
         self.api_base_url = (api_base_url or os.environ.get("API_BASE_URL", "https://api.wisrovi.dev")).rstrip("/")
 
     def execute_query(self, sql: str, params: Optional[list[Any]] = None) -> list[dict[str, Any]]:

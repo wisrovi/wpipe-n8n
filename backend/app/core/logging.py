@@ -1,7 +1,7 @@
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _CONFIGURED_FLAG = "_wpipe_studio_configured"
 
@@ -9,7 +9,7 @@ _CONFIGURED_FLAG = "_wpipe_studio_configured"
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

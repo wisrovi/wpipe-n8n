@@ -10,6 +10,52 @@ from app.schemas.ir import (
     TargetIR,
 )
 
+PACK_ALIASES: dict[str, str] = {
+    "wpipe_steps.storage": "wpipe_steps.database",
+    "wpipe_steps.network": "wpipe_steps.security",
+    "wpipe_steps.db": "wpipe_steps.database",
+}
+
+KNOWN_STEP_NAMESPACES: dict[str, str] = {
+    "HttpRequest": "wpipe_steps.connectivity",
+    "HttpRequestStep": "wpipe_steps.connectivity",
+    "GraphQLQuery": "wpipe_steps.connectivity",
+    "GraphQLQueryStep": "wpipe_steps.connectivity",
+    "WebhookTrigger": "wpipe_steps.connectivity",
+    "WebhookTriggerStep": "wpipe_steps.connectivity",
+    "SftpTransfer": "wpipe_steps.connectivity",
+    "SftpTransferStep": "wpipe_steps.connectivity",
+    "RSSParser": "wpipe_steps.connectivity",
+    "RSSParserStep": "wpipe_steps.connectivity",
+    "OAuth2Auth": "wpipe_steps.connectivity",
+    "OAuth2AuthStep": "wpipe_steps.connectivity",
+    "MySQLQuery": "wpipe_steps.database",
+    "MySQLQueryStep": "wpipe_steps.database",
+    "RedisCache": "wpipe_steps.database",
+    "RedisCacheStep": "wpipe_steps.database",
+    "RedisGet": "wpipe_steps.database",
+    "MongoInsert": "wpipe_steps.database",
+    "MongoInsertStep": "wpipe_steps.database",
+    "SQLiteAudit": "wpipe_steps.database",
+    "SQLiteAuditStep": "wpipe_steps.database",
+    "ClickHouseBulk": "wpipe_steps.database",
+    "ClickHouseBulkStep": "wpipe_steps.database",
+    "CassandraWrite": "wpipe_steps.database",
+    "CassandraWriteStep": "wpipe_steps.database",
+    "Fail2BanCheck": "wpipe_steps.security",
+    "Fail2BanCheckStep": "wpipe_steps.security",
+    "NmapScan": "wpipe_steps.security",
+    "NmapScanStep": "wpipe_steps.security",
+    "ShodanSearch": "wpipe_steps.security",
+    "ShodanSearchStep": "wpipe_steps.security",
+    "HashGenerator": "wpipe_steps.security",
+    "HashGeneratorStep": "wpipe_steps.security",
+    "VaultSecrets": "wpipe_steps.security",
+    "VaultSecretsStep": "wpipe_steps.security",
+    "WafFilter": "wpipe_steps.security",
+    "WafFilterStep": "wpipe_steps.security",
+}
+
 
 def transform_canvas_to_semantic(
     canvas_ir: CanvasIR, pipeline_name: str = "main_pipeline"
@@ -117,6 +163,16 @@ def transform_canvas_to_semantic(
     # Helper function to build SemanticStep recursively
     def build_semantic_step(node) -> SemanticStep:
         data = node.data
+        clean_ns = data.namespace
+        clean_fn = data.func_name
+        if clean_fn in KNOWN_STEP_NAMESPACES:
+            clean_ns = KNOWN_STEP_NAMESPACES[clean_fn]
+        elif clean_ns:
+            for old_p, new_p in PACK_ALIASES.items():
+                if clean_ns == old_p or clean_ns.startswith(f"{old_p}."):
+                    clean_ns = clean_ns.replace(old_p, new_p, 1)
+                    break
+
         step = SemanticStep(
             step_id=node.id,
             name=data.label,
@@ -125,8 +181,8 @@ def transform_canvas_to_semantic(
             trigger_param=data.trigger_param,
             response_type=data.response_type,
             response_param=data.response_param,
-            namespace=data.namespace,
-            func_name=data.func_name,
+            namespace=clean_ns,
+            func_name=clean_fn,
             origin=data.origin,
             params=data.params,
             contract=data.contract,
@@ -212,10 +268,15 @@ def transform_semantic_to_target(
         wpipe_symbols.append("For")
     if has_parallel:
         wpipe_symbols.append("Parallel")
-    if has_background:
-        wpipe_symbols.append("Background")
 
     imports: list[str] = [f"from wpipe import {', '.join(wpipe_symbols)}"]
+    if has_background:
+        imports.append(
+            "try:\n"
+            "    from wpipe import Background\n"
+            "except ImportError:\n"
+            "    from wpipe.pipe.components.logic_blocks import Background"
+        )
     custom_state_files: list[TargetFile] = []
     custom_dto_files: list[TargetFile] = []
     custom_func_names: dict[str, str] = {}
@@ -293,7 +354,17 @@ def {func_safe}_step(context: {pascal}Context) -> dict[str, Any]:
                     custom_state_files.append(TargetFile(path=state_path, content=state_code))
                     imports.append(f"from app.states.{func_safe} import {func_safe}_step")
             else:
-                imports.append(f"from {s.namespace} import {s.func_name}")
+                clean_ns = s.namespace or ""
+                clean_fn = s.func_name or ""
+                if clean_fn in KNOWN_STEP_NAMESPACES:
+                    clean_ns = KNOWN_STEP_NAMESPACES[clean_fn]
+                elif clean_ns:
+                    for old_p, new_p in PACK_ALIASES.items():
+                        if clean_ns == old_p or clean_ns.startswith(f"{old_p}."):
+                            clean_ns = clean_ns.replace(old_p, new_p, 1)
+                            break
+                if clean_ns and clean_fn:
+                    imports.append(f"from {clean_ns} import {clean_fn}")
 
     def render_step(s: SemanticStep, indent: int = 8) -> str:
         pad = " " * indent
@@ -676,13 +747,13 @@ pytest app/tests/ -q
 ```
 """
 
-    test_code = """from app.pipelines import build_pipeline
+    test_code = f"""from app.pipelines import build_pipeline
 
 
 def test_pipeline_builds():
     pipe = build_pipeline()
     assert pipe is not None
-    assert pipe.name == "main_pipeline"
+    assert (getattr(pipe, "name", None) or getattr(pipe, "pipeline_name", None)) == "{semantic_ir.pipeline_name}"
     assert len(pipe.tasks_list) >= 0
 """
 

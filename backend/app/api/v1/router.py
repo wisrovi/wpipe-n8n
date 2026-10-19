@@ -44,15 +44,19 @@ def _collect_routers() -> list[APIRouter]:
     return collected
 
 
+from app.api.v1.auth import router as auth_router  # noqa: E402
 from app.api.v1.catalog import router as catalog_router  # noqa: E402
 from app.api.v1.pipeline import router as pipeline_router  # noqa: E402
+from app.api.v1.projects import router as projects_router  # noqa: E402
 
+router.include_router(auth_router)
 router.include_router(catalog_router)
 router.include_router(pipeline_router)
+router.include_router(projects_router)
 
 def _mount_siblings() -> None:
     for candidate in _collect_routers():
-        if candidate not in (catalog_router, pipeline_router):
+        if candidate not in (auth_router, catalog_router, pipeline_router, projects_router):
             router.include_router(candidate)
             logger.info("mounted router prefix=%r tags=%r", candidate.prefix, candidate.tags)
 

@@ -1,17 +1,21 @@
 """Project and Multi-Tenant Workspace Manager Service.
 
 Provides SQLite-backed persistence, strict user-level workspace isolation,
-and microservices lifecycle management.
+session token management with hashed password authentication, and microservices lifecycle management.
+Persists data to a shared media volume on the host.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import secrets
+import shutil
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.core.logging import get_logger
@@ -25,8 +29,48 @@ from app.schemas.projects import (
 
 logger = get_logger(__name__)
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "studio.db"
-WORKSPACES_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "workspaces"
+
+def _resolve_paths() -> tuple[Path, Path]:
+    """Resolve database path and workspaces directory in persistent host media volume."""
+    env_media = os.environ.get("STUDIO_MEDIA_DIR") or os.environ.get("STUDIO_DATA_DIR")
+    if env_media:
+        media_root = Path(env_media).resolve()
+    else:
+        # Default to root media directory in project root
+        root_dir = Path(__file__).resolve().parent.parent.parent.parent
+        media_root = (root_dir / "media").resolve()
+
+    media_root.mkdir(parents=True, exist_ok=True)
+    db_path = Path(os.environ.get("STUDIO_DB_PATH", media_root / "studio.db")).resolve()
+    workspaces_root = Path(os.environ.get("STUDIO_WORKSPACES_DIR", media_root / "workspaces")).resolve()
+    workspaces_root.mkdir(parents=True, exist_ok=True)
+    return db_path, workspaces_root
+
+
+DEFAULT_DB_PATH, DEFAULT_WORKSPACES_ROOT = _resolve_paths()
+
+
+def hash_password(password: str) -> str:
+    """Hash password using PBKDF2-HMAC-SHA256 with a unique random salt."""
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+    return f"pbkdf2_sha256${salt}${key.hex()}"
+
+
+def verify_password(password: str, hashed: str | None) -> bool:
+    """Verify password against stored PBKDF2 hash using constant-time comparison."""
+    if not hashed:
+        return False
+    try:
+        parts = hashed.split("$")
+        if len(parts) != 3 or parts[0] != "pbkdf2_sha256":
+            return False
+        salt = parts[1]
+        expected_key = parts[2]
+        key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+        return secrets.compare_digest(key.hex(), expected_key)
+    except Exception:
+        return False
 
 
 def _slugify(name: str) -> str:
@@ -35,10 +79,15 @@ def _slugify(name: str) -> str:
 
 
 class ProjectManager:
-    def __init__(self, db_path: Path = DB_PATH) -> None:
-        self.db_path = db_path
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        workspaces_root: Path | None = None,
+    ) -> None:
+        self.db_path = (db_path or DEFAULT_DB_PATH).resolve()
+        self.workspaces_root = (workspaces_root or DEFAULT_WORKSPACES_ROOT).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        WORKSPACES_ROOT.mkdir(parents=True, exist_ok=True)
+        self.workspaces_root.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -56,6 +105,7 @@ class ProjectManager:
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
                     name TEXT NOT NULL,
                     role TEXT NOT NULL,
                     avatar TEXT NOT NULL,
@@ -63,6 +113,23 @@ class ProjectManager:
                 )
                 """
             )
+            # Automatic schema migration for password_hash column if table existed previously
+            user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+            if "password_hash" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+                """
+            )
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS projects (
@@ -85,28 +152,29 @@ class ProjectManager:
 
     def _seed_default_data(self) -> None:
         with self._get_connection() as conn:
-            # Seed 1: William Rodriguez (AI Leader & Solutions Architect)
-            william_exists = conn.execute(
-                "SELECT 1 FROM users WHERE username = ?", ("william.rodriguez",)
+            now = datetime.now(timezone.utc).isoformat()
+
+            # Seed 1: William Rodriguez (AI Leader & Solutions Architect) - password: admin123
+            row_william = conn.execute(
+                "SELECT id, password_hash FROM users WHERE username = ?", ("william.rodriguez",)
             ).fetchone()
-            if not william_exists:
+            if not row_william:
                 conn.execute(
                     """
-                    INSERT INTO users (id, username, name, role, avatar, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (id, username, password_hash, name, role, avatar, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         "usr_william",
                         "william.rodriguez",
+                        hash_password("admin123"),
                         "William R.",
                         "AI Leader & Solutions Architect",
                         "WR",
-                        datetime.now(timezone.utc).isoformat(),
+                        now,
                     ),
                 )
-
-                # Seed sample microservice for William
-                now = datetime.now(timezone.utc).isoformat()
+                # Seed starter sample microservice for William
                 conn.execute(
                     """
                     INSERT INTO projects (id, owner_id, name, description, protocol, canvas_ir, generated_files, created_at, updated_at)
@@ -124,27 +192,32 @@ class ProjectManager:
                         now,
                     ),
                 )
+            elif not row_william["password_hash"]:
+                conn.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (hash_password("admin123"), row_william["id"]),
+                )
 
-            # Seed 2: Dev Engineer
-            dev_exists = conn.execute(
-                "SELECT 1 FROM users WHERE username = ?", ("developer",)
+            # Seed 2: Dev Engineer (Pipeline Core Developer) - password: dev123
+            row_dev = conn.execute(
+                "SELECT id, password_hash FROM users WHERE username = ?", ("developer",)
             ).fetchone()
-            if not dev_exists:
+            if not row_dev:
                 conn.execute(
                     """
-                    INSERT INTO users (id, username, name, role, avatar, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (id, username, password_hash, name, role, avatar, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         "usr_developer",
                         "developer",
+                        hash_password("dev123"),
                         "Dev Engineer",
                         "Pipeline Core Developer",
                         "DE",
-                        datetime.now(timezone.utc).isoformat(),
+                        now,
                     ),
                 )
-                now = datetime.now(timezone.utc).isoformat()
                 conn.execute(
                     """
                     INSERT INTO projects (id, owner_id, name, description, protocol, canvas_ir, generated_files, created_at, updated_at)
@@ -162,29 +235,41 @@ class ProjectManager:
                         now,
                     ),
                 )
+            elif not row_dev["password_hash"]:
+                conn.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (hash_password("dev123"), row_dev["id"]),
+                )
 
-            # Seed 3: Guest / Sandbox
-            guest_exists = conn.execute(
-                "SELECT 1 FROM users WHERE username = ?", ("guest",)
+            # Seed 3: Guest / Sandbox - password: guest123
+            row_guest = conn.execute(
+                "SELECT id, password_hash FROM users WHERE username = ?", ("guest",)
             ).fetchone()
-            if not guest_exists:
+            if not row_guest:
                 conn.execute(
                     """
-                    INSERT INTO users (id, username, name, role, avatar, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (id, username, password_hash, name, role, avatar, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         "usr_guest",
                         "guest",
+                        hash_password("guest123"),
                         "Invitado",
                         "Sandbox Explorer",
                         "IN",
-                        datetime.now(timezone.utc).isoformat(),
+                        now,
                     ),
                 )
+            elif not row_guest["password_hash"]:
+                conn.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (hash_password("guest123"), row_guest["id"]),
+                )
+
             conn.commit()
 
-    # ---------------- User Management ----------------
+    # ---------------- User & Session Management ----------------
 
     def list_users(self) -> list[UserProfile]:
         with self._get_connection() as conn:
@@ -229,31 +314,112 @@ class ProjectManager:
                 created_at=row["created_at"],
             )
 
-    def register_user(self, username: str, name: str | None = None, role: str | None = None) -> UserProfile:
+    def create_session(self, user_id: str, days_valid: int = 30) -> str:
+        """Create a new secure session token stored in SQLite."""
+        token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(days=days_valid)).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO sessions (token, user_id, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (token, user_id, now.isoformat(), expires_at),
+            )
+            conn.commit()
+        return token
+
+    def authenticate_user(self, username: str, password: str) -> tuple[UserProfile, str] | None:
+        """Authenticate user by username and password. Returns (UserProfile, session_token) or None."""
+        clean_user = username.strip().lower()
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM users WHERE username = ?", (clean_user,)).fetchone()
+            if not row:
+                return None
+            stored_hash = row["password_hash"]
+            # Allow fallback for legacy empty hash
+            if not stored_hash or verify_password(password, stored_hash):
+                user = UserProfile(
+                    id=row["id"],
+                    username=row["username"],
+                    name=row["name"],
+                    role=row["role"],
+                    avatar=row["avatar"],
+                    created_at=row["created_at"],
+                )
+                token = self.create_session(user.id)
+                return user, token
+            return None
+
+    def get_user_by_token(self, token: str) -> UserProfile | None:
+        """Retrieve user associated with a valid, non-expired session token."""
+        if not token or not token.strip():
+            return None
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT u.* FROM users u
+                JOIN sessions s ON u.id = s.user_id
+                WHERE s.token = ? AND s.expires_at > ?
+                """,
+                (token.strip(), now),
+            ).fetchone()
+            if not row:
+                return None
+            return UserProfile(
+                id=row["id"],
+                username=row["username"],
+                name=row["name"],
+                role=row["role"],
+                avatar=row["avatar"],
+                created_at=row["created_at"],
+            )
+
+    def logout_token(self, token: str) -> bool:
+        """Revoke a session token upon user logout."""
+        if not token:
+            return False
+        with self._get_connection() as conn:
+            res = conn.execute("DELETE FROM sessions WHERE token = ?", (token.strip(),))
+            conn.commit()
+            return res.rowcount > 0
+
+    def register_user(
+        self,
+        username: str,
+        password: str = "pass123",
+        name: str | None = None,
+        role: str | None = None,
+    ) -> tuple[UserProfile, str]:
+        """Register a new user identity with a hashed password and return (UserProfile, session_token)."""
         clean_user = username.strip().lower()
         existing = self.get_user_by_username(clean_user)
         if existing:
-            return existing
+            token = self.create_session(existing.id)
+            return existing, token
 
         user_id = f"usr_{uuid.uuid4().hex[:8]}"
         display_name = name.strip() if name and name.strip() else clean_user.capitalize()
         user_role = role.strip() if role and role.strip() else "Developer"
         initials = "".join([part[0].upper() for part in display_name.split() if part])[:2] or "US"
         now = datetime.now(timezone.utc).isoformat()
+        pwd_hash = hash_password(password)
 
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO users (id, username, name, role, avatar, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO users (id, username, password_hash, name, role, avatar, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, clean_user, display_name, user_role, initials, now),
+                (user_id, clean_user, pwd_hash, display_name, user_role, initials, now),
             )
             conn.commit()
 
-        # Create user workspace directory
-        (WORKSPACES_ROOT / user_id).mkdir(parents=True, exist_ok=True)
-        return UserProfile(
+        # Create isolated workspace root for this user
+        (self.workspaces_root / user_id).mkdir(parents=True, exist_ok=True)
+        user = UserProfile(
             id=user_id,
             username=clean_user,
             name=display_name,
@@ -261,15 +427,17 @@ class ProjectManager:
             avatar=initials,
             created_at=now,
         )
+        token = self.create_session(user_id)
+        return user, token
 
     # ---------------- Multi-Tenant Project Management ----------------
 
     def get_workspace_dir(self, owner_id: str, project_id: str) -> Path:
-        # Strictly sandbox directory within WORKSPACES_ROOT to avoid any path traversal
+        """Strictly sandboxed directory within host persistent media volume."""
         clean_owner = re.sub(r"[^\w-]", "", owner_id)
         clean_proj = re.sub(r"[^\w-]", "", project_id)
-        path = (WORKSPACES_ROOT / clean_owner / clean_proj).resolve()
-        if not str(path).startswith(str(WORKSPACES_ROOT.resolve())):
+        path = (self.workspaces_root / clean_owner / clean_proj).resolve()
+        if not str(path).startswith(str(self.workspaces_root.resolve())):
             raise ValueError("Path traversal attempt detected")
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -331,15 +499,11 @@ class ProjectManager:
             )
 
     def create_project(self, owner_id: str, req: ProjectCreateRequest) -> ProjectDetail:
-        user = self.get_user_by_id(owner_id)
-        if not user:
-            raise ValueError(f"User {owner_id} does not exist")
-
         proj_id = f"proj_{uuid.uuid4().hex[:10]}"
         clean_name = _slugify(req.name)
         now = datetime.now(timezone.utc).isoformat()
-        canvas_ir_dict = req.canvas_ir or {}
-        generated_files_list = req.generated_files or []
+        canvas_ir_dict = req.canvas_ir if req.canvas_ir is not None else {}
+        generated_files_list = req.generated_files if req.generated_files is not None else []
 
         with self._get_connection() as conn:
             conn.execute(
@@ -361,7 +525,7 @@ class ProjectManager:
             )
             conn.commit()
 
-        # Initialize physical workspace directory for this project
+        # Initialize physical workspace directory for this project in the shared host media volume
         ws_dir = self.get_workspace_dir(owner_id, proj_id)
         with open(ws_dir / "meta.json", "w", encoding="utf-8") as f:
             json.dump({"id": proj_id, "name": clean_name, "owner_id": owner_id}, f)
@@ -412,7 +576,7 @@ class ProjectManager:
             )
             conn.commit()
 
-        # Update physical workspace metadata
+        # Update physical workspace metadata in shared host volume
         try:
             ws_dir = self.get_workspace_dir(owner_id, project_id)
             with open(ws_dir / "meta.json", "w", encoding="utf-8") as f:
@@ -442,9 +606,8 @@ class ProjectManager:
             if res.rowcount == 0:
                 return False
 
-        # Remove physical directory
+        # Remove physical directory in shared host media volume
         try:
-            import shutil
             ws_dir = self.get_workspace_dir(owner_id, project_id)
             if ws_dir.exists():
                 shutil.rmtree(ws_dir, ignore_errors=True)
@@ -466,7 +629,22 @@ class ProjectManager:
             canvas_ir=source.canvas_ir,
             generated_files=source.generated_files,
         )
-        return self.create_project(owner_id, create_req)
+        new_project = self.create_project(owner_id, create_req)
+
+        # Clone physical files if any exist
+        try:
+            src_dir = self.get_workspace_dir(owner_id, project_id)
+            dst_dir = self.get_workspace_dir(owner_id, new_project.id)
+            for item in src_dir.iterdir():
+                if item.name != "meta.json":
+                    if item.is_file():
+                        shutil.copy2(item, dst_dir / item.name)
+                    elif item.is_dir():
+                        shutil.copytree(item, dst_dir / item.name, dirs_exist_ok=True)
+        except Exception as e:
+            logger.warning("Failed to duplicate physical workspace files: %s", e)
+
+        return new_project
 
 
 _project_manager: ProjectManager | None = None

@@ -1,0 +1,28 @@
+{
+  "name": "wpipe-license-server",
+  "version": "1.0.0",
+  "description": "Serverless Licensing Authority for WPipe Studio VS Code Extension",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:init": "wrangler d1 execute wpipe_licenses --local --file=schema.sql",
+    "d1:init:prod": "wrangler d1 execute wpipe_licenses --remote --file=schema.sql",
+    "generate-keys": "node scripts/generate_keypair.js"
+  },
+  "keywords": [
+    "wpipe",
+    "licensing",
+    "cloudflare-workers",
+    "d1",
+    "ed25519",
+    "wisrovi"
+  ],
+  "author": "William Rodriguez <wisrovi@wisrovi.dev> (https://wisrovi.dev)",
+  "license": "Proprietary",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241018.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.80.5"
+  }
+}

@@ -129,3 +129,18 @@ def test_codegen_control_blocks_and_dialect_a():
     reqs = file_map["requirements.txt"]
     assert "wpipe>=2.5.10" in reqs
     assert "pydantic>=2.0.0" in reqs
+
+    # Verify protected README.md with legal notice and author attribution
+    assert "README.md" in file_map
+    readme_content = file_map["README.md"]
+    assert "William Rodriguez" in readme_content
+    assert "wisrovi" in readme_content
+    assert "eCaptureDtech" in readme_content
+    assert "Badajoz, Extremadura, España" in readme_content
+    assert "AI Leader & Solutions Architect" in readme_content
+    assert "WPipe Studio (wisrovi SUITE)" in readme_content
+    assert "Legal Notice, Authorship & Intellectual Property Rights" in readme_content
+    assert "All Rights Reserved" in readme_content
+    assert "docker-compose" in readme_content
+    assert "Makefile" in readme_content
+

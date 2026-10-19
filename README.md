@@ -106,6 +106,7 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
 8. **Inicio de Sesión Natural, Sesiones Seguras y Gestor Multi-Tenant de Microservicios**:
    - **Inicio de Sesión Natural y Cierre de Sesión**: Flujo completo de autenticación con usuario y contraseña, hashing criptográfico PBKDF2-HMAC-SHA256, tokens Bearer de sesión y endpoint `/api/v1/auth/logout`.
+   - **Pantalla de Autenticación Centrada y Aislada**: Capa de login/registro a pantalla completa con fondo opaco oscuro (`#07090e`) y alta prioridad (`z-[9999]`) que centra el formulario al píxel e impide que se filtren elementos del lienzo o la interfaz antes de autenticarse.
    - **Vista Inmediata de Proyectos al Iniciar Sesión**: Al autenticarse, se despliega automáticamente el panel de microservicios ("Mis Microservicios") permitiendo cambiar inmediatamente entre proyectos o crear nuevos.
    - **Aislamiento Físico en Volumen Media (`./media`)**: Todo el backend y frontend se ejecutan compartiendo el volumen host `./media`. Cada usuario almacena sus microservicios en `media/workspaces/{owner_id}/{project_id}/`, garantizando aislamiento absoluto entre usuarios y persistencia total entre reinicios de contenedores.
    - **Persistencia Multi-Microservicio**: Creación, guardado en caliente, duplicación/clonación y eliminación de microservicios con un solo clic.

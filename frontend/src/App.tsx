@@ -3936,12 +3936,12 @@ export default function App() {
 
       {/* 5. NATURAL FULL-SCREEN LOGIN / REGISTRATION OVERLAY */}
       {!currentUser && (
-        <div className="fixed inset-0 z-50 bg-[#07090e] flex flex-col items-center justify-center p-4 aurora-bg select-none animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[9999] bg-[#07090e] flex flex-col items-center justify-center p-4 select-none animate-in fade-in duration-200 overflow-y-auto w-screen h-screen">
           {/* Subtle glowing backdrops */}
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="w-full max-w-md bg-[#0b0f19]/95 border border-sky-800/70 rounded-2xl p-7 shadow-2xl backdrop-blur-xl relative z-10 flex flex-col space-y-4">
+          <div className="w-full max-w-md bg-[#0b0f19]/95 border border-sky-800/70 rounded-2xl p-7 shadow-2xl backdrop-blur-xl relative z-10 flex flex-col space-y-4 my-auto">
             {/* Brand Header */}
             <div className="text-center space-y-1.5">
               <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-sky-500/25 mb-2">

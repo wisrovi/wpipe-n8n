@@ -716,6 +716,33 @@ export function clearWorkspace() {
   activeWorkspaceRef.clear();
 }
 
+export function getWorkspaceStateJson(): any {
+  if (!activeWorkspaceRef) return null;
+  try {
+    return Blockly.serialization.workspaces.save(activeWorkspaceRef);
+  } catch (err) {
+    console.error("Failed to save workspace state:", err);
+    return null;
+  }
+}
+
+export function loadWorkspaceStateJson(state: any): boolean {
+  if (!activeWorkspaceRef || !state) return false;
+  try {
+    activeWorkspaceRef.clear();
+    Blockly.serialization.workspaces.load(state, activeWorkspaceRef);
+    setTimeout(() => {
+      if (activeWorkspaceRef) {
+        activeWorkspaceRef.scrollCenter();
+      }
+    }, 100);
+    return true;
+  } catch (err) {
+    console.error("Failed to load workspace state:", err);
+    return false;
+  }
+}
+
 export function addStepBlockToWorkspace(
   initialStepName: string = "HttpRequest",
   initialNamespace: string = "wpipe_steps.connectivity",

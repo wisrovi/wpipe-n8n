@@ -590,14 +590,15 @@ dev-local:
 - **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico).
 
 ### Autor & Atribución Profesional
-- **Autor Principal**: **William Rodriguez** (`wisrovi`)
-- **Cargo & Empresa**: **AI Leader & Solutions Architect** en **eCaptureDtech**
+- **Autor Principal**: **William Rodriguez** ([`wisrovi`](https://wisrovi.dev))
+- **Perfil Profesional**: **AI Leader & Solutions Architect**
+- **Sitio Web Oficial**: [https://wisrovi.dev](https://wisrovi.dev)
 - **Ubicación**: Badajoz, Extremadura, España
 - **Misión & Especialidad**: *Liderazgo en inteligencia artificial avanzada, arquitecturas cloud distribuidas y diseño de motores de orquestación de alto rendimiento.*
-- **Copyright**: © {current_year} **William Rodriguez (wisrovi) / eCaptureDtech**. Todos los derechos reservados / All Rights Reserved.
+- **Copyright**: © {current_year} **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Todos los derechos reservados / All Rights Reserved.
 
 ### Términos de Derechos y Uso
-Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (`@step`) y contratos de orquestación forman parte de la propiedad intelectual de su autor y titulares de derechos reconocidos. Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
+Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (`@step`) y contratos de orquestación forman parte de la propiedad intelectual exclusiva de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
 
 ---
 

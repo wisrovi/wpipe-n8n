@@ -25,9 +25,11 @@ class ContextContract(BaseModel):
 
 class NodeData(BaseModel):
     label: str
-    node_type: Literal["trigger", "step", "condition", "for", "while", "parallel", "background"] = "step"
+    node_type: Literal["trigger", "response", "step", "condition", "for", "while", "parallel", "background"] = "step"
     trigger_type: Literal["api", "kafka", "redis", "cron", "webhook", "cli"] | None = None
     trigger_param: str | None = None
+    response_type: Literal["http_json", "kafka_publish", "redis_publish", "file_export", "terminate"] | None = None
+    response_param: str | None = None
     namespace: str | None = None
     func_name: str | None = None
     origin: StepOrigin = StepOrigin.CATALOG
@@ -106,9 +108,11 @@ class CanvasIR(BaseModel):
 class SemanticStep(BaseModel):
     step_id: str
     name: str
-    step_type: Literal["trigger", "step", "condition", "for", "while", "parallel", "background"] = "step"
+    step_type: Literal["trigger", "response", "step", "condition", "for", "while", "parallel", "background"] = "step"
     trigger_type: str | None = None
     trigger_param: str | None = None
+    response_type: str | None = None
+    response_param: str | None = None
     namespace: str | None = None
     func_name: str | None = None
     origin: StepOrigin = StepOrigin.CATALOG

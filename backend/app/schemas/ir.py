@@ -1,15 +1,16 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
-class StepOrigin(str, Enum):
+class StepOrigin(StrEnum):
     CATALOG = "catalog"
     USER_IMPORTED = "user_imported"
     DESCRIBED = "described"
 
 
-class InferredLevel(str, Enum):
+class InferredLevel(StrEnum):
     EXACT = "exact"
     TRUSTED = "trusted"
     HEURISTIC = "heuristic"

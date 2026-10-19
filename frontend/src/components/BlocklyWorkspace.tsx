@@ -201,6 +201,53 @@ export function registerWPipeBlocklyBlocks() {
     },
   };
 
+  // 0b. WPipe Response / Egress Terminator Block (Scratch Cap Block)
+  Blockly.Blocks["wpipe_response"] = {
+    init: function () {
+      this.appendDummyInput("HEADER")
+        .appendField("🏁 Cierre del Pipeline:")
+        .appendField(
+          new Blockly.FieldDropdown(
+            [
+              ["🌐 Respuesta HTTP (200 JSON OK)", "http_json"],
+              ["📨 Kafka Producer (Publicar Tópico)", "kafka_publish"],
+              ["📦 Redis Producer (Publicar Cola)", "redis_publish"],
+              ["💾 Guardar Contexto en Archivo", "file_export"],
+              ["🛑 Fin Silencioso (Return Context)", "terminate"],
+            ],
+            function (this: any, newVal: string) {
+              const block = this.getSourceBlock();
+              if (block) {
+                const paramField = block.getField("RESPONSE_PARAM");
+                if (paramField) {
+                  if (newVal === "http_json") paramField.setValue('{"status": "success", "data": context}');
+                  else if (newVal === "kafka_publish") paramField.setValue("events.output");
+                  else if (newVal === "redis_publish") paramField.setValue("wpipe:queue:out");
+                  else if (newVal === "file_export") paramField.setValue("output_result.json");
+                  else if (newVal === "terminate") paramField.setValue("return context");
+                }
+              }
+              return newVal;
+            }
+          ),
+          "RESPONSE_TYPE"
+        )
+        .appendField(createCollapseToggleField(), "COLLAPSE_BTN");
+
+      this.appendDummyInput()
+        .appendField("Detalle / Destino / Payload:")
+        .appendField(new Blockly.FieldTextInput('{"status": "success", "data": context}'), "RESPONSE_PARAM");
+
+      // Cap block: has previous connection, NO next connection
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(false);
+      this.setColour(345); // Rose / Crimson terminator
+      this.setTooltip(
+        "Cierre y salida del pipeline: define cómo finaliza el flujo y qué respuesta devuelve el microservicio (Respuesta HTTP JSON, publicación en Kafka/Redis, guardado en archivo o retorno directo). Doble-clic para colapsar."
+      );
+    },
+  };
+
   // 1. WPipe Step Block (Motion Blue) with Interactive Dropdowns directly inside the block
   Blockly.Blocks["wpipe_step"] = {
     init: function () {
@@ -613,6 +660,17 @@ export function addTriggerBlockToWorkspace(triggerType: string = "api", triggerP
   placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
+export function addResponseBlockToWorkspace(
+  responseType: string = "http_json",
+  responseParam: string = '{"status": "success", "data": context}'
+) {
+  if (!activeWorkspaceRef) return;
+  const block = activeWorkspaceRef.newBlock("wpipe_response") as Blockly.BlockSvg;
+  block.setFieldValue(responseType, "RESPONSE_TYPE");
+  block.setFieldValue(responseParam, "RESPONSE_PARAM");
+  placeAndHighlightBlock(activeWorkspaceRef, block);
+}
+
 export function collapseAllBlocksInWorkspace() {
   if (!activeWorkspaceRef) return;
   const blocks = activeWorkspaceRef.getAllBlocks(false);
@@ -722,6 +780,19 @@ export function getMermaidFromBlocklyWorkspace(): string {
       const label = typeLabels[trigType] || `🚀 TRIGGER: ${trigType}`;
       lines.push(`    ${currentId}(["${label}"]):::startTrigger`);
       branchExits = [currentId];
+    } else if (type === "wpipe_response") {
+      const respType = block.getFieldValue("RESPONSE_TYPE") || "http_json";
+      const respParam = block.getFieldValue("RESPONSE_PARAM") || '{"status": "success"}';
+      const typeLabels: Record<string, string> = {
+        http_json: `🏁 HTTP 200: JSON Response`,
+        kafka_publish: `🏁 KAFKA PUBLISH: ${respParam}`,
+        redis_publish: `🏁 REDIS PUBLISH: ${respParam}`,
+        file_export: `💾 EXPORT: ${respParam}`,
+        terminate: `🛑 TERMINATE`,
+      };
+      const label = typeLabels[respType] || `🏁 RESPONSE: ${respType}`;
+      lines.push(`    ${currentId}(["${label}"]):::endResponse`);
+      branchExits = [currentId];
     } else if (type === "wpipe_step") {
       const name = block.getFieldValue("STEP_NAME") || "Step";
       lines.push(`    ${currentId}["📦 ${name}"]`);
@@ -817,6 +888,7 @@ export function getMermaidFromBlocklyWorkspace(): string {
   });
 
   lines.push("    classDef startTrigger fill:#d97706,stroke:#f59e0b,stroke-width:3px,color:#fff,font-weight:bold;");
+  lines.push("    classDef endResponse fill:#9f1239,stroke:#f43f5e,stroke-width:3px,color:#fff,font-weight:bold;");
   lines.push("    classDef aiStep fill:#9333ea,stroke:#c084fc,stroke-width:2px,color:#fff;");
   lines.push("    classDef userStep fill:#0d9488,stroke:#2dd4bf,stroke-width:2px,color:#fff;");
   lines.push("    classDef bgStep fill:#4338ca,stroke:#818cf8,stroke-width:2px,color:#fff;");
@@ -874,6 +946,9 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     let params: Record<string, any> = {};
     let contract = { reads: ["data"], writes: ["result"], inferred: "exact" as const };
 
+    let responseType: any = undefined;
+    let responseParam: string | undefined = undefined;
+
     if (type === "wpipe_trigger") {
       nodeType = "trigger";
       triggerType = (block.getFieldValue("TRIGGER_TYPE") || "api") as any;
@@ -881,6 +956,13 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
       label = `Trigger (${(triggerType || "api").toUpperCase()}: ${triggerParam})`;
       origin = "described";
       params = { trigger_type: triggerType, trigger_param: triggerParam };
+    } else if (type === "wpipe_response") {
+      nodeType = "response" as any;
+      responseType = (block.getFieldValue("RESPONSE_TYPE") || "http_json") as any;
+      responseParam = block.getFieldValue("RESPONSE_PARAM") || '{"status": "success"}';
+      label = `Response (${(responseType || "http").toUpperCase()}: ${responseParam})`;
+      origin = "described";
+      params = { response_type: responseType, response_param: responseParam };
     } else if (type === "wpipe_step") {
       label = block.getFieldValue("STEP_NAME") || "Step";
       namespace = block.getFieldValue("NAMESPACE") || undefined;
@@ -941,6 +1023,8 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
         node_type: nodeType,
         trigger_type: triggerType,
         trigger_param: triggerParam,
+        response_type: responseType,
+        response_param: responseParam,
         namespace,
         func_name: funcName,
         origin,
@@ -1013,13 +1097,14 @@ export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): strin
   }
 
   const triggerBlocks = allBlocks.filter((b) => b.type === "wpipe_trigger");
+  const responseBlocks = allBlocks.filter((b) => b.type === "wpipe_response");
   const stepBlocks = allBlocks.filter((b) => b.type === "wpipe_step");
   const aiBlocks = allBlocks.filter((b) => b.type === "wpipe_ai_step");
   const userFileBlocks = allBlocks.filter((b) => b.type === "wpipe_user_file_step");
   const controlBlocks = allBlocks.filter(
     (b) =>
       b.type.startsWith("wpipe_") &&
-      !["wpipe_trigger", "wpipe_step", "wpipe_ai_step", "wpipe_user_file_step"].includes(b.type)
+      !["wpipe_trigger", "wpipe_response", "wpipe_step", "wpipe_ai_step", "wpipe_user_file_step"].includes(b.type)
   );
 
   let md = `# 📋 WPipe Studio Execution Work Plan & Architecture Specification\n\n`;
@@ -1097,6 +1182,20 @@ export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): strin
     }
     md += `\n`;
   });
+
+  md += `---
+
+## 3. 🏁 Egress & Pipeline Response (${responseBlocks.length})
+`;
+  if (responseBlocks.length === 0) {
+    md += `*Default egress: Return execution context JSON*\n\n`;
+  } else {
+    responseBlocks.forEach((b, idx) => {
+      const t = b.getFieldValue("RESPONSE_TYPE") || "http_json";
+      const p = b.getFieldValue("RESPONSE_PARAM") || '{"status": "success"}';
+      md += `#### ${idx + 1}. \`${t.toUpperCase()}\` Exit Point\n- **Target / Destination / Format:** \`${p}\`\n\n`;
+    });
+  }
 
   return md;
 }
@@ -1284,6 +1383,17 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       const whileDo = blockWhile.getInput("DO");
       if (whileDo && whileDo.connection && blockRetryStep.previousConnection) {
         whileDo.connection.connect(blockRetryStep.previousConnection);
+      }
+
+      // 11. Cierre y Salida Egress del Pipeline (wpipe_response)
+      const blockResponse = ws.newBlock("wpipe_response");
+      blockResponse.setFieldValue("http_json", "RESPONSE_TYPE");
+      blockResponse.setFieldValue('{"status": "success", "data": context}', "RESPONSE_PARAM");
+      blockResponse.initSvg();
+      blockResponse.render();
+      attachBlockCollapseBehavior(blockResponse);
+      if (blockIfElse.nextConnection && blockResponse.previousConnection) {
+        blockIfElse.nextConnection.connect(blockResponse.previousConnection);
       }
 
       // Initial auto-centering so blocks are not stuck in the corner

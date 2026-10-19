@@ -10,6 +10,7 @@ import {
   collapseAllBlocksInWorkspace,
   expandAllBlocksInWorkspace,
   zoomFitWorkspace,
+  centerWorkspace,
   undoWorkspace,
   clearWorkspace,
   setBlocklyCatalog,
@@ -20,6 +21,14 @@ import {
   highlightBlocklyBlock,
 } from "./components/BlocklyWorkspace";
 import mermaid from "mermaid";
+import Prism from "prismjs";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-yaml";
+import "prismjs/components/prism-docker";
+import "prismjs/components/prism-makefile";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-json";
+import "prismjs/themes/prism-tomorrow.css";
 import {
   GitBranch,
   GitCommit,
@@ -56,6 +65,7 @@ import {
   Redo,
   Trash2,
   Edit3,
+  Move,
 } from "lucide-react";
 
 interface ParamSpec {
@@ -151,7 +161,8 @@ const FileTreeItem: React.FC<{
   expandedFolders: Record<string, boolean>;
   onToggleFolder: (path: string) => void;
   level?: number;
-}> = ({ node, selectedFileIdx, onSelectFile, expandedFolders, onToggleFolder, level = 0 }) => {
+  modifiedFiles?: Set<string>;
+}> = ({ node, selectedFileIdx, onSelectFile, expandedFolders, onToggleFolder, level = 0, modifiedFiles }) => {
   const isExpanded = expandedFolders[node.path] !== false; // default expanded
 
   if (node.isFolder) {
@@ -184,6 +195,7 @@ const FileTreeItem: React.FC<{
                 expandedFolders={expandedFolders}
                 onToggleFolder={onToggleFolder}
                 level={level + 1}
+                modifiedFiles={modifiedFiles}
               />
             ))}
           </div>
@@ -196,6 +208,7 @@ const FileTreeItem: React.FC<{
   const isPython = node.name.endsWith(".py");
   const isJson = node.name.endsWith(".json") || node.name.endsWith(".toml");
   const isDocker = node.name.includes("Dockerfile");
+  const isModified = modifiedFiles && modifiedFiles.has(node.path);
 
   return (
     <div
@@ -216,7 +229,10 @@ const FileTreeItem: React.FC<{
       ) : (
         <FileCode size={13} className="text-sky-400 shrink-0" />
       )}
-      <span className="truncate">{node.name}</span>
+      <span className="truncate flex-1">{node.name}</span>
+      {isModified && (
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Archivo editado" />
+      )}
     </div>
   );
 };
@@ -251,6 +267,39 @@ function getGitHubFileIcon(name: string) {
   if (name.endsWith(".md")) return <span className="text-blue-400 font-bold text-xs select-none">📝</span>;
   if (name.endsWith(".sh")) return <span className="text-green-400 font-bold text-xs select-none">💻</span>;
   return <FileCode size={14} className="text-gray-400 shrink-0" />;
+}
+
+function highlightCode(code: string, filePath: string): string {
+  if (!code) return "";
+  let grammar = Prism.languages.python;
+  let lang = "python";
+  if (filePath.endsWith(".py")) {
+    grammar = Prism.languages.python;
+    lang = "python";
+  } else if (filePath.endsWith(".yaml") || filePath.endsWith(".yml")) {
+    grammar = Prism.languages.yaml;
+    lang = "yaml";
+  } else if (filePath.endsWith("Dockerfile")) {
+    grammar = Prism.languages.docker;
+    lang = "docker";
+  } else if (filePath.endsWith("Makefile")) {
+    grammar = Prism.languages.makefile;
+    lang = "makefile";
+  } else if (filePath.endsWith(".sh")) {
+    grammar = Prism.languages.bash;
+    lang = "bash";
+  } else if (filePath.endsWith(".json")) {
+    grammar = Prism.languages.json;
+    lang = "json";
+  }
+  if (grammar) {
+    try {
+      return Prism.highlight(code, grammar, lang);
+    } catch {
+      return code;
+    }
+  }
+  return code;
 }
 
 interface GitHubDirItem {
@@ -330,6 +379,7 @@ export default function App() {
   const [githubRawMode, setGithubRawMode] = useState<boolean>(false);
   const [isEditingFile, setIsEditingFile] = useState<boolean>(false);
   const [editingFileContent, setEditingFileContent] = useState<string>("");
+  const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
   const [customDockerImage, setCustomDockerImage] = useState<string>("");
   const [activeMainTab, setActiveMainTab] = useState<"code" | "simulation" | "flowchart" | "python">("code");
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -577,6 +627,22 @@ export default function App() {
     setIsEditingFile(true);
   };
 
+  // Support Tab key indentation inside editor textarea
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+      const newValue = value.substring(0, start) + "    " + value.substring(end);
+      setEditingFileContent(newValue);
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 4;
+      }, 0);
+    }
+  };
+
   // Save changes to current file
   const handleSaveFileChanges = () => {
     if (!githubViewingFile) return;
@@ -585,8 +651,9 @@ export default function App() {
     );
     setGeneratedFiles(updatedFiles);
     setGithubViewingFile({ ...githubViewingFile, content: editingFileContent });
+    setModifiedFiles((prev) => new Set(prev).add(githubViewingFile.path));
     setIsEditingFile(false);
-    setStatusMessage(`Cambios guardados en ${githubViewingFile.path} ✓`);
+    setStatusMessage(`Cambios guardados en ${githubViewingFile.path} ✓ (Preservado para exportación ZIP)`);
   };
 
   // Cancel file editing
@@ -1493,34 +1560,47 @@ export default function App() {
 
         {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE (Permanently Mounted in DOM to preserve blocks) */}
         <div className={activeMainTab === "code" ? "flex-1 flex overflow-hidden relative" : "hidden"}>
-          {/* 1. SCRATCH 3.0 CATEGORY STRIP (Far Left Dot Column) */}
-          <div className="w-16 bg-[#080c16] border-r border-gray-800/80 flex flex-col justify-between items-center py-3 select-none z-20 shrink-0">
-            <div className="flex flex-col items-center space-y-3 w-full">
+          {/* 1. SCRATCH 3.0 CATEGORY STRIP (Far Left Rail) */}
+          <div className="w-16 bg-[#080c16] border-r border-gray-800/80 flex flex-col justify-between items-center py-2.5 select-none z-20 shrink-0">
+            <div className="flex flex-col items-center space-y-2 w-full px-1">
               {[
-                { id: "all", label: "Todos", dot: "bg-sky-400" },
-                { id: "trigger", label: "Inicio", dot: "bg-amber-400" },
-                { id: "steps", label: "Pasos", dot: "bg-blue-500" },
-                { id: "control", label: "Control", dot: "bg-orange-500" },
-                { id: "loops", label: "Bucles", dot: "bg-yellow-400" },
-                { id: "parallel", label: "Paralelo", dot: "bg-emerald-500" },
+                { id: "all", label: "Todos", count: 10, icon: "🌐", dot: "bg-sky-400" },
+                { id: "trigger", label: "Inicio", count: 1, icon: "🚀", dot: "bg-amber-400" },
+                { id: "steps", label: "Pasos", count: 3, icon: "📦", dot: "bg-blue-500" },
+                { id: "control", label: "Control", count: 2, icon: "🔀", dot: "bg-orange-500" },
+                { id: "loops", label: "Bucles", count: 2, icon: "🔁", dot: "bg-yellow-400" },
+                { id: "parallel", label: "Paralelo", count: 2, icon: "⚡", dot: "bg-emerald-500" },
               ].map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`flex flex-col items-center justify-center w-12 py-1.5 rounded-xl transition cursor-pointer ${
+                  title={`${cat.label} (${cat.count} bloques)`}
+                  className={`flex flex-col items-center justify-center w-full py-2 rounded-xl transition cursor-pointer relative group ${
                     selectedCategory === cat.id
-                      ? "bg-gray-800/90 text-white shadow-md border border-gray-700/80"
+                      ? "bg-gray-800/95 text-white shadow-lg border border-sky-500/50"
                       : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
                   }`}
                 >
-                  <span className={`w-3.5 h-3.5 rounded-full ${cat.dot} mb-1 shadow-sm`}></span>
+                  <span className="text-sm mb-0.5">{cat.icon}</span>
                   <span className="text-[9px] font-bold leading-none">{cat.label}</span>
+                  <span
+                    className={`text-[8px] font-mono mt-0.5 px-1 rounded-full ${
+                      selectedCategory === cat.id
+                        ? "bg-sky-500/30 text-sky-300 font-bold"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    {cat.count}
+                  </span>
+                  {selectedCategory === cat.id && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r bg-sky-400 shadow-sm" />
+                  )}
                 </button>
               ))}
             </div>
 
             {/* Authentic Scratch 3.0 Extension Library Button [ + | ≡ ] */}
-            <div className="w-full px-2">
+            <div className="w-full px-2 pt-2 border-t border-gray-800/60">
               <button
                 onClick={() => setShowExtensionModal(true)}
                 title="Catálogo de Extensiones (196 Steps Oficiales y Plugins)"
@@ -1536,27 +1616,37 @@ export default function App() {
           </div>
 
           {/* 2. SCRATCH BLOCK PALETTE (Interlocking Scratch Block Cards) */}
-          <div className="w-64 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between overflow-hidden z-20 shrink-0">
+          <div className="w-72 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between overflow-hidden z-20 shrink-0">
             {/* Header with Search */}
             <div className="p-3 border-b border-gray-800/80 bg-gray-950/60 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs">
+                  <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs shadow-sm">
                     🧩
                   </div>
                   <span className="font-extrabold text-xs text-gray-200">Paleta de Bloques</span>
                 </div>
-                <span className="text-[10px] text-gray-400 font-mono">10 Bloques</span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {categorySearch.trim() ? "Filtrando..." : "10 Bloques"}
+                </span>
               </div>
               <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-2 text-gray-500" />
+                <Search size={13} className="absolute left-2.5 top-2.5 text-gray-500" />
                 <input
                   type="text"
                   value={categorySearch}
                   onChange={(e) => setCategorySearch(e.target.value)}
-                  placeholder="Buscar bloques..."
-                  className="w-full bg-gray-900 border border-gray-800 rounded-lg py-1 pl-8 pr-2.5 text-xs text-gray-200 focus:outline-none focus:border-sky-500 transition"
+                  placeholder="Buscar bloques (ej: trigger, if)..."
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg py-1.5 pl-8 pr-7 text-xs text-gray-200 focus:outline-none focus:border-sky-500 transition placeholder:text-gray-500 font-mono"
                 />
+                {categorySearch && (
+                  <button
+                    onClick={() => setCategorySearch("")}
+                    className="absolute right-2 top-2 text-gray-500 hover:text-white text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1777,11 +1867,14 @@ export default function App() {
                       <div className={`w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 ${b.tabColor} shadow-sm`} />
                     )}
                     <div className={`px-3 py-2 rounded-xl bg-gradient-to-r ${b.gradient} border shadow-md flex items-center justify-between text-white`}>
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-sm shrink-0">{b.icon}</span>
-                        <span className="text-xs font-bold tracking-tight truncate">{b.name}</span>
+                      <div className="flex items-center gap-2.5 truncate">
+                        <span className="text-base shrink-0 p-1 rounded-lg bg-black/20 shadow-inner">{b.icon}</span>
+                        <div className="flex flex-col truncate min-w-0">
+                          <span className="text-xs font-bold tracking-tight truncate leading-tight">{b.name}</span>
+                          <span className="text-[10px] text-white/75 font-medium truncate leading-tight mt-0.5">{b.badge}</span>
+                        </div>
                       </div>
-                      <div className="w-5 h-5 rounded-full bg-black/25 flex items-center justify-center text-white/90 text-[11px] font-bold group-hover:bg-white/20 transition shrink-0 ml-1">
+                      <div className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-white/90 text-xs font-bold group-hover:bg-white/20 transition shrink-0 ml-1 shadow-sm">
                         +
                       </div>
                     </div>
@@ -1795,13 +1888,27 @@ export default function App() {
           <div className="flex-1 bg-[#07090e] relative overflow-hidden flex flex-col">
             {/* Floating Action Toolbar */}
             <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-30">
+              <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 font-medium border-r border-gray-800 mr-1 hidden sm:flex select-none">
+                <Move size={12} className="text-sky-400" />
+                <span>Arrastra el fondo para mover lienzo</span>
+              </div>
+
               <button
-                onClick={zoomFitWorkspace}
-                title="Centrar y ajustar lienzo"
+                onClick={centerWorkspace}
+                title="Centrar lienzo en el origen de los bloques"
                 className="px-2.5 py-1.5 hover:bg-gray-800 text-sky-400 hover:text-sky-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <Maximize2 size={13} />
                 <span>Centrar</span>
+              </button>
+
+              <button
+                onClick={zoomFitWorkspace}
+                title="Ajustar zoom al tamaño de los bloques"
+                className="px-2.5 py-1.5 hover:bg-gray-800 text-teal-400 hover:text-teal-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
+              >
+                <Search size={13} />
+                <span>Ajustar</span>
               </button>
 
               <button
@@ -2251,6 +2358,7 @@ export default function App() {
                         }}
                         expandedFolders={expandedFolders}
                         onToggleFolder={toggleFolder}
+                        modifiedFiles={modifiedFiles}
                       />
                     )}
                   </div>
@@ -2395,6 +2503,11 @@ export default function App() {
                           <div className="flex items-center gap-2 font-mono font-bold text-gray-100">
                             {getGitHubFileIcon(githubViewingFile.path)}
                             <span>{githubViewingFile.path.split("/").pop()}</span>
+                            {modifiedFiles.has(githubViewingFile.path) && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/80 text-amber-400 border border-amber-800/80 font-bold ml-1">
+                                Editado
+                              </span>
+                            )}
                           </div>
                           <span className="text-gray-400 text-[11px] font-mono">
                             {githubViewingFile.content.split("\n").length} líneas ({new Blob([githubViewingFile.content]).size} bytes)
@@ -2532,40 +2645,63 @@ export default function App() {
                       {/* Code Content or Editor */}
                       {isEditingFile ? (
                         <div className="flex-1 flex flex-col bg-[#090d13] overflow-hidden relative">
-                          <div className="bg-[#111620] px-4 py-1.5 border-b border-[#30363d] text-[11px] text-gray-400 font-mono flex items-center justify-between">
-                            <span className="flex items-center gap-1.5 text-sky-400">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                              Modo Edición: modifica el código libremente y pulsa "Guardar Cambios".
+                          <div className="bg-[#111620] px-4 py-2 border-b border-[#30363d] text-[11px] text-gray-300 font-mono flex items-center justify-between">
+                            <span className="flex items-center gap-2 text-sky-400 font-semibold">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Modo Edición: puedes editar el código libremente. Pulsa "Guardar Cambios" para aplicar.
                             </span>
-                            <span>{editingFileContent.split("\n").length} líneas</span>
+                            <div className="flex items-center gap-3 text-gray-400">
+                              <span>💡 Tab sangra 4 espacios</span>
+                              <span className="font-bold text-gray-200">{editingFileContent.split("\n").length} líneas</span>
+                            </div>
                           </div>
-                          <textarea
-                            value={editingFileContent}
-                            onChange={(e) => setEditingFileContent(e.target.value)}
-                            spellCheck={false}
-                            className="flex-1 w-full p-4 bg-[#090d13] text-gray-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
-                            style={{ tabSize: 4 }}
-                          />
+                          <div className="flex-1 flex overflow-hidden">
+                            {/* Line Numbers for Editor */}
+                            <div className="bg-[#0b0f17] border-r border-[#30363d] py-4 px-3 text-right text-gray-600 select-none font-mono text-xs overflow-hidden shrink-0">
+                              {editingFileContent.split("\n").map((_, i) => (
+                                <div key={i} className="leading-relaxed">
+                                  {i + 1}
+                                </div>
+                              ))}
+                            </div>
+                            <textarea
+                              value={editingFileContent}
+                              onChange={(e) => setEditingFileContent(e.target.value)}
+                              onKeyDown={handleEditorKeyDown}
+                              spellCheck={false}
+                              autoFocus
+                              placeholder="Escribe o edita el código aquí..."
+                              className="flex-1 w-full p-4 bg-[#090d13] text-gray-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
+                              style={{ tabSize: 4 }}
+                            />
+                          </div>
                         </div>
                       ) : (
-                        <div className="flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117]">
+                        <div
+                          onDoubleClick={handleStartEditingFile}
+                          title="Doble clic para editar este archivo directamente"
+                          className="flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117] cursor-text"
+                        >
                           {!githubRawMode ? (
                             <>
                               {/* Line Numbers Column */}
-                              <div className="bg-[#0d1117] border-r border-[#30363d] py-3 px-3 text-right text-gray-600 select-none font-mono text-xs">
+                              <div className="bg-[#0d1117] border-r border-[#30363d] py-3 px-3 text-right text-gray-600 select-none font-mono text-xs shrink-0">
                                 {githubViewingFile.content.split("\n").map((_, i) => (
                                   <div key={i} className="leading-relaxed">
                                     {i + 1}
                                   </div>
                                 ))}
                               </div>
-                              {/* Code Text */}
-                              <pre className="py-3 px-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
-                                {githubViewingFile.content}
-                              </pre>
+                              {/* Highlighted Code Text via Prism */}
+                              <pre
+                                className="py-3 px-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono"
+                                dangerouslySetInnerHTML={{
+                                  __html: highlightCode(githubViewingFile.content, githubViewingFile.path),
+                                }}
+                              />
                             </>
                           ) : (
-                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible">
+                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono">
                               {githubViewingFile.content}
                             </pre>
                           )}
@@ -2648,6 +2784,11 @@ export default function App() {
                             >
                               {item.name}
                             </span>
+                            {!item.isFolder && item.file && modifiedFiles.has(item.file.path) && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-950/80 text-amber-400 border border-amber-800/80 font-bold shrink-0">
+                                Editado
+                              </span>
+                            )}
                           </div>
 
                           {/* Commit Description */}

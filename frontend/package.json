@@ -12,10 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/marked": "^5.0.2",
     "@types/prismjs": "^1.26.6",
     "@xyflow/react": "^12.0.0",
     "blockly": "^13.3.0",
     "lucide-react": "^0.300.0",
+    "marked": "^18.1.1",
     "mermaid": "^12.1.0",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",

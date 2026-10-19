@@ -55,6 +55,8 @@ import {
   Copy,
   Sparkles,
   BookOpen,
+  HelpCircle,
+  Info,
   Layers,
   ChevronDown,
   ChevronRight,
@@ -457,7 +459,8 @@ export default function App() {
 
   // Top Menu State
   const [projectName, setProjectName] = useState<string>("main_pipeline");
-  const [activeMenu, setActiveMenu] = useState<"file" | "edit" | null>(null);
+  const [activeMenu, setActiveMenu] = useState<"file" | "edit" | "view" | "run" | "help" | null>(null);
+  const [showAboutModal, setShowAboutModal] = useState<boolean>(false);
   const [turboMode, setTurboMode] = useState<boolean>(false);
 
   // Main Tabs: 'code' (Blockly) | 'simulation' (Dedicated Stage) | 'flowchart' (Mermaid) | 'python' (TargetIR Preview)
@@ -1957,13 +1960,26 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. TOP MENU BAR (Scratux menu-bar layout) */}
-      <header className="h-12 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-4 flex items-center justify-between z-30 shadow-md">
-        {/* Left: Brand + Menus */}
-        <div className="flex items-center space-x-3">
+      {/* 2. TOP MENU BAR (VS Code style 5-menu title bar) */}
+      <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between z-30 shadow-md">
+        {/* Left: Sidebar Toggle + Brand + 5 Menus */}
+        <div className="flex items-center space-x-1.5">
+          {/* Global Primary Sidebar Toggle Button */}
+          <button
+            onClick={() => setShowSidebar(!showSidebar)}
+            title={showSidebar ? "Ocultar panel lateral (Ctrl+B)" : "Mostrar panel lateral (Ctrl+B)"}
+            className={`p-1.5 rounded-md transition mr-1 cursor-pointer ${
+              showSidebar
+                ? "text-sky-400 bg-sky-950/80 border border-sky-800/80 hover:bg-sky-900/80"
+                : "text-gray-400 hover:text-white hover:bg-gray-800 border border-transparent"
+            }`}
+          >
+            <PanelLeft size={16} />
+          </button>
+
           {/* Brand Logo */}
           <div className="flex items-center space-x-2 mr-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-md">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-md">
               W
             </div>
             <span className="font-extrabold text-sm text-transparent bg-clip-text bg-gradient-to-r from-sky-300 to-indigo-200 font-heading tracking-tight">
@@ -1974,16 +1990,16 @@ export default function App() {
             </span>
           </div>
 
-          {/* File Menu Dropdown */}
+          {/* 1. File Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "file" ? null : "file")}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
+              className={`px-2 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer ${
                 activeMenu === "file" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
               <span>Archivo</span>
-              <ChevronDown size={13} className="text-gray-400" />
+              <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "file" && (
               <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
@@ -1998,7 +2014,7 @@ export default function App() {
                     }
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <FileCode size={15} className="text-sky-400" />
                   <div>
@@ -2020,7 +2036,7 @@ export default function App() {
 
                 <button
                   onClick={handleSaveToBrowser}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Save size={15} className="text-emerald-400" />
                   <div>
@@ -2031,7 +2047,7 @@ export default function App() {
 
                 <button
                   onClick={handleLoadFromBrowser}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <RefreshCw size={15} className="text-teal-400" />
                   <div>
@@ -2044,7 +2060,7 @@ export default function App() {
 
                 <button
                   onClick={handleSaveJson}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Download size={15} className="text-indigo-400" />
                   <div>
@@ -2055,7 +2071,7 @@ export default function App() {
 
                 <button
                   onClick={handleGenerateZip}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Download size={15} className="text-emerald-400" />
                   <div>
@@ -2066,7 +2082,7 @@ export default function App() {
 
                 <button
                   onClick={handleCopyPythonCode}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Copy size={15} className="text-purple-400" />
                   <div>
@@ -2078,16 +2094,16 @@ export default function App() {
             )}
           </div>
 
-          {/* Edit Menu Dropdown */}
+          {/* 2. Edit Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "edit" ? null : "edit")}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 ${
+              className={`px-2 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer ${
                 activeMenu === "edit" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
               <span>Editar</span>
-              <ChevronDown size={13} className="text-gray-400" />
+              <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "edit" && (
               <div className="absolute left-0 mt-1 w-60 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
@@ -2097,7 +2113,7 @@ export default function App() {
                     setStatusMessage("Deshacer acción (Undo)");
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <Undo size={14} className="text-sky-400" />
@@ -2112,7 +2128,7 @@ export default function App() {
                     setStatusMessage("Rehacer acción (Redo)");
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <Redo size={14} className="text-sky-400" />
@@ -2129,7 +2145,7 @@ export default function App() {
                     setStatusMessage("Todos los bloques colapsados");
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Minimize2 size={14} className="text-amber-400" />
                   <span>Colapsar Todos los Bloques</span>
@@ -2141,7 +2157,7 @@ export default function App() {
                     setStatusMessage("Todos los bloques expandidos");
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Maximize2 size={14} className="text-amber-400" />
                   <span>Expandir Todos los Bloques</span>
@@ -2153,31 +2169,10 @@ export default function App() {
                     setStatusMessage("Lienzo centrado (Zoom to fit)");
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <ZoomIn size={14} className="text-teal-400" />
                   <span>Centrar Lienzo (Fit)</span>
-                </button>
-
-                <div className="my-1 border-t border-gray-800" />
-
-                <button
-                  onClick={() => {
-                    setTurboMode(!turboMode);
-                    setStatusMessage(`Modo Turbo: ${!turboMode ? "Activado ⚡" : "Desactivado"}`);
-                    setActiveMenu(null);
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white"
-                >
-                  <span className="flex items-center gap-2">
-                    <Sparkles size={14} className="text-yellow-400" />
-                    <span>Modo Turbo</span>
-                  </span>
-                  {turboMode ? (
-                    <span className="text-[10px] text-emerald-400 font-bold font-mono">ACTIVO</span>
-                  ) : (
-                    <span className="text-[10px] text-gray-500 font-mono">OFF</span>
-                  )}
                 </button>
 
                 <div className="my-1 border-t border-gray-800" />
@@ -2190,10 +2185,299 @@ export default function App() {
                     }
                     setActiveMenu(null);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-rose-950/60 text-rose-300 hover:text-rose-200 flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 hover:bg-rose-950/60 text-rose-300 hover:text-rose-200 flex items-center gap-2 cursor-pointer"
                 >
                   <Trash2 size={14} />
                   <span>Limpiar Lienzo Completo</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 3. View Menu Dropdown */}
+          <div className="relative menu-dropdown-container">
+            <button
+              onClick={() => setActiveMenu(activeMenu === "view" ? null : "view")}
+              className={`px-2 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer ${
+                activeMenu === "view" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <span>Ver</span>
+              <ChevronDown size={12} className="text-gray-400" />
+            </button>
+            {activeMenu === "view" && (
+              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+                <button
+                  onClick={() => {
+                    switchMainTab("code");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🧩</span>
+                    <span className="font-semibold">Diseño (Canvas de Bloques)</span>
+                  </span>
+                  {activeMainTab === "code" && <Check size={13} className="text-sky-400" />}
+                </button>
+
+                <button
+                  onClick={() => {
+                    switchMainTab("python");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Code size={14} className="text-purple-400" />
+                    <span className="font-semibold">Microservicio Python</span>
+                  </span>
+                  {activeMainTab === "python" && <Check size={13} className="text-purple-400" />}
+                </button>
+
+                <button
+                  onClick={() => {
+                    switchMainTab("simulation");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🎮</span>
+                    <span className="font-semibold">Simulación & Depuración</span>
+                  </span>
+                  {activeMainTab === "simulation" && <Check size={13} className="text-emerald-400" />}
+                </button>
+
+                <button
+                  onClick={() => {
+                    switchMainTab("flowchart");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <GitMerge size={14} className="text-indigo-400" />
+                    <span className="font-semibold">Flujo Mermaid DAG</span>
+                  </span>
+                  {activeMainTab === "flowchart" && <Check size={13} className="text-indigo-400" />}
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    setActiveActivityTab("search");
+                    setShowSidebar(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Search size={14} className="text-sky-400" />
+                  <span>Buscar en Archivos</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveActivityTab("git");
+                    setShowSidebar(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <GitBranch size={14} className="text-amber-400" />
+                  <span>Control de Versiones (Git)</span>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    setShowSidebar(!showSidebar);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <PanelLeft size={14} className="text-sky-400" />
+                    <span>Alternar Panel Lateral</span>
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-mono">Ctrl+B</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    zoomFitWorkspace();
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <ZoomIn size={14} className="text-teal-400" />
+                  <span>Centrar Lienzo de Trabajo</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Run Menu Dropdown */}
+          <div className="relative menu-dropdown-container">
+            <button
+              onClick={() => setActiveMenu(activeMenu === "run" ? null : "run")}
+              className={`px-2 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer ${
+                activeMenu === "run" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <span>Ejecutar</span>
+              <ChevronDown size={12} className="text-gray-400" />
+            </button>
+            {activeMenu === "run" && (
+              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+                {!isSimulating ? (
+                  <button
+                    onClick={() => {
+                      handleStartSimulation();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-emerald-950/60 flex items-center gap-2.5 text-emerald-300 hover:text-emerald-200 cursor-pointer"
+                  >
+                    <Play size={14} className="fill-current text-emerald-400" />
+                    <div>
+                      <div className="font-bold">Iniciar Simulación (🏁)</div>
+                      <div className="text-[10px] text-gray-400">Ejecuta pipeline paso a paso</div>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      handleStopSimulation();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-rose-950/60 flex items-center gap-2.5 text-rose-300 hover:text-rose-200 cursor-pointer"
+                  >
+                    <Square size={14} className="fill-current text-rose-400" />
+                    <div>
+                      <div className="font-bold">Detener Simulación (🛑)</div>
+                      <div className="text-[10px] text-gray-400">Interrumpe ejecución activa</div>
+                    </div>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    handleStopSimulation();
+                    setSimContext({});
+                    setSimSteps([]);
+                    setSimLogs([]);
+                    setStatusMessage("Simulación reiniciada");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <RefreshCw size={14} className="text-sky-400" />
+                  <div>
+                    <div className="font-semibold">Reiniciar Simulación</div>
+                    <div className="text-[10px] text-gray-400">Limpia estado y variables</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    handleDryRun();
+                    setActiveMenu(null);
+                  }}
+                  disabled={dryRunLoading}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <CheckCircle size={14} className="text-sky-400" />
+                  <div>
+                    <div className="font-semibold">Verificar Sintaxis (Dry-Run AST)</div>
+                    <div className="text-[10px] text-gray-400">Valida conectividad y contratos</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    setTurboMode(!turboMode);
+                    setStatusMessage(`Modo Turbo: ${!turboMode ? "Activado ⚡" : "Desactivado"}`);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-yellow-400" />
+                    <span className="font-semibold">Modo Turbo</span>
+                  </span>
+                  {turboMode ? (
+                    <span className="text-[10px] text-emerald-400 font-bold font-mono">ACTIVO</span>
+                  ) : (
+                    <span className="text-[10px] text-gray-500 font-mono">OFF</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 5. Help Menu Dropdown */}
+          <div className="relative menu-dropdown-container">
+            <button
+              onClick={() => setActiveMenu(activeMenu === "help" ? null : "help")}
+              className={`px-2 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer ${
+                activeMenu === "help" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
+              }`}
+            >
+              <span>Ayuda</span>
+              <ChevronDown size={12} className="text-gray-400" />
+            </button>
+            {activeMenu === "help" && (
+              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+                <button
+                  onClick={() => {
+                    setShowFaqModal(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <BookOpen size={14} className="text-purple-400" />
+                  <div>
+                    <div className="font-semibold">Tutoriales & Guía FAQ</div>
+                    <div className="text-[10px] text-gray-400">Preguntas frecuentes y ejemplos</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    switchMainTab("code");
+                    setActiveActivityTab("blocks");
+                    setShowSidebar(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Layers size={14} className="text-sky-400" />
+                  <div>
+                    <div className="font-semibold">Catálogo de Pasos WPipe</div>
+                    <div className="text-[10px] text-gray-400">196 pasos oficiales y plugins</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    setShowAboutModal(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Info size={14} className="text-teal-400" />
+                  <div>
+                    <div className="font-semibold">Acerca de WPipe Studio</div>
+                    <div className="text-[10px] text-gray-400">wisrovi SUITE, versión y créditos</div>
+                  </div>
                 </button>
               </div>
             )}
@@ -2235,21 +2519,33 @@ export default function App() {
           </button>
         </div>
 
-        {/* Right: Actions (Tutorials, Dry-Run, Export ZIP, User Profile) */}
+        {/* Right: Actions (Run Simulation, Dry-Run, Export ZIP, User Profile) */}
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setShowFaqModal(true)}
-            className="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 rounded-md transition flex items-center gap-1.5 cursor-pointer"
-            title="Guía y Preguntas Frecuentes"
-          >
-            <BookOpen size={14} className="text-purple-400" />
-            <span>Tutoriales</span>
-          </button>
+          {/* Quick Simulation Start / Stop Controls */}
+          {!isSimulating ? (
+            <button
+              onClick={handleStartSimulation}
+              title="Iniciar simulación en vivo paso a paso (🏁)"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer"
+            >
+              <Play size={12} className="fill-current text-white" />
+              <span>Simular</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleStopSimulation}
+              title="Detener la simulación inmediatamente (🛑)"
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-xs font-bold flex items-center gap-1.5 transition shadow animate-pulse cursor-pointer"
+            >
+              <Square size={12} className="fill-current" />
+              <span>Detener (🛑)</span>
+            </button>
+          )}
 
           <button
             onClick={handleDryRun}
             disabled={dryRunLoading}
-            className="px-3 py-1 bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-700/80 rounded-md text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer"
+            className="px-2.5 py-1 bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-700/80 rounded-md text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer"
           >
             <CheckCircle size={14} className="text-sky-400" />
             <span>{dryRunLoading ? "Verificando..." : "Verificar"}</span>
@@ -2258,7 +2554,7 @@ export default function App() {
           <button
             onClick={handleGenerateZip}
             disabled={zipLoading}
-            className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-md text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-md text-xs font-bold transition shadow-md flex items-center gap-1.5 cursor-pointer"
           >
             <Download size={14} />
             <span>{zipLoading ? "Generando..." : "Descargar ZIP"}</span>
@@ -2355,106 +2651,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3. MAIN WORKSPACE CONTAINER */}
+      {/* 3. MAIN WORKSPACE CONTAINER (Flush with Top Header) */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#07090e]">
-        {/* Sub-Header Tabs */}
-        <div className="h-10 border-b border-gray-800/80 bg-[#0b0f19] px-4 flex items-center justify-between shrink-0 z-20">
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              title={showSidebar ? "Ocultar panel lateral (Ctrl+B)" : "Mostrar panel lateral (Ctrl+B)"}
-              className={`p-1.5 rounded-lg transition mr-1.5 cursor-pointer ${
-                showSidebar
-                  ? "text-sky-400 bg-sky-950/70 border border-sky-800/80 hover:bg-sky-900/60"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800 border border-transparent"
-              }`}
-            >
-              <PanelLeft size={15} />
-            </button>
-
-            <button
-              onClick={() => switchMainTab("code")}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "code"
-                  ? "bg-sky-950/80 text-sky-400 border border-sky-700/80 shadow-md shadow-sky-950/50"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/60"
-              }`}
-            >
-              <span>🧩 Diseño (Canvas)</span>
-            </button>
-
-            <button
-              onClick={() => switchMainTab("simulation")}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "simulation"
-                  ? "bg-emerald-950/80 text-emerald-400 border border-emerald-700/80 shadow-md shadow-emerald-950/50"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/60"
-              }`}
-            >
-              <span>🎮 Simulación & Depuración</span>
-              {isSimulating && (
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-              )}
-            </button>
-
-            <button
-              onClick={() => switchMainTab("flowchart")}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "flowchart"
-                  ? "bg-indigo-950/80 text-indigo-400 border border-indigo-700/80 shadow-md shadow-indigo-950/50"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/60"
-              }`}
-            >
-              <span>📊 Flujo (Mermaid DAG)</span>
-            </button>
-
-            <button
-              onClick={() => switchMainTab("python")}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
-                activeMainTab === "python"
-                  ? "bg-purple-950/80 text-purple-400 border border-purple-700/80 shadow-md shadow-purple-950/50"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/60"
-              }`}
-            >
-              <span>💻 Microservicio Python</span>
-            </button>
-
-            {/* Quick Simulation Start / Stop Controls */}
-            <div className="flex items-center space-x-1.5 ml-3 pl-3 border-l border-gray-800">
-              {!isSimulating ? (
-                <button
-                  onClick={handleStartSimulation}
-                  title="Iniciar simulación en vivo paso a paso"
-                  className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/50 rounded-md text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  <Play size={12} className="fill-current text-emerald-400" />
-                  <span>Simular</span>
-                </button>
-              ) : (
-                <button
-                  onClick={handleStopSimulation}
-                  title="Detener la simulación inmediatamente"
-                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 rounded-md text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-lg animate-pulse"
-                >
-                  <Square size={12} className="fill-current" />
-                  <span>Detener (🛑)</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3 text-[11px] font-mono">
-            {turboMode && (
-              <span className="px-2 py-0.5 rounded bg-yellow-950/80 text-yellow-300 border border-yellow-700/60 font-bold flex items-center gap-1">
-                <Sparkles size={11} /> Turbo
-              </span>
-            )}
-            <div className="text-gray-500">
-              Estado: <span className="text-gray-300 font-semibold">{statusMessage}</span>
-            </div>
-          </div>
-        </div>
-
         {/* WORKSPACE ROW: GLOBAL ACTIVITY BAR + UNIFIED PRIMARY SIDEBAR + MAIN TABS VIEWPORT */}
         <div className="flex-1 flex overflow-hidden relative bg-[#1e1e1e]">
           {/* 1. GLOBAL ACTIVITY BAR (w-12 bg-[#181818]) */}
@@ -4382,6 +4580,16 @@ export default function App() {
                 <span>0 ⚠️</span>
                 <span>0 ❌</span>
               </div>
+              {turboMode && (
+                <div
+                  onClick={() => setTurboMode(false)}
+                  className="flex items-center gap-1 bg-yellow-400/25 text-yellow-200 border border-yellow-400/60 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer hover:bg-yellow-400/40"
+                  title="Modo Turbo Activo (Haz clic para desactivar)"
+                >
+                  <Sparkles size={10} className="text-yellow-300" />
+                  <span>TURBO</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
@@ -5238,6 +5446,74 @@ export default function App() {
                 className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow"
               >
                 Guardar y Aplicar al Bloque
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ABOUT MODAL */}
+      {showAboutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000] p-4 animate-in fade-in duration-150">
+          <div className="bg-[#0f172a] border border-sky-500/50 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-lg shadow-lg">
+                  W
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">WPipe Studio</h3>
+                  <p className="text-[11px] text-sky-400 font-mono">wisrovi SUITE · v2.5.10</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAboutModal(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300 leading-relaxed">
+              Plataforma visual de ingeniería de microservicios y orquestación modular de pipelines Python de alto rendimiento bajo contratos Dialecto A.
+            </p>
+
+            <div className="bg-gray-950/90 rounded-xl p-3 border border-gray-800 space-y-2 text-xs font-mono">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Autor Principal:</span>
+                <span className="text-sky-300 font-semibold">William Rodriguez (wisrovi)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Sitio Web:</span>
+                <a
+                  href="https://wisrovi.dev"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-teal-400 hover:underline"
+                >
+                  wisrovi.dev
+                </a>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Motor Core:</span>
+                <span className="text-emerald-400">WPipe v2.5.13</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Catálogo de Pasos:</span>
+                <span className="text-purple-400">196 Oficiales + Plugins</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Persistencia:</span>
+                <span className="text-amber-400">PostgreSQL 15 (wpostgresql)</span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowAboutModal(false)}
+                className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow"
+              >
+                Cerrar
               </button>
             </div>
           </div>

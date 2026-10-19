@@ -15,12 +15,20 @@ class UserProfile(BaseModel):
 
 class UserRegisterRequest(BaseModel):
     username: str
+    password: str = Field(default="pass123", min_length=4)
     name: str | None = None
     role: str | None = "Developer"
 
 
 class UserLoginRequest(BaseModel):
     username: str
+    password: str = Field(default="admin123")
+
+
+class AuthTokenResponse(BaseModel):
+    token: str
+    user: UserProfile
+    message: str = "Autenticación exitosa"
 
 
 class ProjectSummary(BaseModel):

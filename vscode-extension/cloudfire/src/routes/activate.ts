@@ -13,6 +13,8 @@ export interface Env {
   ISSUER?: string;
   GRACE_PERIOD_DAYS?: string;
   LEASE_DURATION_DAYS?: string;
+  LEMONSQUEEZY_WEBHOOK_SECRET?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 export async function handleActivate(request: Request, env: Env): Promise<Response> {

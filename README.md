@@ -86,24 +86,27 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - **Arrastre libre (pan)** con ratón desde cualquier punto del área de trabajo para desplazar y explorar diagramas de cualquier dimensión.
    - **Zoom fluido** centrado en el puntero del ratón mediante la rueda y controles flotantes (`+`, `-`, `Reset 100%`, `Centrar`).
    - Brillo hover en nodos y aristas y botón de exportación directa en formato `.svg`.
-7. **Navegador de Repositorio Estilo GitHub.com (Microservicio Python)**:
-   - Navegación idéntica a la experiencia de exploración de repositorios en **github.com**:
-     - Selector de rama git `🏷️ main`.
-     - Barra interactiva de migas de pan (breadcrumbs) con segmentos clicables (`wpipe_microservice / app / dto / step_dto.py`).
-     - Banner de commit estilo GitHub con autor, mensaje de commit, hash y badge de verificación.
-     - Vista de tabla de directorio con iconos tipados (🐍 Python, 🐳 Docker, ⚙️ Config/TOML, 📝 Markdown, 💻 Shell script), commit message por archivo, tamaños y enlace `..` para subir de carpeta.
-     - Visor de archivos (Blob viewer) interactivo con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
-     - **Resaltado de Sintaxis en Vivo (Live Syntax Overlay)**: Al editar cualquier archivo, el editor sincroniza al milímetro la capa de coloreado PrismJS con el área de escritura nativa, manteniendo el resaltado para Python, Dockerfile, Makefile, YAML, Bash y JSON sin perder el foco ni los colores durante la edición.
-     - **Editor y Entradas con Tema Oscuro de Alto Contraste**: Soporte de edición directa por doble-clic o botón de edición, con fondo oscuro (`#090d13` / `#0d1117`), tipografía de alta legibilidad (`#e6edf3` / `#38bdf8`) y cursor celeste que eliminan fondos blancos indeseados.
-     - **Makefile Orientado a Microservicio Docker**: Comandos listos para producción (`make start` con `docker-compose up -d --build`, `make stop`, `make restart`, `make status`, `make logs`, `make test`, `make build`, `make shell`, `make clean`).
-     - **Resolución Completa de Pipelines (`pipelines.py`)**: Algoritmo topológico jerárquico que garantiza que los pasos posteriores a bloques de control nunca se pierdan en el código generado.
-     - **Selector Rápido de Imagen Base Docker**: Barra interactiva sobre `Dockerfile` para alternar entre presets (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) o ingresar tags personalizados con reemplazo reactivo de la directiva `FROM`.
-     - **Generación Automática de `docker-compose.yml` y `__init__.py`**: Incluye orquestación Docker con healthcheck HTTP y archivos `__init__.py` estructurados con versiones y exports.
-     - **Descarga de Paquete (.zip)**: Endpoint `/api/v1/pipeline/generate-from-files` que preserva las ediciones manuales del usuario en el archivo ZIP descargado.
-     - **`README.md` Protegido (Derechos de Autor, Atribución & Documentación)**: Es el **único archivo protegido contra edición** en el microservicio. Su responsabilidad primaria y prioritaria es asentar formalmente los derechos de autor y propiedad intelectual exclusivos de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)) (**William Rodriguez**, AI Leader & Solutions Architect, Badajoz, España), la atribución técnica a **WPipe Studio (wisrovi SUITE)** y fecha de compilación UTC. Su responsabilidad secundaria es documentar la topología del microservicio, endpoints y comandos Docker. En la interfaz web, se bloquea el doble-clic y se muestra el badge `[ 🔒 Protegido (Derechos & Autoría) ]`.
-     - Previsualización incrustada de `README.md` bajo la tabla de directorio.
-     - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
-     - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
+7. **Entorno de Programación Estilo VS Code (Microservicio Python)**:
+   - **Activity Bar Lateral (`w-12`, `#181818`)**: Barra de actividad vertical con iconos para Explorador de Archivos, Búsqueda en Archivos, Control de Código Fuente (Git) con badge reactivo de archivos modificados, accesos directos al Lienzo Blockly y Simulador, y Avatar/Menú de Usuario.
+   - **Panel Primario Explorador (`w-64`, `#252526`)**:
+     - Filtro instantáneo de archivos por nombre.
+     - Árbol jerárquico (`FileTreeItem`) con indentación auténtica, iconos por extensión (🐍 Python, 🐳 Docker, 📝 Markdown, ⚙️ Config/TOML/JSON, 💻 Shell script).
+     - Selección de carpetas y archivos independiente: al hacer clic en una carpeta, se abre la vista de carpeta en el editor; al hacer clic en un archivo, se abre en una pestaña.
+   - **Barra de Pestañas Multi-Archivo (`#252526`, `#1e1e1e`)**:
+     - Pestañas con borde superior azul `#007acc`, indicador de modificación (`●`), botón de cierre (`✕`) y soporte de múltiples archivos abiertos simultáneamente (`openTabs`).
+     - Botón de alternancia entre Código y Vista Previa para archivos `README.md`.
+     - Acciones contextuales: Editar código, Guardar cambios, Copiar al portapapeles, Descargar archivo.
+   - **Barra de Migas de Pan (Breadcrumbs)**:
+     - Jerarquía navegable `{proyecto} › {carpeta} › {archivo}` con iconos y enlaces clicables.
+   - **Renderizado Dinámico de `README.md` en Carpeta vs Editor Natural**:
+     - **Al cargar o seleccionar una carpeta**: Si la carpeta contiene un `README.md`, se renderiza inmediatamente de forma enriquecida y estética mediante el motor Markdown (`marked`), con estilos GitHub, cajas de alertas `[!IMPORTANT]`, `[!NOTE]`, `[!WARNING]`, `[!TIP]`, tablas formateadas, bloques de código y banner con botón directo `[ 📝 Ver Archivo en Editor ]`. Si no tiene README, muestra la tabla de archivos de la carpeta.
+     - **Al hacer clic directamente en `README.md`**: Se abre en el editor de código tradicional ("de forma natural"), con canal de números de línea, resaltado de sintaxis, banner protegido de autoría de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)) y botón para alternar a vista previa renderizada.
+     - **Editor de Código en Vivo**: Soporta sangría con Tab (4 espacios), seguimiento de posición de cursor (`Ln X, Col Y`), sincronización de scroll y coloreado de sintaxis en tiempo real para Python, Dockerfile, YAML, Makefile, Bash y JSON.
+   - **Barra de Estado VS Code (`h-6`, `#007acc`)**:
+     - Indicador de entorno remoto `[><] WPipe Studio`.
+     - Rama Git activa (`main` con asterisco si hay cambios sin guardar).
+     - Contador de diagnósticos (`0 ⚠️ 0 ❌`).
+     - Posición del cursor en tiempo real (`Ln X, Col Y`), sangría `Spaces: 4`, codificación `UTF-8`, terminación de línea `LF` y lenguaje activo (`Python`, `Markdown`, `Dockerfile`, etc.).
 8. **Inicio de Sesión Natural, Sesiones Seguras y Gestor Multi-Tenant de Microservicios**:
    - **Inicio de Sesión Natural y Cierre de Sesión**: Flujo completo de autenticación con usuario y contraseña, hashing criptográfico PBKDF2-HMAC-SHA256, tokens Bearer de sesión y endpoint `/api/v1/auth/logout`.
    - **Pantalla de Autenticación Centrada y Aislada**: Capa de login/registro a pantalla completa con fondo opaco oscuro (`#07090e`) y alta prioridad (`z-[9999]`) que centra el formulario al píxel e impide que se filtren elementos del lienzo o la interfaz antes de autenticarse.
@@ -115,12 +118,24 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
 
 ---
 
+## Tecnologías y Librerías Relevantes
+
+El ecosistema de **WPipe Studio** integra tecnologías modernas orientadas a rendimiento, aislamiento y experiencia de desarrollo profesional:
+
+| Capa | Tecnologías y Librerías Clave |
+|------|--------------------------------|
+| **Frontend** | **React 18** (SPA reactiva), **TypeScript** (tipado estricto), **Vite** (bundler de alto rendimiento), **Tailwind CSS** (sistema de diseño atómico), **Google Blockly** (motor de lienzo de bloques Scratch), **Mermaid JS** (renderizado de DAG con pan & zoom), **PrismJS** (coloreado sintáctico en vivo), **Marked** (motor de renderizado GFM de READMEs y alertas), **Lucide React** (iconografía VS Code). |
+| **Backend** | **FastAPI** (framework API asíncrono Python 3.11), **Uvicorn** (servidor ASGI ASGI), **Pydantic v2 & Pydantic-Settings** (validación de esquemas y configuración), **WPostgreSQL** (capa DAL oficial del ecosistema), **WSQLite** (persistencia y transacciones ligeras), **Psycopg 3 & Psycopg-Pool** (driver PostgreSQL nativo con pool thread-safe), **Pytest** (suite de pruebas unitarias y regresión). |
+| **Infraestructura & Contenedores** | **Docker** & **Docker Compose** (orquestación multi-contenedor), **PostgreSQL 15** (base de datos relacional), **PgAdmin 4** (consola web de administración de datos), **Nginx Alpine** (servidor web y reverse-proxy de producción), **Volúmenes Persistentes Host** (`./media` para microservicios y `./enviroment/db` para PostgreSQL). |
+
+---
+
 ## Despliegue con Docker Compose (Recomendado)
 
-Tanto el backend FastAPI como el frontend SPA Nginx se encuentran orquestados en `docker-compose.yml`, compartiendo el volumen `./media` del host:
+Tanto el backend FastAPI como el frontend SPA Nginx, junto a PostgreSQL y PgAdmin, se encuentran completamente orquestados en `docker-compose.yml`, compartiendo el volumen `./media` del host:
 
 ```bash
-# Construir y levantar backend y frontend en segundo plano
+# Construir y levantar todos los contenedores en segundo plano
 docker-compose up -d --build
 
 # Verificar estado y salud de los contenedores
@@ -136,6 +151,8 @@ docker-compose down
 Una vez levantado:
 - **Frontend SPA**: `http://localhost:5173`
 - **Backend API & Swagger**: `http://localhost:8000/docs`
+- **PgAdmin 4 Web Console**: `http://localhost:1717` (wisrovi@wisrovi.dev / admin)
+- **PostgreSQL 15**: `localhost:5432` (`wpostgresql`)
 - **Volumen Persistente de Host**: `./media/`
 
 ---

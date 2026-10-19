@@ -1,0 +1,84 @@
+-- ============================================================================
+-- WPipe Studio Cloudflare D1 Database Schema
+-- Serverless Licensing, Machine Activations & Audit Logs
+-- Author: William Rodriguez (wisrovi.dev)
+-- ============================================================================
+
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS activations;
+DROP TABLE IF EXISTS licenses;
+
+-- 1. Licenses Table
+CREATE TABLE licenses (
+    id TEXT PRIMARY KEY,
+    license_key TEXT UNIQUE NOT NULL,
+    customer_email TEXT NOT NULL,
+    customer_name TEXT,
+    plan TEXT NOT NULL DEFAULT 'pro',           -- 'pro', 'team', 'enterprise'
+    status TEXT NOT NULL DEFAULT 'active',      -- 'active', 'expired', 'suspended', 'revoked'
+    max_machines INTEGER NOT NULL DEFAULT 2,    -- Allowed machines per developer
+    expires_at TEXT,                            -- ISO-8601 timestamp (NULL = lifetime)
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_licenses_key ON licenses(license_key);
+CREATE INDEX idx_licenses_email ON licenses(customer_email);
+CREATE INDEX idx_licenses_status ON licenses(status);
+
+-- 2. Machine Activations Table (Leases)
+CREATE TABLE activations (
+    id TEXT PRIMARY KEY,
+    license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+    machine_fingerprint TEXT NOT NULL,          -- SHA-256 hash of hardware IDs
+    hostname TEXT,
+    os_name TEXT,
+    last_verified_at TEXT NOT NULL,             -- ISO-8601 timestamp
+    lease_expires_at TEXT NOT NULL,             -- ISO-8601 timestamp (e.g. +30 days)
+    created_at TEXT NOT NULL,
+    UNIQUE(license_id, machine_fingerprint)
+);
+
+CREATE INDEX idx_activations_license ON activations(license_id);
+CREATE INDEX idx_activations_fingerprint ON activations(machine_fingerprint);
+
+-- 3. Audit Logs Table (Security, Webhooks, Verification History)
+CREATE TABLE audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,                   -- 'activate', 'verify', 'revoke', 'webhook_payment', 'quota_exceeded'
+    license_key TEXT,
+    machine_fingerprint TEXT,
+    ip_address TEXT,
+    details_json TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_audit_event ON audit_logs(event_type);
+CREATE INDEX idx_audit_license ON audit_logs(license_key);
+
+-- ============================================================================
+-- Initial Demo / Testing Seed Data
+-- ============================================================================
+INSERT INTO licenses (
+    id,
+    license_key,
+    customer_email,
+    customer_name,
+    plan,
+    status,
+    max_machines,
+    expires_at,
+    created_at,
+    updated_at
+) VALUES (
+    'lic_demo_william_2026',
+    'WPIPE-PRO-DEMO-TEST-KEY-2026',
+    'wisrovi@wisrovi.dev',
+    'William Rodriguez',
+    'pro',
+    'active',
+    5,
+    '2030-01-01T00:00:00Z',
+    datetime('now'),
+    datetime('now')
+);

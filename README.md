@@ -25,15 +25,16 @@ Si algo falla, no hay ZIP.
 ## Tecnologías y Librerías Principales
 
 - **FastAPI**: Framework web asíncrono de alto rendimiento para la API backend (`/api/v1`).
-- **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`).
-- **React 18 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines y etapa de simulación.
-- **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0.
-- **Lucide React (`lucide-react`)**: Iconografía para la barra superior, categorías y controles de ejecución.
-- **Mermaid & @xyflow/react**: Visualización de grafos dirigidos (DAG) y arquitectura de pipelines.
-- **PrismJS (`prismjs`)**: Motor de resaltado de sintaxis en tiempo real para Python, YAML, Dockerfile, Makefile, Bash y JSON con tema Tomorrow Night.
+- **SQLite (WAL mode)**: Base de datos embebida ligera con pool de conexiones y foreign keys activadas para persistencia multi-tenant (`backend/data/studio.db`).
+- **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`, `UserProfile`, `ProjectDetail`).
+- **React 18 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines, visor de código y etapa de simulación.
+- **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0 con serialización completa de workspace.
+- **Lucide React (`lucide-react`)**: Iconografía para la barra superior, categorías, proyectos, avatares y controles de ejecución.
+- **Mermaid & D3**: Visualización interactiva de grafos dirigidos (DAG) con navegación fluida, pan & zoom, y exportación SVG.
+- **PrismJS (`prismjs`)**: Motor de resaltado de sintaxis en tiempo real para Python, YAML, Dockerfile, Makefile, Bash y JSON con tema Tomorrow Night y editor superpuesto (live overlay).
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
 - **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
-- **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>90%).
+- **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>93%).
 - **Docker**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
 
 ---
@@ -42,10 +43,10 @@ Si algo falla, no hay ZIP.
 
 La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux y GitHub.com, optimizada para máxima productividad con bloques configurables:
 
-1. **Barra Superior (Top Menu Bar)**: Selector de 4 pestañas modulares (🧩 Canvas de Diseño, 🎮 Simulación & Depuración, 📊 Flujo Mermaid DAG y 💻 Microservicio Python), menús desplegables enriquecidos de Archivo y Edición (Colapsar/Expandir todos los bloques, Deshacer/Rehacer, Zoom to Fit, Modo Turbo, Guardar/Restaurar en localStorage, Exportar Canvas JSON y Descargar ZIP).
+1. **Barra Superior (Top Menu Bar)**: Selector de 4 pestañas modulares (🧩 Canvas de Diseño, 🎮 Simulación & Depuración, 📊 Flujo Mermaid DAG y 💻 Microservicio Python), selector y gestor de microservicios con botón Guardar directo, menús desplegables enriquecidos de Archivo y Edición (Colapsar/Expandir todos los bloques, Deshacer/Rehacer, Zoom to Fit, Modo Turbo, Guardar/Restaurar en localStorage, Exportar Canvas JSON y Descargar ZIP) y píldora de perfil de usuario multi-tenant con cambio rápido de sesión.
 2. **Tira Lateral de Categorías Scratch 3.0 (Far Left Dot Column)**:
    - Selectores circulares temáticos por categoría: Inicio (Ámbar), Pasos (Azul), Control (Naranja), Bucles (Amarillo) y Paralelo (Esmeralda).
-   - Botón de extensión icónico de Scratch 3.0 `[ + | ≡ ]` en la parte inferior para abrir la biblioteca de extensiones con los 197 steps y filtros por repositorio (Oficiales / Plugins).
+   - Botón de proyectos `[ 📁 PROY ]` en la parte inferior (reemplazando el antiguo botón `EXT`) para abrir el gestor modal de microservicios aislados del usuario activo.
 3. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
    - Diseño visual de auténticas piezas de puzzle Scratch con pestañas de ensamble, muescas de encaje y paleta de colores vibrantes sin cajas de texto invasivas.
    - Buscador rápido en tiempo real para filtrar bloques al instante.
@@ -76,25 +77,33 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - Línea temporal de pasos con tiempos de cómputo en ms y estados (`idle`, `running`, `success`, `error`).
    - Monitor de consumo de recursos en tiempo real (CPU % y memoria RAM en MB).
    - Consola terminal de logs enriquecida (`stdout` / `stderr`).
-6. **Navegador de Repositorio Estilo GitHub.com (Microservicio Python)**:
+6. **Flujo Mermaid DAG Interactivo con Pan & Zoom**:
+   - Visualización reactiva en tiempo real del pipeline en formato de grafo dirigido.
+   - **Arrastre libre (pan)** con ratón desde cualquier punto del área de trabajo para desplazar y explorar diagramas de cualquier dimensión.
+   - **Zoom fluido** centrado en el puntero del ratón mediante la rueda y controles flotantes (`+`, `-`, `Reset 100%`, `Centrar`).
+   - Brillo hover en nodos y aristas y botón de exportación directa en formato `.svg`.
+7. **Navegador de Repositorio Estilo GitHub.com (Microservicio Python)**:
    - Navegación idéntica a la experiencia de exploración de repositorios en **github.com**:
      - Selector de rama git `🏷️ main`.
      - Barra interactiva de migas de pan (breadcrumbs) con segmentos clicables (`wpipe_microservice / app / dto / step_dto.py`).
      - Banner de commit estilo GitHub con autor, mensaje de commit, hash y badge de verificación.
      - Vista de tabla de directorio con iconos tipados (🐍 Python, 🐳 Docker, ⚙️ Config/TOML, 📝 Markdown, 💻 Shell script), commit message por archivo, tamaños y enlace `..` para subir de carpeta.
      - Visor de archivos (Blob viewer) interactivo con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
-     - **Resaltado de Sintaxis en Tiempo Real (PrismJS)**: coloreado de código para Python (imports, clases, decoradores, funciones), Dockerfile, Makefile, YAML, Bash y JSON.
-     - **Edición en Navegador**: Botón para editar cualquier archivo generado directamente en el navegador con soporte para tabulación (4 espacios), números de línea sincronizados e indicador visual de archivos modificados (`Editado`) tanto en la tabla como en el visor y árbol de archivos.
-     - **Editor y Entradas con Tema Oscuro de Alto Contraste**: Soporte de edición directa por doble-clic o botón de edición, con fondo oscuro (`#090d13` / `#0d1117`), tipografía de alta legibilidad (`#e6edf3` / `#38bdf8`) y cursor celeste que eliminan fondos blancos indeseados tanto en el editor de código como en las entradas de texto emergentes de bloques Blockly (`.blocklyHtmlInput`).
+     - **Resaltado de Sintaxis en Vivo (Live Syntax Overlay)**: Al editar cualquier archivo, el editor sincroniza al milímetro la capa de coloreado PrismJS con el área de escritura nativa, manteniendo el resaltado para Python, Dockerfile, Makefile, YAML, Bash y JSON sin perder el foco ni los colores durante la edición.
+     - **Editor y Entradas con Tema Oscuro de Alto Contraste**: Soporte de edición directa por doble-clic o botón de edición, con fondo oscuro (`#090d13` / `#0d1117`), tipografía de alta legibilidad (`#e6edf3` / `#38bdf8`) y cursor celeste que eliminan fondos blancos indeseados.
      - **Makefile Orientado a Microservicio Docker**: Comandos listos para producción (`make start` con `docker-compose up -d --build`, `make stop`, `make restart`, `make status`, `make logs`, `make test`, `make build`, `make shell`, `make clean`).
-     - **Resolución Completa de Pipelines (`pipelines.py`)**: Algoritmo topológico jerárquico con `get_root_ancestor_id` y `order_children_for_slot` que garantiza que los pasos posteriores a bloques de control (C-blocks: Condition, For, While, Parallel, Background) nunca se pierdan en el código generado.
+     - **Resolución Completa de Pipelines (`pipelines.py`)**: Algoritmo topológico jerárquico que garantiza que los pasos posteriores a bloques de control nunca se pierdan en el código generado.
      - **Selector Rápido de Imagen Base Docker**: Barra interactiva sobre `Dockerfile` para alternar entre presets (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) o ingresar tags personalizados con reemplazo reactivo de la directiva `FROM`.
      - **Generación Automática de `docker-compose.yml` y `__init__.py`**: Incluye orquestación Docker con healthcheck HTTP y archivos `__init__.py` estructurados con versiones y exports.
      - **Descarga de Paquete (.zip)**: Endpoint `/api/v1/pipeline/generate-from-files` que preserva las ediciones manuales del usuario en el archivo ZIP descargado.
      - Previsualización incrustada de `README.md` bajo la tabla de directorio.
      - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
      - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
-7. **Lienzo Inicial Hello World con los 11 Bloques**:
+8. **Gestor Multi-Tenant de Microservicios & Login**:
+   - **Sistema de Identidades**: Login y alternancia rápida entre usuarios del sistema (William R., Developer, Guest) y formulario de registro de nuevos usuarios (`/api/v1/auth/*`).
+   - **Aislamiento Físico de Workspaces**: Cada microservicio se genera y persiste en un directorio dedicado en el backend (`backend/data/workspaces/{owner_id}/{project_id}/`). Los archivos nunca se cruzan ni colisionan con otros proyectos ni con otros usuarios.
+   - **Persistencia Multi-Microservicio**: Los usuarios pueden crear tantos microservicios como necesiten, guardar su estado del lienzo y archivos, recargarlos, duplicarlos/clonarlos o eliminarlos.
+9. **Lienzo Inicial Hello World con los 11 Bloques**:
    - Al cargar o recargar el lienzo, se precarga automáticamente un flujo simple "Hello World" que demuestra la integración de los 11 bloques (Trigger Ingress, Step HttpRequest, AI Step, User File Step, IF, Parallel con MySQLQuery, IF-ELSE con For, Background con RedisGet, While con NmapScanStep y Cierre de Pipeline Response Cap Egress).
 
 ---

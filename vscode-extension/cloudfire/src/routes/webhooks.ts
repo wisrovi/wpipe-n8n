@@ -116,7 +116,12 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
     payload.customer_name ||
     "Developer";
 
-  if (!customerEmail) {
+  const isOrderEvent =
+    eventName.includes("order_created") ||
+    eventName.includes("subscription_created") ||
+    eventName.includes("checkout.session.completed");
+
+  if (isOrderEvent && !customerEmail) {
     return new Response(
       JSON.stringify({ error: "MISSING_CUSTOMER_EMAIL", message: "Webhook missing customer email" }),
       { status: 400, headers: { "Content-Type": "application/json" } }

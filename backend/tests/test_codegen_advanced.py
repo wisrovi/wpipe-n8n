@@ -1,11 +1,12 @@
 import ast
+
 from app.schemas.ir import (
+    CanvasEdge,
     CanvasIR,
     CanvasNode,
-    CanvasEdge,
+    ContextContract,
     NodeData,
     StepOrigin,
-    ContextContract,
 )
 from app.services.ir_transformer import transform_canvas_to_semantic, transform_semantic_to_target
 

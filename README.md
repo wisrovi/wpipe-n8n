@@ -47,7 +47,11 @@ Si algo falla, no hay ZIP.
 
 La interfaz de `wpipe-studio` ofrece una arquitectura visual unificada de alto rendimiento inspirada en **VS Code**, integrando en una sola estructura coherente el diseño visual de bloques, la simulación interactiva, el diagrama de flujo y la programación de microservicios:
 
-1. **Barra Superior (Top Menu Bar)**: Selector de 4 pestañas modulares (🧩 Canvas de Diseño, 🎮 Simulación & Depuración, 📊 Flujo Mermaid DAG y 💻 Microservicio Python), selector y gestor de microservicios con botón Guardar directo, menús desplegables enriquecidos de Archivo y Edición (Colapsar/Expandir todos los bloques, Deshacer/Rehacer, Zoom to Fit, Modo Turbo, Guardar/Restaurar en localStorage, Exportar Canvas JSON y Descargar ZIP) y píldora de perfil de usuario multi-tenant con cambio rápido de sesión.
+1. **Barra Superior Estilo Menú VS Code (Top Menu & Command Center)**:
+   - **5 Menús Esenciales**: `Archivo`, `Editar`, `Ver`, `Ejecutar` y `Ayuda`, consolidando en una sola barra todas las acciones de gestión, edición, visualización, ejecución de simulaciones y tutoriales, eliminando sub-barras de navegación intermedias y liberando altura útil de trabajo.
+   - **Alternador de Barra Lateral (`<PanelLeft />`, `Ctrl+B`)**: Botón integrado en la cabecera junto al logo para ocultar o mostrar el panel lateral con un clic o atajo.
+   - **Command Center Central**: Selector modal de microservicios aislados `[ 📁 {nombre} ▼ ]`, renombrado en caliente y guardado en servidor `[ 💾 Guardar ]`.
+   - **Acciones Rápidas de Ejecución**: Disparador de simulación rápida en vivo `[ ▶ Simular ]` / `[ 🛑 Detener ]`, verificación de sintaxis AST `[ ✔️ Verificar ]`, descarga de paquete listo para producción `[ ⬇️ Descargar ZIP ]` y perfil de usuario multi-tenant con cambio de sesión.
 2. **Barra de Actividad Global Unificada (Global Activity Bar, `w-12`, `#181818`)**:
    - **Único riel lateral de navegación para toda la aplicación**, eliminando la duplicidad de paneles laterales entre el lienzo y el entorno de código.
    - Acceso instantáneo a las herramientas primarias:

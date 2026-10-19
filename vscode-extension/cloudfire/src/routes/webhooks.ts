@@ -15,19 +15,100 @@ function generateLicenseKey(prefix = "WPIPE-PRO"): string {
   return `${prefix}-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
 }
 
-export async function handleWebhooks(request: Request, env: Env): Promise<Response> {
-  let payload: any;
+async function verifyLemonSignature(rawBody: string, signatureHex: string, secret: string): Promise<boolean> {
   try {
-    payload = await request.json();
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const mac = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
+    const computedHex = Array.from(new Uint8Array(mac))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return computedHex.toLowerCase() === signatureHex.toLowerCase();
   } catch {
-    return new Response(JSON.stringify({ error: "INVALID_JSON" }), { status: 400 });
+    return false;
+  }
+}
+
+async function verifyStripeSignature(rawBody: string, stripeHeader: string, secret: string): Promise<boolean> {
+  try {
+    const parts = stripeHeader.split(",").reduce((acc, item) => {
+      const [k, v] = item.split("=");
+      if (k && v) acc[k.trim()] = v.trim();
+      return acc;
+    }, {} as Record<string, string>);
+
+    const timestamp = parts["t"];
+    const signature = parts["v1"];
+    if (!timestamp || !signature) return false;
+
+    const signedPayload = `${timestamp}.${rawBody}`;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const mac = await crypto.subtle.sign("HMAC", key, enc.encode(signedPayload));
+    const computedHex = Array.from(new Uint8Array(mac))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return computedHex.toLowerCase() === signature.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+export async function handleWebhooks(request: Request, env: Env): Promise<Response> {
+  let rawBody: string;
+  let payload: any;
+
+  try {
+    rawBody = await request.text();
+    payload = JSON.parse(rawBody);
+  } catch {
+    return new Response(JSON.stringify({ error: "INVALID_JSON", message: "Request body must be valid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // Handle standard payment events (Lemon Squeezy order_created or Stripe checkout.session.completed)
+  // 1. Signature Verification if Secrets Configured
+  const lemonSignature = request.headers.get("x-signature");
+  if (env.LEMONSQUEEZY_WEBHOOK_SECRET && lemonSignature) {
+    const valid = await verifyLemonSignature(rawBody, lemonSignature, env.LEMONSQUEEZY_WEBHOOK_SECRET);
+    if (!valid) {
+      return new Response(JSON.stringify({ error: "INVALID_SIGNATURE", message: "Lemon Squeezy HMAC signature mismatch" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const stripeSignature = request.headers.get("stripe-signature");
+  if (env.STRIPE_WEBHOOK_SECRET && stripeSignature) {
+    const valid = await verifyStripeSignature(rawBody, stripeSignature, env.STRIPE_WEBHOOK_SECRET);
+    if (!valid) {
+      return new Response(JSON.stringify({ error: "INVALID_SIGNATURE", message: "Stripe HMAC signature mismatch" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // 2. Event and Customer Extraction
   const eventName = payload.meta?.event_name || payload.type || payload.event || "order_created";
   const customerEmail =
     payload.data?.attributes?.user_email ||
     payload.data?.object?.customer_details?.email ||
+    payload.data?.object?.email ||
     payload.customer_email;
   const customerName =
     payload.data?.attributes?.user_name ||
@@ -44,34 +125,70 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
 
   const clientIp = request.headers.get("cf-connecting-ip") || "0.0.0.0";
 
-  if (eventName.includes("order_created") || eventName.includes("checkout.session.completed")) {
+  // 3. Plan detection (Pro, Team, Enterprise)
+  const rawPlan = String(
+    payload.meta?.custom_data?.plan ||
+    payload.data?.attributes?.first_order_item?.variant_name ||
+    payload.data?.object?.metadata?.plan ||
+    payload.plan ||
+    "pro"
+  ).toLowerCase();
+
+  let plan = "pro";
+  let maxMachines = 2;
+  let keyPrefix = "WPIPE-PRO";
+
+  if (rawPlan.includes("enterprise") || rawPlan.includes("ent")) {
+    plan = "enterprise";
+    maxMachines = 20;
+    keyPrefix = "WPIPE-ENT";
+  } else if (rawPlan.includes("team")) {
+    plan = "team";
+    maxMachines = 5;
+    keyPrefix = "WPIPE-TEAM";
+  }
+
+  // 4. Handle Order Completed / Subscription Created
+  if (
+    eventName.includes("order_created") ||
+    eventName.includes("subscription_created") ||
+    eventName.includes("checkout.session.completed")
+  ) {
     const licenseId = `lic_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    const newLicenseKey = generateLicenseKey();
-    const expiresAt = new Date(Date.now() + 365 * 86400 * 1000).toISOString(); // 1 year subscription
+    const newLicenseKey = generateLicenseKey(keyPrefix);
+    const expiresAt = new Date(Date.now() + 365 * 86400 * 1000).toISOString(); // 1 year default
 
     await env.DB.prepare(
       `INSERT INTO licenses (
         id, license_key, customer_email, customer_name, plan, status, max_machines, expires_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'pro', 'active', 2, ?, datetime('now'), datetime('now'))`
-    ).bind(licenseId, newLicenseKey, customerEmail.toLowerCase(), customerName, expiresAt).run();
+      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'), datetime('now'))`
+    ).bind(licenseId, newLicenseKey, customerEmail.toLowerCase(), customerName, plan, maxMachines, expiresAt).run();
 
     await env.DB.prepare(
       "INSERT INTO audit_logs (event_type, license_key, ip_address, details_json, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
-    ).bind("payment_new_license", newLicenseKey, clientIp, JSON.stringify({ email: customerEmail, event: eventName })).run();
+    ).bind(
+      "payment_new_license",
+      newLicenseKey,
+      clientIp,
+      JSON.stringify({ email: customerEmail, event: eventName, plan, max_machines: maxMachines })
+    ).run();
 
     return new Response(
       JSON.stringify({
         status: "success",
-        message: "Licencia Pro generada exitosamente",
+        message: `Licencia ${plan.toUpperCase()} generada exitosamente`,
         license_key: newLicenseKey,
         customer_email: customerEmail,
+        customer_name: customerName,
+        plan: plan,
+        max_machines: maxMachines,
         expires_at: expiresAt,
       }),
       { status: 201, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // Handle subscription cancelled / failed
+  // 5. Handle Subscription Cancelled
   if (eventName.includes("subscription_cancelled") || eventName.includes("customer.subscription.deleted")) {
     await env.DB.prepare(
       "UPDATE licenses SET status = 'expired', updated_at = datetime('now') WHERE customer_email = ?"

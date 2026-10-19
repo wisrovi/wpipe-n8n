@@ -371,3 +371,66 @@ input:focus, select:focus, textarea:focus {
   font-size: 11px;
 }
 
+/* ==========================================
+   CODE EDITOR (PYTHON TAB) & BLOCKLY INPUTS
+   ========================================== */
+
+/* Code Editor Textarea & Pre formatting (Prevents white background on edit) */
+textarea.code-editor-textarea,
+.code-editor-textarea {
+  background-color: #090d13 !important;
+  color: #e6edf3 !important;
+  caret-color: #38bdf8 !important;
+  border: none !important;
+}
+
+textarea.code-editor-textarea:focus,
+.code-editor-textarea:focus {
+  background-color: #090d13 !important;
+  color: #e6edf3 !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 16px rgba(2, 132, 199, 0.3) !important;
+}
+
+/* Ensure editor line numbers match dark background */
+.editor-line-numbers {
+  background-color: #0b0f17 !important;
+  color: #6b7280 !important;
+}
+
+/* Blockly Text Input Popover in Dark Workspace */
+.blocklyHtmlInput {
+  background-color: #0d1117 !important;
+  color: #38bdf8 !important;
+  border: 1.5px solid #38bdf8 !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12px !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4) !important;
+  outline: none !important;
+}
+
+.blocklyWidgetDiv {
+  z-index: 99999 !important;
+}
+
+.blocklyDropDownDiv {
+  background-color: #0d1117 !important;
+  color: #f3f4f6 !important;
+  border: 1px solid #30363d !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+}
+
+.blocklyMenuItem {
+  color: #e6edf3 !important;
+  padding: 6px 12px !important;
+}
+
+.blocklyMenuItemHighlight {
+  background-color: #1f6feb !important;
+  color: #ffffff !important;
+}
+
+

@@ -923,7 +923,77 @@ export function getMermaidFromBlocklyWorkspace(): string {
   return lines.join("\n");
 }
 
-export function highlightBlocklyBlock(stepName: string, state: "running" | "success" | "error" | "idle") {
+export const globalBreakpoints = new Set<string>();
+
+export function toggleBlockBreakpoint(stepOrBlockId: string): boolean {
+  if (globalBreakpoints.has(stepOrBlockId)) {
+    globalBreakpoints.delete(stepOrBlockId);
+    updateBreakpointVisuals();
+    return false;
+  } else {
+    globalBreakpoints.add(stepOrBlockId);
+    updateBreakpointVisuals();
+    return true;
+  }
+}
+
+export function updateBreakpointVisuals() {
+  if (!activeWorkspaceRef) return;
+  const blocks = activeWorkspaceRef.getAllBlocks(false);
+  blocks.forEach((b) => {
+    const name = b.getFieldValue("STEP_NAME") || b.type;
+    const isBp = globalBreakpoints.has(b.id) || globalBreakpoints.has(name);
+    const svgRoot = b.getSvgRoot();
+    if (svgRoot) {
+      if (isBp) {
+        svgRoot.style.filter = "drop-shadow(0 0 12px #ef4444)";
+      } else {
+        svgRoot.style.filter = "none";
+      }
+    }
+  });
+}
+
+export function updateBlockFieldValue(blockId: string, fieldName: string, value: any) {
+  if (!activeWorkspaceRef) return;
+  const b = activeWorkspaceRef.getBlockById(blockId);
+  if (b) {
+    b.setFieldValue(value, fieldName);
+  }
+}
+
+export function getBlockData(block: Blockly.Block): any {
+  const fields: Record<string, any> = {};
+  block.inputList.forEach((input) => {
+    input.fieldRow.forEach((f) => {
+      if (f.name) {
+        fields[f.name] = f.getValue();
+      }
+    });
+  });
+
+  const stepName = block.getFieldValue("STEP_NAME") || block.getFieldValue("LABEL") || block.type;
+  const isBp = globalBreakpoints.has(block.id) || globalBreakpoints.has(stepName);
+
+  const catalogEntry = globalCatalog.find(
+    (c) => c.name === stepName || c.func_name === stepName
+  );
+
+  return {
+    id: block.id,
+    type: block.type,
+    stepName,
+    namespace: block.getFieldValue("NAMESPACE") || (catalogEntry ? catalogEntry.namespace : ""),
+    category: block.getFieldValue("CATEGORY") || (catalogEntry ? catalogEntry.category : "general"),
+    fields,
+    isBreakpoint: isBp,
+    docstring: catalogEntry?.description || catalogEntry?.docstring || "Bloque de lógica de WPipe Studio.",
+    params: catalogEntry?.params || {},
+    origin: catalogEntry?.repo || "official",
+  };
+}
+
+export function highlightBlocklyBlock(stepName: string, state: "running" | "success" | "error" | "paused" | "idle") {
   if (!activeWorkspaceRef) return;
   const blocks = activeWorkspaceRef.getAllBlocks(false);
   blocks.forEach((b) => {
@@ -937,9 +1007,12 @@ export function highlightBlocklyBlock(stepName: string, state: "running" | "succ
           svgRoot.style.filter = "drop-shadow(0 0 14px #22c55e)";
         } else if (state === "error") {
           svgRoot.style.filter = "drop-shadow(0 0 14px #ef4444)";
+        } else if (state === "paused") {
+          svgRoot.style.filter = "drop-shadow(0 0 16px #f59e0b) drop-shadow(0 0 8px #ef4444)";
         }
       } else if (state === "idle") {
-        svgRoot.style.filter = "none";
+        const isBp = globalBreakpoints.has(b.id) || globalBreakpoints.has(name);
+        svgRoot.style.filter = isBp ? "drop-shadow(0 0 12px #ef4444)" : "none";
       }
     }
   });
@@ -1229,9 +1302,10 @@ export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): strin
 
 interface BlocklyWorkspaceProps {
   onWorkspaceChange?: (workspace: Blockly.WorkspaceSvg) => void;
+  onBlockSelected?: (blockData: any) => void;
 }
 
-export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceChange }) => {
+export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceChange, onBlockSelected }) => {
   const blocklyDivRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null);
 
@@ -1436,6 +1510,17 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
           if (createEv.blockId) {
             const b = ws.getBlockById(createEv.blockId);
             if (b) attachBlockCollapseBehavior(b);
+          }
+        }
+        if (e && (e as any).type === Blockly.Events.SELECTED) {
+          const selEv = e as any;
+          if (selEv.newElementId) {
+            const b = ws.getBlockById(selEv.newElementId);
+            if (b && onBlockSelected) {
+              onBlockSelected(getBlockData(b));
+            }
+          } else if (onBlockSelected) {
+            onBlockSelected(null);
           }
         }
         if (onWorkspaceChange) {

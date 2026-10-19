@@ -24,12 +24,12 @@ Si algo falla, no hay ZIP.
 
 ## Tecnologías y Librerías Principales
 
+- **PostgreSQL 15 & `wpostgresql`**: Persistencia relacional empresarial utilizando la librería `wpostgresql` (patrón Data Access Layer con modelos Pydantic `User`, `Project`, `AuthToken`, repositorios tipados `UserRepository`, `ProjectRepository`, `TokenRepository`, sincronización automática de esquema con `TableSync` migrations y pool de conexiones `psycopg_pool`). El servicio de base de datos se despliega en Docker Compose en `wpipe-studio/enviroment` (`wpipe_postgres` y `wpipe_pgadmin4` en puerto 1717), manteniendo un fallback transparente a SQLite para desarrollo sin Docker o suites de tests aisladas.
 - **FastAPI**: Framework web asíncrono de alto rendimiento para la API backend (`/api/v1`).
 - **Docker Compose**: Orquestación unificada y declarativa para levantar el backend (`wpipe-studio-backend`) y el frontend (`wpipe-studio-frontend`) con reinicio automático y comprobación de salud (`healthcheck`).
 - **Nginx (Alpine)**: Servidor web de producción ligero y de alto rendimiento que sirve los assets estáticos del frontend SPA y actúa como reverse proxy hacia el backend FastAPI (`/api/`) y volumen estático (`/media/`).
-- **Volumen Persistente de Host (`./media`)**: Mapeo compartido (`./media:/app/media` en backend y `./media:/usr/share/nginx/html/media:ro` en frontend) que garantiza que la base de datos SQLite (`studio.db`) y todos los workspaces aislados (`media/workspaces/{owner_id}/{project_id}/`) persistan en el host del usuario sin pérdida de datos.
-- **Autenticación Criptográfica & Control de Sesiones**: Hash seguro de contraseñas con PBKDF2-HMAC-SHA256 (600.000 iteraciones + salt aleatorio) y sesiones autenticadas por Bearer Tokens para aislamiento estricto multi-tenant.
-- **SQLite (WAL mode)**: Base de datos embebida ligera con pool de conexiones thread-safe y foreign keys activadas para persistencia multi-tenant (`media/studio.db`).
+- **Volumen Persistente de Host (`./media`)**: Mapeo compartido (`./media:/app/media` en backend y `./media:/usr/share/nginx/html/media:ro` en frontend) que garantiza que todos los workspaces aislados (`media/workspaces/{owner_id}/{project_id}/`) persistan en el host del usuario sin pérdida de datos.
+- **Autenticación Criptográfica & Control de Sesiones**: Hash seguro de contraseñas con PBKDF2-HMAC-SHA256 (100.000 iteraciones + salt aleatorio) y sesiones autenticadas por Bearer Tokens para aislamiento estricto multi-tenant.
 - **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`, `UserProfile`, `ProjectDetail`, `AuthTokenResponse`).
 - **React 18 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines, visor de código y etapa de simulación.
 - **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0 con serialización completa de workspace.
@@ -38,7 +38,7 @@ Si algo falla, no hay ZIP.
 - **PrismJS (`prismjs`)**: Motor de resaltado de sintaxis en tiempo real para Python, YAML, Dockerfile, Makefile, Bash y JSON con tema Tomorrow Night y editor superpuesto (live overlay).
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
 - **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
-- **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>93%).
+- **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>80%).
 - **Docker Sandbox**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
 
 ---

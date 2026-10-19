@@ -3,7 +3,7 @@
 Provides persistence via WPostgreSQL (with fallback to SQLite for non-docker test environments),
 strict user-level workspace isolation, session token management with hashed password authentication,
 and microservices lifecycle management.
-Persists data to PostgreSQL and workspace artifacts to a shared media volume on the host.
+Persists data to PostgreSQL and full runnable microservice source trees to a shared media volume on the host.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from app.config.settings import DatabaseSettings
 from app.core.logging import get_logger
@@ -45,7 +46,6 @@ def _resolve_paths() -> tuple[Path, Path]:
     if env_media:
         media_root = Path(env_media).resolve()
     else:
-        # Default to root media directory in project root
         root_dir = Path(__file__).resolve().parent.parent.parent.parent
         media_root = (root_dir / "media").resolve()
 
@@ -186,6 +186,19 @@ class ProjectManager:
 
         # Seed 1: William Rodriguez (AI Leader & Solutions Architect) - password: admin123
         william = self.user_repo.get_by_id("usr_william")
+        ecommerce_ir = {
+            "nodes": [{
+                "id": "trigger_1",
+                "type": "wpipe_trigger",
+                "data": {
+                    "label": "Trigger Ingress",
+                    "node_type": "trigger",
+                    "trigger_type": "api",
+                    "trigger_param": "/run",
+                },
+            }],
+            "edges": [],
+        }
         if not william:
             self.user_repo.insert(
                 UserModel(
@@ -205,18 +218,7 @@ class ProjectManager:
                     name="ecommerce_orders_pipeline",
                     description="Microservicio WPipe para procesamiento de pedidos y enriquecimiento con IA",
                     protocol="fastapi",
-                    canvas_ir_json=json.dumps({
-                        "nodes": [{
-                            "id": "trigger_1",
-                            "type": "wpipe_trigger",
-                            "data": {
-                                "node_type": "trigger",
-                                "trigger_type": "api",
-                                "trigger_param": "/run",
-                            },
-                        }],
-                        "edges": [],
-                    }),
+                    canvas_ir_json=json.dumps(ecommerce_ir),
                     generated_files_json=json.dumps([]),
                     created_at=now,
                     updated_at=now,
@@ -226,8 +228,32 @@ class ProjectManager:
             william.password_hash = hash_password("admin123")
             self.user_repo.db.update(william.id, william)
 
+        # Seed disk microservice folder for William
+        ws_william = self.get_workspace_dir("usr_william", "proj_ecommerce_orders", "ecommerce_orders_pipeline")
+        self._sync_project_files_to_disk(ws_william, None, ecommerce_ir, "ecommerce_orders_pipeline")
+        with open(ws_william / "meta.json", "w", encoding="utf-8") as f:
+            json.dump({
+                "id": "proj_ecommerce_orders",
+                "name": "ecommerce_orders_pipeline",
+                "owner_id": "usr_william",
+                "created_at": now,
+            }, f, indent=2)
+
         # Seed 2: Dev Engineer (Pipeline Core Developer) - password: dev123
         dev = self.user_repo.get_by_id("usr_developer")
+        iot_ir = {
+            "nodes": [{
+                "id": "trigger_kafka",
+                "type": "wpipe_trigger",
+                "data": {
+                    "label": "Kafka Ingress",
+                    "node_type": "trigger",
+                    "trigger_type": "kafka",
+                    "trigger_param": "telemetry.sensors",
+                },
+            }],
+            "edges": [],
+        }
         if not dev:
             self.user_repo.insert(
                 UserModel(
@@ -247,18 +273,7 @@ class ProjectManager:
                     name="iot_sensor_telemetry",
                     description="Microservicio WPipe para procesamiento Kafka Stream y caching Redis",
                     protocol="kafka",
-                    canvas_ir_json=json.dumps({
-                        "nodes": [{
-                            "id": "trigger_kafka",
-                            "type": "wpipe_trigger",
-                            "data": {
-                                "node_type": "trigger",
-                                "trigger_type": "kafka",
-                                "trigger_param": "telemetry.sensors",
-                            },
-                        }],
-                        "edges": [],
-                    }),
+                    canvas_ir_json=json.dumps(iot_ir),
                     generated_files_json=json.dumps([]),
                     created_at=now,
                     updated_at=now,
@@ -267,6 +282,17 @@ class ProjectManager:
         elif not dev.password_hash:
             dev.password_hash = hash_password("dev123")
             self.user_repo.db.update(dev.id, dev)
+
+        # Seed disk microservice folder for Developer
+        ws_dev = self.get_workspace_dir("usr_developer", "proj_iot_sensor_telemetry", "iot_sensor_telemetry")
+        self._sync_project_files_to_disk(ws_dev, None, iot_ir, "iot_sensor_telemetry")
+        with open(ws_dev / "meta.json", "w", encoding="utf-8") as f:
+            json.dump({
+                "id": "proj_iot_sensor_telemetry",
+                "name": "iot_sensor_telemetry",
+                "owner_id": "usr_developer",
+                "created_at": now,
+            }, f, indent=2)
 
         # Seed 3: Guest / Sandbox - password: guest123
         guest = self.user_repo.get_by_id("usr_guest")
@@ -289,8 +315,20 @@ class ProjectManager:
     def _seed_default_data(self) -> None:
         with self._get_connection() as conn:
             now = datetime.now(UTC).isoformat()
+            ecommerce_ir = {
+                "nodes": [{
+                    "id": "trigger_1",
+                    "type": "wpipe_trigger",
+                    "data": {
+                        "label": "Trigger Ingress",
+                        "node_type": "trigger",
+                        "trigger_type": "api",
+                        "trigger_param": "/run",
+                    },
+                }],
+                "edges": [],
+            }
 
-            # Seed 1: William Rodriguez (AI Leader & Solutions Architect) - password: admin123
             row_william = conn.execute(
                 "SELECT id, password_hash FROM users WHERE username = ?", ("william.rodriguez",)
             ).fetchone()
@@ -321,7 +359,7 @@ class ProjectManager:
                         "ecommerce_orders_pipeline",
                         "Microservicio WPipe para procesamiento de pedidos y enriquecimiento con IA",
                         "fastapi",
-                        json.dumps({"nodes": [{"id": "trigger_1", "type": "wpipe_trigger", "data": {"node_type": "trigger", "trigger_type": "api", "trigger_param": "/run"}}], "edges": []}),
+                        json.dumps(ecommerce_ir),
                         json.dumps([]),
                         now,
                         now,
@@ -333,10 +371,22 @@ class ProjectManager:
                     (hash_password("admin123"), row_william["id"]),
                 )
 
-            # Seed 2: Dev Engineer (Pipeline Core Developer) - password: dev123
             row_dev = conn.execute(
                 "SELECT id, password_hash FROM users WHERE username = ?", ("developer",)
             ).fetchone()
+            iot_ir = {
+                "nodes": [{
+                    "id": "trigger_kafka",
+                    "type": "wpipe_trigger",
+                    "data": {
+                        "label": "Kafka Ingress",
+                        "node_type": "trigger",
+                        "trigger_type": "kafka",
+                        "trigger_param": "telemetry.sensors",
+                    },
+                }],
+                "edges": [],
+            }
             if not row_dev:
                 conn.execute(
                     """
@@ -364,7 +414,7 @@ class ProjectManager:
                         "iot_sensor_telemetry",
                         "Microservicio WPipe para procesamiento Kafka Stream y caching Redis",
                         "kafka",
-                        json.dumps({"nodes": [{"id": "trigger_kafka", "type": "wpipe_trigger", "data": {"node_type": "trigger", "trigger_type": "kafka", "trigger_param": "telemetry.sensors"}}], "edges": []}),
+                        json.dumps(iot_ir),
                         json.dumps([]),
                         now,
                         now,
@@ -376,7 +426,6 @@ class ProjectManager:
                     (hash_password("dev123"), row_dev["id"]),
                 )
 
-            # Seed 3: Guest / Sandbox - password: guest123
             row_guest = conn.execute(
                 "SELECT id, password_hash FROM users WHERE username = ?", ("guest",)
             ).fetchone()
@@ -403,6 +452,12 @@ class ProjectManager:
                 )
 
             conn.commit()
+
+        # Seed physical files for SQLite fallback
+        ws_william = self.get_workspace_dir("usr_william", "proj_ecommerce_orders", "ecommerce_orders_pipeline")
+        self._sync_project_files_to_disk(ws_william, None, ecommerce_ir, "ecommerce_orders_pipeline")
+        ws_dev = self.get_workspace_dir("usr_developer", "proj_iot_sensor_telemetry", "iot_sensor_telemetry")
+        self._sync_project_files_to_disk(ws_dev, None, iot_ir, "iot_sensor_telemetry")
 
     # ---------------- User & Session Management ----------------
 
@@ -682,17 +737,110 @@ class ProjectManager:
         token = self.create_session(user_id)
         return user, token
 
-    # ---------------- Multi-Tenant Project Management ----------------
+    # ---------------- Multi-Tenant Project & Disk Workspace Management ----------------
 
-    def get_workspace_dir(self, owner_id: str, project_id: str) -> Path:
-        """Strictly sandboxed directory within host persistent media volume."""
+    def get_workspace_dir(
+        self,
+        owner_id: str,
+        project_id: str,
+        name: str | None = None,
+    ) -> Path:
+        """Strictly sandboxed directory within host persistent media volume.
+
+        Each user has their isolated workspace root: `media/workspaces/{owner_id}/`.
+        Inside their workspace, each microservice has its own folder named after the microservice.
+        """
         clean_owner = re.sub(r"[^\w-]", "", owner_id)
         clean_proj = re.sub(r"[^\w-]", "", project_id)
-        path = (self.workspaces_root / clean_owner / clean_proj).resolve()
-        if not str(path).startswith(str(self.workspaces_root.resolve())):
+        user_ws = (self.workspaces_root / clean_owner).resolve()
+        user_ws.mkdir(parents=True, exist_ok=True)
+
+        slug = _slugify(name) if name else None
+        if not slug:
+            try:
+                p = self.get_project(project_id, owner_id)
+                if p:
+                    slug = _slugify(p.name)
+            except Exception:
+                pass
+
+        if not slug:
+            slug = clean_proj
+
+        target_dir = (user_ws / slug).resolve()
+        if not str(target_dir).startswith(str(self.workspaces_root.resolve())):
             raise ValueError("Path traversal attempt detected")
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+
+        # Disambiguate if folder exists and belongs to a different project ID
+        meta_file = target_dir / "meta.json"
+        if target_dir.exists() and meta_file.exists():
+            try:
+                with open(meta_file, encoding="utf-8") as f:
+                    meta_data = json.load(f)
+                if meta_data.get("id") and meta_data.get("id") != project_id:
+                    target_dir = (user_ws / f"{slug}_{clean_proj[:8]}").resolve()
+            except Exception:
+                pass
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir
+
+    def _sync_project_files_to_disk(
+        self,
+        ws_dir: Path,
+        files: list[dict[str, Any]] | None,
+        canvas_ir: dict[str, Any] | None,
+        project_name: str,
+    ) -> None:
+        """Synchronize the complete microservice source tree to the physical workspace folder on disk."""
+        ws_dir.mkdir(parents=True, exist_ok=True)
+
+        target_files: list[dict[str, str]] = []
+        if files and len(files) > 0:
+            target_files = [
+                {"path": f.get("path", ""), "content": f.get("content", "")}
+                for f in files
+                if isinstance(f, dict) and f.get("path")
+            ]
+
+        # If no explicit files are supplied, auto-compile from Canvas IR
+        if not target_files and canvas_ir:
+            try:
+                from app.schemas.ir import CanvasIR
+                from app.services.ir_transformer import (
+                    transform_canvas_to_semantic,
+                    transform_semantic_to_target,
+                )
+                c_data = dict(canvas_ir)
+                if "nodes" in c_data and isinstance(c_data["nodes"], list):
+                    fixed_nodes = []
+                    for n in c_data["nodes"]:
+                        nd = dict(n)
+                        data = dict(nd.get("data", {}))
+                        if "label" not in data:
+                            data["label"] = data.get("node_type", "Step").capitalize()
+                        nd["data"] = data
+                        fixed_nodes.append(nd)
+                    c_data["nodes"] = fixed_nodes
+
+                c_ir = CanvasIR(**c_data)
+                semantic_ir = transform_canvas_to_semantic(c_ir)
+                target_ir = transform_semantic_to_target(semantic_ir, project_name=project_name)
+                target_files = [{"path": f.path, "content": f.content} for f in target_ir.files]
+            except Exception as e:
+                logger.warning("Could not auto-compile canvas IR to files for %s: %s", project_name, e)
+
+        # Write each file to the microservice workspace directory on disk
+        for tf in target_files:
+            rel_path = tf.get("path")
+            if not rel_path:
+                continue
+            clean_rel = re.sub(r"^[/\\]+", "", rel_path)
+            dest = (ws_dir / clean_rel).resolve()
+            if not str(dest).startswith(str(ws_dir.resolve())):
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(tf.get("content", ""), encoding="utf-8")
 
     def list_projects(self, owner_id: str) -> list[ProjectSummary]:
         if self.use_postgres:
@@ -841,10 +989,23 @@ class ProjectManager:
                 )
                 conn.commit()
 
-        # Initialize physical workspace directory for this project in the shared host media volume
-        ws_dir = self.get_workspace_dir(owner_id, proj_id)
+        # Initialize physical workspace directory for this microservice in the shared host media volume
+        ws_dir = self.get_workspace_dir(owner_id, proj_id, clean_name)
         with open(ws_dir / "meta.json", "w", encoding="utf-8") as f:
-            json.dump({"id": proj_id, "name": clean_name, "owner_id": owner_id}, f)
+            json.dump({
+                "id": proj_id,
+                "name": clean_name,
+                "owner_id": owner_id,
+                "created_at": now,
+                "updated_at": now,
+            }, f, indent=2)
+
+        if canvas_ir_dict:
+            with open(ws_dir / "canvas_ir.json", "w", encoding="utf-8") as f:
+                json.dump(canvas_ir_dict, f, indent=2)
+
+        # Synchronize full microservice file tree to disk
+        self._sync_project_files_to_disk(ws_dir, generated_files_list, canvas_ir_dict, clean_name)
 
         return ProjectDetail(
             id=proj_id,
@@ -906,13 +1067,39 @@ class ProjectManager:
                 )
                 conn.commit()
 
-        # Update physical workspace metadata in shared host volume
+        # Workspace directory migration if renamed
+        old_dir = self.get_workspace_dir(owner_id, project_id, current.name)
+        ws_dir = self.get_workspace_dir(owner_id, project_id, updated_name)
+        if old_dir.exists() and old_dir.resolve() != ws_dir.resolve():
+            try:
+                for item in old_dir.iterdir():
+                    dest_item = ws_dir / item.name
+                    if item.is_file():
+                        shutil.copy2(item, dest_item)
+                    elif item.is_dir():
+                        shutil.copytree(item, dest_item, dirs_exist_ok=True)
+                shutil.rmtree(old_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning("Failed to migrate microservice directory %s: %s", project_id, e)
+
+        # Update physical workspace metadata and files in shared host volume
         try:
-            ws_dir = self.get_workspace_dir(owner_id, project_id)
             with open(ws_dir / "meta.json", "w", encoding="utf-8") as f:
-                json.dump({"id": project_id, "name": updated_name, "owner_id": owner_id, "updated_at": now}, f)
+                json.dump({
+                    "id": project_id,
+                    "name": updated_name,
+                    "owner_id": owner_id,
+                    "created_at": current.created_at,
+                    "updated_at": now,
+                }, f, indent=2)
+
+            if updated_canvas:
+                with open(ws_dir / "canvas_ir.json", "w", encoding="utf-8") as f:
+                    json.dump(updated_canvas, f, indent=2)
+
+            self._sync_project_files_to_disk(ws_dir, updated_files, updated_canvas, updated_name)
         except Exception as e:
-            logger.warning("Failed to update disk meta for %s: %s", project_id, e)
+            logger.warning("Failed to sync files to disk for %s: %s", project_id, e)
 
         return ProjectDetail(
             id=project_id,
@@ -943,9 +1130,9 @@ class ProjectManager:
                 if res.rowcount == 0:
                     return False
 
-        # Remove physical directory in shared host media volume
+        # Remove physical microservice directory from shared host media volume
         try:
-            ws_dir = self.get_workspace_dir(owner_id, project_id)
+            ws_dir = self.get_workspace_dir(owner_id, project_id, current.name)
             if ws_dir.exists():
                 shutil.rmtree(ws_dir, ignore_errors=True)
         except Exception as e:
@@ -970,14 +1157,15 @@ class ProjectManager:
 
         # Clone physical files if any exist
         try:
-            src_dir = self.get_workspace_dir(owner_id, project_id)
-            dst_dir = self.get_workspace_dir(owner_id, new_project.id)
+            src_dir = self.get_workspace_dir(owner_id, project_id, source.name)
+            dst_dir = self.get_workspace_dir(owner_id, new_project.id, new_project.name)
             for item in src_dir.iterdir():
-                if item.name != "meta.json":
+                if item.name not in ("meta.json", "canvas_ir.json"):
+                    dest_path = dst_dir / item.name
                     if item.is_file():
-                        shutil.copy2(item, dst_dir / item.name)
+                        shutil.copy2(item, dest_path)
                     elif item.is_dir():
-                        shutil.copytree(item, dst_dir / item.name, dirs_exist_ok=True)
+                        shutil.copytree(item, dest_path, dirs_exist_ok=True)
         except Exception as e:
             logger.warning("Failed to duplicate physical workspace files: %s", e)
 

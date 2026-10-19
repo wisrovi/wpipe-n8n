@@ -1339,7 +1339,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       // 6. Paso dentro del bloque paralelo (MySQLQuery)
       const blockDb = ws.newBlock("wpipe_step");
       blockDb.setFieldValue("MySQLQuery", "STEP_NAME");
-      blockDb.setFieldValue("wpipe_steps.storage", "NAMESPACE");
+      blockDb.setFieldValue("wpipe_steps.database", "NAMESPACE");
       blockDb.initSvg();
       blockDb.render();
       attachBlockCollapseBehavior(blockDb);
@@ -1381,7 +1381,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
 
       const blockBgTask = ws.newBlock("wpipe_step");
       blockBgTask.setFieldValue("RedisGet", "STEP_NAME");
-      blockBgTask.setFieldValue("wpipe_steps.storage", "NAMESPACE");
+      blockBgTask.setFieldValue("wpipe_steps.database", "NAMESPACE");
       blockBgTask.initSvg();
       blockBgTask.render();
       attachBlockCollapseBehavior(blockBgTask);
@@ -1403,7 +1403,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
 
       const blockRetryStep = ws.newBlock("wpipe_step");
       blockRetryStep.setFieldValue("NmapScanStep", "STEP_NAME");
-      blockRetryStep.setFieldValue("wpipe_steps.network", "NAMESPACE");
+      blockRetryStep.setFieldValue("wpipe_steps.security", "NAMESPACE");
       blockRetryStep.initSvg();
       blockRetryStep.render();
       attachBlockCollapseBehavior(blockRetryStep);

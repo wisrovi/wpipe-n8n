@@ -1,5 +1,5 @@
 """WPipe Studio - Cloudflare Admin Web Dashboard
-Streamlit Backoffice application to manage licenses, machine activations, R2 binaries, and audit logs.
+Streamlit Backoffice application driven by WPipe Pipeline Architecture (wisrovi standard).
 Author: William Rodriguez (wisrovi.dev)
 """
 
@@ -13,7 +13,8 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-from client import CloudflareAdminClient, generate_license_key
+from client import CloudflareAdminClient
+from pipelines import create_admin_pipeline
 
 # Configure Streamlit page layout and dark theme
 st.set_page_config(
@@ -41,7 +42,7 @@ def check_password() -> bool:
         """
         <div style="text-align: center; margin-top: 50px;">
             <h2>🛡️ WPipe Studio — Admin Console</h2>
-            <p style="color: #888;">Cloudflare Serverless Licensing Authority (wisrovi SUITE)</p>
+            <p style="color: #888;">Cloudflare Serverless Licensing Authority (WPipe Pipeline Driven)</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -64,14 +65,16 @@ if not check_password():
 
 
 # -----------------------------------------------------------------------------
-# Client Initialization & Health Check
+# WPipe Pipeline & Client Initialization
 # -----------------------------------------------------------------------------
 @st.cache_resource
-def get_client() -> CloudflareAdminClient:
-    return CloudflareAdminClient()
+def get_admin_resources():
+    admin_client = CloudflareAdminClient()
+    pipeline = create_admin_pipeline(admin_client)
+    return admin_client, pipeline
 
 
-client = get_client()
+client, admin_pipeline = get_admin_resources()
 
 
 def check_api_health(base_url: str) -> dict[str, Any]:
@@ -89,7 +92,7 @@ def check_api_health(base_url: str) -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 🛡️ WPipe Admin")
-    st.caption("Ecosistema wisrovi.dev | Cloudflare Edge")
+    st.caption("Ecosistema wisrovi.dev | WPipe Architecture")
 
     health = check_api_health(client.api_base_url)
     if health.get("status") == "healthy":
@@ -98,7 +101,8 @@ with st.sidebar:
         st.warning(f"🟡 Worker API: {health.get('status', 'unknown')}")
 
     st.divider()
-    st.markdown("**Configuración:**")
+    st.markdown("**Arquitectura:**")
+    st.caption("⚙️ **Engine:** `WPipe Pipeline v2.5`")
     st.caption(f"**D1 DB:** `{client.database_id[:8]}...`")
     st.caption(f"**Worker:** `{client.api_base_url}`")
 
@@ -107,22 +111,29 @@ with st.sidebar:
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# Header & KPI Metrics
+# Header & Data Loading via WPipe Pipeline
 # -----------------------------------------------------------------------------
 st.title("🛡️ Panel de Control de Licencias y Activaciones")
-st.caption("Gestión centralizada de suscriptores, huellas de hardware, binarios en R2 y registros de auditoría.")
+st.caption("Orquestado nativamente con WPipe Pipeline (DTOs + Steps + States).")
 
-stats = client.get_stats()
+# Initial run to fetch full state
+with st.spinner("Ejecutando pipeline WPipe..."):
+    pipe_result = admin_pipeline.run({"action": "fetch_all", "status_filter": "all"})
+
+stats = pipe_result.get("stats", {})
+licenses = pipe_result.get("licenses", [])
+activations = pipe_result.get("activations", [])
+audit_logs = pipe_result.get("audit_logs", [])
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric(label="Total Licencias", value=stats["total_licenses"])
+    st.metric(label="Total Licencias", value=stats.get("total_licenses", 0))
 with col2:
-    st.metric(label="Licencias Activas", value=stats["active_licenses"])
+    st.metric(label="Licencias Activas", value=stats.get("active_licenses", 0))
 with col3:
-    st.metric(label="Máquinas Vinculadas", value=stats["total_activations"])
+    st.metric(label="Máquinas Vinculadas", value=stats.get("total_activations", 0))
 with col4:
-    st.metric(label="Eventos Auditoría (7d)", value=stats["recent_logs_7d"])
+    st.metric(label="Eventos Auditoría (7d)", value=stats.get("recent_logs_7d", 0))
 
 st.divider()
 
@@ -173,16 +184,20 @@ with tab1:
                         expires_at = (now + datetime.timedelta(days=365)).isoformat()
 
                     try:
-                        new_lic = client.create_license(
-                            customer_email=cust_email,
-                            customer_name=cust_name,
-                            plan=plan,
-                            max_machines=int(max_mach),
-                            expires_at=expires_at,
-                            custom_key=custom_key if custom_key.strip() else None,
-                        )
-                        st.success(f"✅ ¡Licencia generada exitosamente! Clave: **`{new_lic['license_key']}`**")
+                        res = admin_pipeline.run({
+                            "action": "create_license",
+                            "license_input": {
+                                "customer_email": cust_email,
+                                "customer_name": cust_name,
+                                "plan": plan,
+                                "max_machines": int(max_mach),
+                                "expires_at": expires_at,
+                                "custom_key": custom_key if custom_key.strip() else None,
+                            },
+                        })
+                        st.success("✅ ¡Licencia generada exitosamente vía WPipe Pipeline!")
                         st.info("Pega esta clave en la extensión de VS Code con el comando: `WPipe: Activar Licencia Pro`")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error al crear la licencia: {e}")
 
@@ -193,44 +208,55 @@ with tab1:
     with scol2:
         status_filter = st.selectbox("Estado", ["all", "active", "suspended", "revoked"])
 
-    try:
-        licenses = client.list_licenses(search=search_query, status_filter=status_filter)
-        if licenses:
-            df_licenses = pd.DataFrame(licenses)
-            # Reorder columns for readability
-            cols_order = [
-                "license_key", "plan", "status", "customer_name", "customer_email",
-                "max_machines", "expires_at", "created_at"
-            ]
-            display_cols = [c for c in cols_order if c in df_licenses.columns]
-            st.dataframe(df_licenses[display_cols], use_container_width=True, height=350)
+    filtered_licenses = licenses
+    if search_query or status_filter != "all":
+        res_filter = admin_pipeline.run({
+            "action": "fetch_all",
+            "search_query": search_query if search_query else None,
+            "status_filter": status_filter,
+        })
+        filtered_licenses = res_filter.get("licenses", [])
 
-            # Actions on selected license
-            st.markdown("#### Acciones sobre Licencias")
-            acol1, acol2, acol3 = st.columns([2, 1, 1])
-            with acol1:
-                selected_lic_id = st.selectbox(
-                    "Seleccionar Licencia",
-                    options=[f"{l['id']} — {l['license_key']} ({l['customer_email']})" for l in licenses],
-                )
-                lic_id = selected_lic_id.split(" — ")[0]
-            with acol2:
-                new_st = st.selectbox("Nuevo Estado", ["active", "suspended", "revoked"])
-                if st.button("Actualizar Estado", use_container_width=True):
-                    client.update_license_status(lic_id, new_st)
-                    st.success(f"Estado actualizado a '{new_st}'.")
-                    st.rerun()
-            with acol3:
-                st.write("")
-                st.write("")
-                if st.button("🗑️ Eliminar Licencia", type="secondary", use_container_width=True):
-                    client.delete_license(lic_id)
-                    st.warning("Licencia y activaciones eliminadas.")
-                    st.rerun()
-        else:
-            st.info("No se encontraron licencias registradas.")
-    except Exception as e:
-        st.error(f"Error al cargar licencias: {e}")
+    if filtered_licenses:
+        df_licenses = pd.DataFrame(filtered_licenses)
+        cols_order = [
+            "license_key", "plan", "status", "customer_name", "customer_email",
+            "max_machines", "expires_at", "created_at"
+        ]
+        display_cols = [c for c in cols_order if c in df_licenses.columns]
+        st.dataframe(df_licenses[display_cols], use_container_width=True, height=350)
+
+        # Actions on selected license
+        st.markdown("#### Acciones sobre Licencias")
+        acol1, acol2, acol3 = st.columns([2, 1, 1])
+        with acol1:
+            selected_lic_id = st.selectbox(
+                "Seleccionar Licencia",
+                options=[f"{l['id']} — {l['license_key']} ({l['customer_email']})" for l in filtered_licenses],
+            )
+            lic_id = selected_lic_id.split(" — ")[0]
+        with acol2:
+            new_st = st.selectbox("Nuevo Estado", ["active", "suspended", "revoked"])
+            if st.button("Actualizar Estado", use_container_width=True):
+                admin_pipeline.run({
+                    "action": "update_license",
+                    "target_id": lic_id,
+                    "target_status": new_st,
+                })
+                st.success(f"Estado actualizado a '{new_st}' vía WPipe Pipeline.")
+                st.rerun()
+        with acol3:
+            st.write("")
+            st.write("")
+            if st.button("🗑️ Eliminar Licencia", type="secondary", use_container_width=True):
+                admin_pipeline.run({
+                    "action": "delete_license",
+                    "target_id": lic_id,
+                })
+                st.warning("Licencia eliminada vía WPipe Pipeline.")
+                st.rerun()
+    else:
+        st.info("No se encontraron licencias registradas.")
 
 # =============================================================================
 # TAB 2: Máquinas & Leases
@@ -239,38 +265,37 @@ with tab2:
     st.subheader("Equipos Vinculados (Huellas de Hardware Anti-Piratería)")
     st.caption("Cada equipo tiene una huella SHA-256 única vinculada a la licencia del desarrollador.")
 
-    try:
-        activations = client.list_activations()
-        if activations:
-            df_act = pd.DataFrame(activations)
-            act_cols = [
-                "id", "license_key", "customer_email", "plan", "hostname", "os_name",
-                "machine_fingerprint", "last_verified_at", "lease_expires_at"
-            ]
-            display_act_cols = [c for c in act_cols if c in df_act.columns]
-            st.dataframe(df_act[display_act_cols], use_container_width=True, height=350)
+    if activations:
+        df_act = pd.DataFrame(activations)
+        act_cols = [
+            "id", "license_key", "customer_email", "plan", "hostname", "os_name",
+            "machine_fingerprint", "last_verified_at", "lease_expires_at"
+        ]
+        display_act_cols = [c for c in act_cols if c in df_act.columns]
+        st.dataframe(df_act[display_act_cols], use_container_width=True, height=350)
 
-            st.markdown("#### Desvincular Equipo")
-            st.caption("Si un cliente cambia de ordenador o formatea su sistema, desvincula su máquina anterior para liberar su cupo.")
+        st.markdown("#### Desvincular Equipo")
+        st.caption("Si un cliente cambia de ordenador o formatea su sistema, desvincula su máquina anterior para liberar su cupo.")
 
-            dcol1, dcol2 = st.columns([3, 1])
-            with dcol1:
-                sel_act = st.selectbox(
-                    "Seleccionar Activación a Desvincular",
-                    options=[f"{a['id']} — {a['hostname'] or 'PC'} ({a['license_key']})" for a in activations],
-                )
-                act_id = sel_act.split(" — ")[0]
-            with dcol2:
-                st.write("")
-                st.write("")
-                if st.button("🔓 Desvincular Máquina", type="primary", use_container_width=True):
-                    client.delete_activation(act_id)
-                    st.success("Máquina desvinculada exitosamente. El desarrollador puede registrar una nueva máquina.")
-                    st.rerun()
-        else:
-            st.info("Aún no hay máquinas registradas.")
-    except Exception as e:
-        st.error(f"Error al cargar activaciones: {e}")
+        dcol1, dcol2 = st.columns([3, 1])
+        with dcol1:
+            sel_act = st.selectbox(
+                "Seleccionar Activación a Desvincular",
+                options=[f"{a['id']} — {a.get('hostname') or 'PC'} ({a.get('license_key') or ''})" for a in activations],
+            )
+            act_id = sel_act.split(" — ")[0]
+        with dcol2:
+            st.write("")
+            st.write("")
+            if st.button("🔓 Desvincular Máquina", type="primary", use_container_width=True):
+                admin_pipeline.run({
+                    "action": "delete_activation",
+                    "target_id": act_id,
+                })
+                st.success("Máquina desvinculada exitosamente vía WPipe Pipeline.")
+                st.rerun()
+    else:
+        st.info("Aún no hay máquinas registradas.")
 
 # =============================================================================
 # TAB 3: Binarios & R2
@@ -303,7 +328,7 @@ with tab3:
 # =============================================================================
 with tab4:
     st.subheader("Registro de Seguridad & Auditoría")
-    st.caption("Eventos en tiempo real: activaciones exitosas, claves inválidas, intentos de abuso o renovaciones de lease.")
+    st.caption("Eventos en tiempo real cargados por ManageAuditStep.")
 
     lcol1, lcol2 = st.columns([3, 1])
     with lcol1:
@@ -314,12 +339,12 @@ with tab4:
     with lcol2:
         limit_logs = st.number_input("Límite de Registros", min_value=10, max_value=500, value=50, step=10)
 
-    try:
-        logs = client.list_audit_logs(limit=int(limit_logs), event_type=ev_filter)
-        if logs:
-            df_logs = pd.DataFrame(logs)
-            st.dataframe(df_logs, use_container_width=True, height=400)
-        else:
-            st.info("No hay registros de auditoría para el filtro seleccionado.")
-    except Exception as e:
-        st.error(f"Error al cargar registros: {e}")
+    filtered_logs = audit_logs
+    if ev_filter != "all":
+        filtered_logs = [log for log in audit_logs if log.get("event_type") == ev_filter]
+
+    if filtered_logs:
+        df_logs = pd.DataFrame(filtered_logs[:int(limit_logs)])
+        st.dataframe(df_logs, use_container_width=True, height=400)
+    else:
+        st.info("No hay registros de auditoría para el filtro seleccionado.")

@@ -135,7 +135,7 @@ def test_codegen_control_blocks_and_dialect_a():
     readme_content = file_map["README.md"]
     assert "William Rodriguez" in readme_content
     assert "wisrovi" in readme_content
-    assert "eCaptureDtech" in readme_content
+    assert "wisrovi.dev" in readme_content
     assert "Badajoz, Extremadura, España" in readme_content
     assert "AI Leader & Solutions Architect" in readme_content
     assert "WPipe Studio (wisrovi SUITE)" in readme_content
@@ -143,4 +143,8 @@ def test_codegen_control_blocks_and_dialect_a():
     assert "All Rights Reserved" in readme_content
     assert "docker-compose" in readme_content
     assert "Makefile" in readme_content
+    # Ensure copyright is strictly for wisrovi with official url, never ecapturedtech
+    assert "Copyright" in readme_content
+    assert "ecapturedtech" not in readme_content.lower()
+    assert "ecapture" not in readme_content.lower()
 

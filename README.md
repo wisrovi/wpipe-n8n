@@ -51,6 +51,7 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - Buscador rápido en tiempo real para filtrar bloques al instante.
    - **Tarjeta descriptiva flotante (Hover Tooltip)**: al posar el cursor sobre cualquier bloque, se despliega una tarjeta enriquecida con la descripción del bloque, los parámetros configurables y el código Python WPipe equivalente generado.
    - 🚀 **Lanzador de Pipeline (Trigger Hat Block)**: Bloque sombrero de inicio que configura el punto de entrada al pipeline (FastAPI REST `POST /run`, Kafka Consumer, Redis Queue, Cron / Programador, Webhook, CLI local), reflejado automáticamente en diagramas Mermaid y en wrappers de ejecución en `app/main.py`.
+   - 🏁 **Cierre de Pipeline (Response Cap Block)**: Bloque terminal Cap (muesca superior y base plana Scratch) que define la salida o respuesta final del microservicio (Respuesta HTTP 200 JSON, publicación de eventos en tópicos Kafka, colas Redis, guardado de contexto en archivo JSON o retorno directo). Sincronizado en tiempo real con Mermaid (`classDef endResponse`), esquemas IR y generación de rutas en `app/main.py`.
    - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins` con auto-actualización inmediata del paso seleccionado), selector dinámico de categoría, filtro de búsqueda por texto y lista desplegable con los 197 steps del catálogo (incluyendo plugins comunitarios como `ecam_yolo` y `rss_parser`).
    - ✨ **Paso con IA (Dialecto A)**: Bloque para arrastrar y describir en lenguaje natural el comportamiento deseado. Genera la función decorada con `@step` y su Context DTO Pydantic (`app/dto/` y `app/states/`).
    - 📄 **Paso Personalizado (.py)**: Bloque con acción de adjunto de archivos Python locales (`.py`), empaquetándolos directamente en el microservicio.
@@ -84,6 +85,7 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Visor de archivos (Blob viewer) interactivo con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
      - **Resaltado de Sintaxis en Tiempo Real (PrismJS)**: coloreado de código para Python (imports, clases, decoradores, funciones), Dockerfile, Makefile, YAML, Bash y JSON.
      - **Edición en Navegador**: Botón para editar cualquier archivo generado directamente en el navegador con soporte para tabulación (4 espacios), números de línea sincronizados e indicador visual de archivos modificados (`Editado`) tanto en la tabla como en el visor y árbol de archivos.
+     - **Editor y Entradas con Tema Oscuro de Alto Contraste**: Soporte de edición directa por doble-clic o botón de edición, con fondo oscuro (`#090d13` / `#0d1117`), tipografía de alta legibilidad (`#e6edf3` / `#38bdf8`) y cursor celeste que eliminan fondos blancos indeseados tanto en el editor de código como en las entradas de texto emergentes de bloques Blockly (`.blocklyHtmlInput`).
      - **Makefile Orientado a Microservicio Docker**: Comandos listos para producción (`make start` con `docker-compose up -d --build`, `make stop`, `make restart`, `make status`, `make logs`, `make test`, `make build`, `make shell`, `make clean`).
      - **Resolución Completa de Pipelines (`pipelines.py`)**: Algoritmo topológico jerárquico con `get_root_ancestor_id` y `order_children_for_slot` que garantiza que los pasos posteriores a bloques de control (C-blocks: Condition, For, While, Parallel, Background) nunca se pierdan en el código generado.
      - **Selector Rápido de Imagen Base Docker**: Barra interactiva sobre `Dockerfile` para alternar entre presets (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) o ingresar tags personalizados con reemplazo reactivo de la directiva `FROM`.
@@ -92,8 +94,8 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Previsualización incrustada de `README.md` bajo la tabla de directorio.
      - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
      - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
-7. **Lienzo Inicial Hello World con los 10 Bloques**:
-   - Al cargar o recargar el lienzo, se precarga automáticamente un flujo simple "Hello World" que demuestra la integración de los 10 bloques (Trigger Ingress, Step HttpRequest, AI Step, User File Step, IF, Parallel con MySQLQuery, IF-ELSE con For, Background con RedisGet, y While con NmapScanStep).
+7. **Lienzo Inicial Hello World con los 11 Bloques**:
+   - Al cargar o recargar el lienzo, se precarga automáticamente un flujo simple "Hello World" que demuestra la integración de los 11 bloques (Trigger Ingress, Step HttpRequest, AI Step, User File Step, IF, Parallel con MySQLQuery, IF-ELSE con For, Background con RedisGet, While con NmapScanStep y Cierre de Pipeline Response Cap Egress).
 
 ---
 

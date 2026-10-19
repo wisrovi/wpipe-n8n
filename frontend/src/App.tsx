@@ -291,7 +291,7 @@ function getGitHubFileDescription(filePath: string): string {
   if (filePath.endsWith("pyproject.toml")) return "Package dependencies and metadata configuration";
   if (filePath.endsWith("requirements.txt")) return "Locked production Python requirements";
   if (filePath.endsWith("run_tests_docker.sh")) return "Dockerized test execution script";
-  if (filePath.endsWith("README.md")) return "Microservice architecture documentation and usage";
+  if (filePath.endsWith("README.md")) return "Derechos de autor (wisrovi / WPipe Studio) & Documentación (Protegido)";
   if (filePath.includes("test_")) return "Automated unit tests & regression quality gates";
   if (filePath.includes("dto")) return "Pydantic Context DTO contracts (Dialect A)";
   if (filePath.includes("states")) return "WPipe state execution functions with @step decorator";
@@ -706,9 +706,13 @@ export default function App() {
       });
   };
 
-  // Switch to file editing mode
+  // Switch to file editing mode (README.md is strictly protected against editing)
   const handleStartEditingFile = () => {
     if (!githubViewingFile) return;
+    if (githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) {
+      setStatusMessage("🔒 El archivo README.md está protegido contra edición (contiene derechos de autor de wisrovi y metadatos oficiales de WPipe Studio).");
+      return;
+    }
     setEditingFileContent(githubViewingFile.content);
     setIsEditingFile(true);
   };
@@ -3144,6 +3148,7 @@ export default function App() {
                         onSelectFile={(idx) => {
                           const file = generatedFiles[idx];
                           if (file) {
+                            setIsEditingFile(false);
                             setGithubViewingFile(file);
                             setGithubCurrentDir(file.path.split("/").slice(0, -1).join("/"));
                           }
@@ -3328,14 +3333,23 @@ export default function App() {
                             </>
                           ) : (
                             <>
-                              <button
-                                onClick={handleStartEditingFile}
-                                className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
-                                title="Editar el código de este archivo directamente"
-                              >
-                                <Edit3 size={13} />
-                                <span>Editar</span>
-                              </button>
+                              {githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md") ? (
+                                <span
+                                  className="px-2.5 py-1 bg-amber-950/60 text-amber-300 border border-amber-700/60 rounded text-xs font-mono font-semibold flex items-center gap-1.5 cursor-not-allowed select-none shadow-sm"
+                                  title="El archivo README.md está protegido contra edición manual: contiene los derechos de propiedad intelectual, autoría de wisrovi y metadatos oficiales de WPipe Studio."
+                                >
+                                  <span>🔒 Protegido (Derechos & Autoría)</span>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={handleStartEditingFile}
+                                  className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
+                                  title="Editar el código de este archivo directamente"
+                                >
+                                  <Edit3 size={13} />
+                                  <span>Editar</span>
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => setGithubRawMode(!githubRawMode)}
@@ -3493,9 +3507,21 @@ export default function App() {
                         </div>
                       ) : (
                         <div
-                          onDoubleClick={handleStartEditingFile}
-                          title="Doble clic para editar este archivo directamente"
-                          className="flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117] cursor-text"
+                          onDoubleClick={
+                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
+                              ? undefined
+                              : handleStartEditingFile
+                          }
+                          title={
+                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
+                              ? "El archivo README.md está protegido contra edición manual (Derechos de autor & Autoría wisrovi)"
+                              : "Doble clic para editar este archivo directamente"
+                          }
+                          className={`flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117] ${
+                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
+                              ? "cursor-default"
+                              : "cursor-text"
+                          }`}
                         >
                           {!githubRawMode ? (
                             <>
@@ -3584,6 +3610,7 @@ export default function App() {
                             if (item.isFolder) {
                               setGithubCurrentDir(item.fullPath);
                             } else if (item.file) {
+                              setIsEditingFile(false);
                               setGithubViewingFile(item.file);
                             }
                           }}
@@ -3638,7 +3665,10 @@ export default function App() {
                             <span>README.md</span>
                           </span>
                           <button
-                            onClick={() => setGithubViewingFile(currentReadme)}
+                            onClick={() => {
+                              setIsEditingFile(false);
+                              setGithubViewingFile(currentReadme);
+                            }}
                             className="text-xs text-sky-400 hover:underline cursor-pointer"
                           >
                             Ver archivo

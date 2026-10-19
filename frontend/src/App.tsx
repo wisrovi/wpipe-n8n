@@ -20,6 +20,8 @@ import {
   getWorkPlanFromBlocklyWorkspace,
   getCanvasIRFromBlocklyWorkspace,
   highlightBlocklyBlock,
+  getWorkspaceStateJson,
+  loadWorkspaceStateJson,
 } from "./components/BlocklyWorkspace";
 import mermaid from "mermaid";
 import Prism from "prismjs";
@@ -67,7 +69,46 @@ import {
   Trash2,
   Edit3,
   Move,
+  User,
+  Users,
+  ShieldCheck,
+  LogOut,
+  Clock,
+  FolderPlus,
 } from "lucide-react";
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  avatar_color: string;
+  created_at: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  docker_image: string;
+  node_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectDetail {
+  id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  docker_image: string;
+  canvas_ir: CanvasIR | null;
+  files: { path: string; content: string }[];
+  node_count: number;
+  created_at: string;
+  updated_at: string;
+}
 
 interface ParamSpec {
   name: string;
@@ -391,21 +432,53 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [categorySearch, setCategorySearch] = useState<string>("");
 
-  // Extension Library Modal
-  const [showExtensionModal, setShowExtensionModal] = useState<boolean>(false);
-  const [extensionSearch, setExtensionSearch] = useState<string>("");
-  const [extensionCategoryFilter, setExtensionCategoryFilter] = useState<string>("ALL");
-  const [extensionRepoFilter, setExtensionRepoFilter] = useState<string>("ALL");
+  // Multi-Tenant User & Projects State
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
+  const [userProjects, setUserProjects] = useState<ProjectSummary[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
+
+  // Modals for Projects and Auth
+  const [showProjectsModal, setShowProjectsModal] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [projectSearch, setProjectSearch] = useState<string>("");
+
+  // New Project Form in ProjectsModal
+  const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
+  const [newProjectName, setNewProjectName] = useState<string>("");
+  const [newProjectDesc, setNewProjectDesc] = useState<string>("");
+  const [newProjectDockerImage, setNewProjectDockerImage] = useState<string>("python:3.11-slim");
+
+  // New User Form in AuthModal
+  const [isRegisteringUser, setIsRegisteringUser] = useState<boolean>(false);
+  const [newUsername, setNewUsername] = useState<string>("");
+  const [newUserName, setNewUserName] = useState<string>("");
+  const [newUserRole, setNewUserRole] = useState<string>("");
 
   // FAQ Modal
   const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
   const [openFaqId, setOpenFaqId] = useState<string | null>("faq_1");
   const [faqSearch, setFaqSearch] = useState<string>("");
 
-  // Flowchart View state
+  // Flowchart View state (Interactive Pan & Zoom)
   const [mermaidCode, setMermaidCode] = useState<string>("");
-  const [zoomScale, setZoomScale] = useState<number>(1.0);
+  const [mermaidZoom, setMermaidZoom] = useState<number>(1.0);
+  const [mermaidPan, setMermaidPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [mermaidIsDragging, setMermaidIsDragging] = useState<boolean>(false);
+  const mermaidZoomRef = useRef<number>(1.0);
+  const mermaidPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mermaidDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mermaidContainerRef = useRef<HTMLDivElement>(null);
   const mermaidFullRef = useRef<HTMLDivElement>(null);
+
+  mermaidZoomRef.current = mermaidZoom;
+  mermaidPanRef.current = mermaidPan;
+
+  // Live Syntax-Highlighted Editor Refs
+  const editorTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorPreRef = useRef<HTMLPreElement>(null);
+  const editorLineNumbersRef = useRef<HTMLDivElement>(null);
 
   // Generated Microservice Preview State
   const [generatedFiles, setGeneratedFiles] = useState<{ path: string; content: string }[]>([]);
@@ -639,8 +712,22 @@ export default function App() {
       const newValue = value.substring(0, start) + "    " + value.substring(end);
       setEditingFileContent(newValue);
       setTimeout(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + 4;
+        if (editorTextareaRef.current) {
+          editorTextareaRef.current.selectionStart = editorTextareaRef.current.selectionEnd = start + 4;
+        }
       }, 0);
+    }
+  };
+
+  // Synchronize scroll between interactive textarea, live syntax layer, and line numbers gutter
+  const handleEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    const { scrollTop, scrollLeft } = e.currentTarget;
+    if (editorPreRef.current) {
+      editorPreRef.current.scrollTop = scrollTop;
+      editorPreRef.current.scrollLeft = scrollLeft;
+    }
+    if (editorLineNumbersRef.current) {
+      editorLineNumbersRef.current.scrollTop = scrollTop;
     }
   };
 
@@ -706,6 +793,256 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Load User Identity and Microservices on Mount
+  useEffect(() => {
+    const savedUserId = localStorage.getItem("studio_user_id") || "usr_william";
+    fetch("/api/v1/auth/me", {
+      headers: { "X-User-ID": savedUserId },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((user: UserProfile | null) => {
+        if (user && user.id) {
+          setCurrentUser(user);
+          localStorage.setItem("studio_user_id", user.id);
+          fetchUserProjects(user.id);
+        }
+      })
+      .catch((err) => console.error("Error loading user:", err));
+
+    fetch("/api/v1/auth/users")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((users: UserProfile[]) => {
+        if (Array.isArray(users)) setAvailableUsers(users);
+      })
+      .catch((err) => console.error("Error loading user list:", err));
+  }, []);
+
+  // Fetch Projects for a Specific User
+  const fetchUserProjects = async (userId?: string) => {
+    const targetUid = userId || currentUser?.id || "usr_william";
+    try {
+      const res = await fetch("/api/v1/projects", {
+        headers: { "X-User-ID": targetUid },
+      });
+      if (res.ok) {
+        const data: ProjectSummary[] = await res.json();
+        setUserProjects(data);
+      }
+    } catch (err) {
+      console.error("Error fetching projects:", err);
+    }
+  };
+
+  // Open / Load a Microservice Project into Workspace
+  const handleOpenProject = async (projectId: string) => {
+    const targetUid = currentUser?.id || "usr_william";
+    try {
+      setStatusMessage("Cargando microservicio...");
+      const res = await fetch(`/api/v1/projects/${projectId}`, {
+        headers: { "X-User-ID": targetUid },
+      });
+      if (!res.ok) throw new Error("No se pudo cargar el microservicio");
+      const project: ProjectDetail = await res.json();
+      setActiveProjectId(project.id);
+      setProjectName(project.name);
+      setCustomDockerImage(project.docker_image);
+      if (project.files && project.files.length > 0) {
+        setGeneratedFiles(project.files);
+        setSelectedFileIdx(0);
+        setGithubViewingFile(null);
+        setGithubCurrentDir("");
+      }
+      if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
+        loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+      }
+      setStatusMessage(`Microservicio '${project.name}' cargado con éxito ✓`);
+      setShowProjectsModal(false);
+    } catch (err: any) {
+      setStatusMessage(`Error: ${err.message}`);
+    }
+  };
+
+  // Save Current Microservice into User Workspace
+  const handleSaveProject = async () => {
+    if (!currentUser) return;
+    setIsSavingProject(true);
+    setStatusMessage("Guardando microservicio en tu espacio de trabajo...");
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    const workspaceState = getWorkspaceStateJson();
+    if (workspaceState) {
+      (canvasIr as any).workspace_state = workspaceState;
+    }
+
+    try {
+      if (activeProjectId) {
+        // Update existing project
+        const res = await fetch(`/api/v1/projects/${activeProjectId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-ID": currentUser.id,
+          },
+          body: JSON.stringify({
+            name: projectName,
+            docker_image: customDockerImage || "python:3.11-slim",
+            canvas_ir: canvasIr,
+            files: generatedFiles,
+          }),
+        });
+        if (!res.ok) throw new Error("Error al actualizar microservicio");
+        await fetchUserProjects(currentUser.id);
+        setStatusMessage(`Microservicio '${projectName}' guardado ✓`);
+      } else {
+        // Create new project
+        const res = await fetch("/api/v1/projects", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-ID": currentUser.id,
+          },
+          body: JSON.stringify({
+            name: projectName,
+            description: `Microservicio ${projectName} creado desde el lienzo`,
+            docker_image: customDockerImage || "python:3.11-slim",
+            canvas_ir: canvasIr,
+            files: generatedFiles,
+          }),
+        });
+        if (!res.ok) throw new Error("Error al crear microservicio");
+        const created: ProjectDetail = await res.json();
+        setActiveProjectId(created.id);
+        await fetchUserProjects(currentUser.id);
+        setStatusMessage(`Microservicio '${created.name}' creado y guardado ✓`);
+      }
+    } catch (err: any) {
+      setStatusMessage(`Error guardando: ${err.message}`);
+    } finally {
+      setIsSavingProject(false);
+    }
+  };
+
+  // Create New Microservice from Modal
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !newProjectName.trim()) return;
+    try {
+      const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+      const workspaceState = getWorkspaceStateJson();
+      if (workspaceState) {
+        (canvasIr as any).workspace_state = workspaceState;
+      }
+      const cleanName = newProjectName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+      const res = await fetch("/api/v1/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-ID": currentUser.id,
+        },
+        body: JSON.stringify({
+          name: cleanName,
+          description: newProjectDesc.trim() || `Microservicio ${cleanName}`,
+          docker_image: newProjectDockerImage.trim() || "python:3.11-slim",
+          canvas_ir: canvasIr,
+          files: generatedFiles,
+        }),
+      });
+      if (!res.ok) throw new Error("Error al crear microservicio");
+      const created: ProjectDetail = await res.json();
+      setActiveProjectId(created.id);
+      setProjectName(created.name);
+      setCustomDockerImage(created.docker_image);
+      await fetchUserProjects(currentUser.id);
+      setIsCreatingProject(false);
+      setNewProjectName("");
+      setNewProjectDesc("");
+      setStatusMessage(`Microservicio '${created.name}' creado en tu espacio privado ✓`);
+      setShowProjectsModal(false);
+    } catch (err: any) {
+      setStatusMessage(`Error al crear: ${err.message}`);
+    }
+  };
+
+  // Duplicate an Existing Microservice
+  const handleDuplicateProject = async (projectId: string) => {
+    if (!currentUser) return;
+    try {
+      setStatusMessage("Duplicando microservicio...");
+      const res = await fetch(`/api/v1/projects/${projectId}/duplicate`, {
+        method: "POST",
+        headers: { "X-User-ID": currentUser.id },
+      });
+      if (!res.ok) throw new Error("Error al duplicar");
+      const duplicated: ProjectDetail = await res.json();
+      await fetchUserProjects(currentUser.id);
+      setStatusMessage(`Microservicio duplicado como '${duplicated.name}' ✓`);
+    } catch (err: any) {
+      setStatusMessage(`Error al duplicar: ${err.message}`);
+    }
+  };
+
+  // Delete an Existing Microservice
+  const handleDeleteProject = async (projectId: string, projName: string) => {
+    if (!currentUser) return;
+    if (!window.confirm(`¿Estás seguro de eliminar permanentemente el microservicio '${projName}'?`)) return;
+    try {
+      const res = await fetch(`/api/v1/projects/${projectId}`, {
+        method: "DELETE",
+        headers: { "X-User-ID": currentUser.id },
+      });
+      if (!res.ok) throw new Error("Error al eliminar");
+      if (activeProjectId === projectId) {
+        setActiveProjectId(null);
+      }
+      await fetchUserProjects(currentUser.id);
+      setStatusMessage(`Microservicio '${projName}' eliminado de tu espacio`);
+    } catch (err: any) {
+      setStatusMessage(`Error al eliminar: ${err.message}`);
+    }
+  };
+
+  // Switch Active User Identity
+  const handleSwitchUser = async (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem("studio_user_id", user.id);
+    setShowAuthModal(false);
+    setActiveProjectId(null);
+    setStatusMessage(`Sesión cambiada a ${user.name} (${user.role})`);
+    await fetchUserProjects(user.id);
+  };
+
+  // Register New User Identity
+  const handleRegisterUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUsername.trim() || !newUserName.trim()) return;
+    try {
+      const res = await fetch("/api/v1/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: newUsername.trim().toLowerCase(),
+          name: newUserName.trim(),
+          role: newUserRole.trim() || "Developer",
+        }),
+      });
+      if (!res.ok) throw new Error("Error al registrar usuario");
+      const registered: UserProfile = await res.json();
+      setCurrentUser(registered);
+      localStorage.setItem("studio_user_id", registered.id);
+      setIsRegisteringUser(false);
+      setNewUsername("");
+      setNewUserName("");
+      setNewUserRole("");
+      setShowAuthModal(false);
+      setActiveProjectId(null);
+      const usersRes = await fetch("/api/v1/auth/users");
+      if (usersRes.ok) setAvailableUsers(await usersRes.json());
+      await fetchUserProjects(registered.id);
+      setStatusMessage(`Usuario ${registered.name} registrado e iniciado con éxito ✓`);
+    } catch (err: any) {
+      setStatusMessage(`Error al registrar: ${err.message}`);
+    }
+  };
+
   // Load Python Preview when switching to python tab
   useEffect(() => {
     if (activeMainTab === "python") {
@@ -758,7 +1095,102 @@ export default function App() {
     };
   }, [catalog]);
 
-  // Mermaid render effect
+  // Center and auto-fit Mermaid diagram
+  const handleCenterMermaid = () => {
+    if (!mermaidContainerRef.current || !mermaidFullRef.current) {
+      setMermaidPan({ x: 0, y: 0 });
+      return;
+    }
+    const container = mermaidContainerRef.current.getBoundingClientRect();
+    const svg = mermaidFullRef.current.querySelector("svg");
+    if (svg && container.width > 0 && container.height > 0) {
+      const svgRect = svg.getBoundingClientRect();
+      const currentScale = mermaidZoomRef.current || 1.0;
+      const naturalWidth = svgRect.width / currentScale;
+      const naturalHeight = svgRect.height / currentScale;
+
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        const scaleX = (container.width - 80) / naturalWidth;
+        const scaleY = (container.height - 80) / naturalHeight;
+        const fitScale = Math.min(1.5, Math.max(0.35, Math.min(scaleX, scaleY)));
+
+        setMermaidZoom(+fitScale.toFixed(2));
+        const offsetX = (container.width - naturalWidth * fitScale) / 2;
+        const offsetY = (container.height - naturalHeight * fitScale) / 2;
+        setMermaidPan({ x: Math.round(offsetX), y: Math.round(Math.max(24, offsetY)) });
+        setStatusMessage(`Diagrama Mermaid centrado y ajustado (${Math.round(fitScale * 100)}%)`);
+      }
+    } else {
+      setMermaidPan({ x: 0, y: 0 });
+      setMermaidZoom(1.0);
+    }
+  };
+
+  const handleResetMermaid = () => {
+    setMermaidZoom(1.0);
+    setMermaidPan({ x: 0, y: 0 });
+    setStatusMessage("Zoom y posición de Mermaid restablecidos a 100%");
+  };
+
+  const handleExportMermaidSvg = () => {
+    if (!mermaidFullRef.current) return;
+    const svg = mermaidFullRef.current.querySelector("svg");
+    if (!svg) {
+      setStatusMessage("No hay diagrama SVG disponible para exportar");
+      return;
+    }
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const a = document.createElement("a");
+    a.href = svgUrl;
+    a.download = `${projectName}_pipeline_diagram.svg`;
+    a.click();
+    setStatusMessage("Diagrama SVG exportado exitosamente ✓");
+  };
+
+  const handleMermaidMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 0 || e.button === 1) {
+      setMermaidIsDragging(true);
+      mermaidDragStart.current = {
+        x: e.clientX - mermaidPanRef.current.x,
+        y: e.clientY - mermaidPanRef.current.y,
+      };
+    }
+  };
+
+  const handleMermaidMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (mermaidIsDragging) {
+      setMermaidPan({
+        x: e.clientX - mermaidDragStart.current.x,
+        y: e.clientY - mermaidDragStart.current.y,
+      });
+    }
+  };
+
+  const handleMermaidMouseUp = () => {
+    setMermaidIsDragging(false);
+  };
+
+  const handleMermaidWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!mermaidContainerRef.current) return;
+    const containerRect = mermaidContainerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
+
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+    const oldZoom = mermaidZoomRef.current;
+    const newZoom = Math.min(4.0, Math.max(0.2, +(oldZoom * zoomFactor).toFixed(2)));
+
+    const newPanX = mouseX - ((mouseX - mermaidPanRef.current.x) / oldZoom) * newZoom;
+    const newPanY = mouseY - ((mouseY - mermaidPanRef.current.y) / oldZoom) * newZoom;
+
+    setMermaidZoom(newZoom);
+    setMermaidPan({ x: Math.round(newPanX), y: Math.round(newPanY) });
+  };
+
+  // Mermaid render effect with node interaction and auto-fit
   useEffect(() => {
     if (activeMainTab === "flowchart" && mermaidCode && mermaidFullRef.current) {
       mermaid.initialize({ startOnLoad: false, theme: "dark" });
@@ -769,6 +1201,27 @@ export default function App() {
         .then(({ svg }) => {
           if (mermaidFullRef.current) {
             mermaidFullRef.current.innerHTML = svg;
+            const svgElement = mermaidFullRef.current.querySelector("svg");
+            if (svgElement) {
+              svgElement.style.maxWidth = "none";
+              svgElement.style.height = "auto";
+              svgElement.style.display = "block";
+            }
+            // Add interactive node click feedback
+            const nodes = mermaidFullRef.current.querySelectorAll(".node");
+            nodes.forEach((node) => {
+              (node as HTMLElement).style.cursor = "pointer";
+              node.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const textEl = node.querySelector(".nodeLabel") || node;
+                const label = textEl.textContent || "Paso";
+                setStatusMessage(`Nodo seleccionado en DAG: "${label.trim()}"`);
+              });
+            });
+
+            setTimeout(() => {
+              handleCenterMermaid();
+            }, 80);
           }
         })
         .catch((err) => {
@@ -782,7 +1235,7 @@ export default function App() {
     const code = getMermaidFromBlocklyWorkspace();
     setMermaidCode(code);
     setActiveMainTab("flowchart");
-    setStatusMessage("Generated live Mermaid flowchart preview");
+    setStatusMessage("Visualizando flujo Mermaid interactivo (Arrastra para mover • Rueda para zoom)");
   };
 
   // Perform Dry-Run Quality Verification
@@ -1433,23 +1886,46 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Editable Project Title */}
-        <div className="flex items-center">
+        {/* Center: Microservice Selector, Title & Save Button */}
+        <div className="flex items-center gap-2">
+          {/* Projects Switcher / Manager Button */}
+          <button
+            onClick={() => setShowProjectsModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-900/90 hover:bg-gray-800 border border-gray-700/80 rounded-md text-xs font-semibold text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
+            title="Abrir Gestor de Microservicios (Espacio Aislado)"
+          >
+            <Folder size={13} className="text-amber-400 group-hover:scale-110 transition-transform" />
+            <span className="max-w-[120px] truncate">{activeProjectId ? projectName : "Mis Microservicios"}</span>
+            <ChevronDown size={11} className="text-gray-400" />
+          </button>
+
+          {/* Editable Project Title */}
           <input
             type="text"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))}
-            className="bg-gray-950/80 border border-gray-700/80 hover:border-gray-500 focus:border-sky-500 rounded-md px-3 py-1 text-xs font-semibold text-gray-200 focus:outline-none transition w-64 text-center font-mono"
+            className="bg-gray-950/80 border border-gray-700/80 hover:border-gray-500 focus:border-sky-500 rounded-md px-3 py-1 text-xs font-semibold text-gray-200 focus:outline-none transition w-44 text-center font-mono"
             placeholder="my_wpipe_pipeline"
-            title="Click to rename pipeline"
+            title="Click para renombrar microservicio"
           />
+
+          {/* Save Microservice Button */}
+          <button
+            onClick={handleSaveProject}
+            disabled={isSavingProject}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-950/80 hover:bg-sky-900 border border-sky-600/70 rounded-md text-xs font-bold text-sky-300 hover:text-sky-200 transition shadow-sm cursor-pointer"
+            title="Guardar estado del lienzo y archivos en tu espacio privado"
+          >
+            <Save size={13} className={isSavingProject ? "animate-spin text-sky-400" : "text-sky-400"} />
+            <span>{isSavingProject ? "Guardando..." : "Guardar"}</span>
+          </button>
         </div>
 
-        {/* Right: Actions (FAQ, Dry-Run, Export ZIP) */}
+        {/* Right: Actions (Tutorials, Dry-Run, Export ZIP, User Profile) */}
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setShowFaqModal(true)}
-            className="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 rounded-md transition flex items-center gap-1.5"
+            className="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 rounded-md transition flex items-center gap-1.5 cursor-pointer"
             title="Guía y Preguntas Frecuentes"
           >
             <BookOpen size={14} className="text-purple-400" />
@@ -1459,7 +1935,7 @@ export default function App() {
           <button
             onClick={handleDryRun}
             disabled={dryRunLoading}
-            className="px-3 py-1 bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-700/80 rounded-md text-xs font-bold transition flex items-center gap-1.5 shadow"
+            className="px-3 py-1 bg-sky-950/90 hover:bg-sky-900 text-sky-300 border border-sky-700/80 rounded-md text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer"
           >
             <CheckCircle size={14} className="text-sky-400" />
             <span>{dryRunLoading ? "Verificando..." : "Verificar"}</span>
@@ -1472,6 +1948,31 @@ export default function App() {
           >
             <Download size={14} />
             <span>{zipLoading ? "Generando..." : "Descargar ZIP"}</span>
+          </button>
+
+          <div className="h-5 w-px bg-gray-800 mx-1" />
+
+          {/* User Profile Pill & Login / Switcher */}
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
+            title="Cambiar usuario o iniciar sesión multi-tenant"
+          >
+            <div
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
+              style={{ backgroundColor: currentUser?.avatar_color || "#38bdf8" }}
+            >
+              {(currentUser?.name || "W")[0].toUpperCase()}
+            </div>
+            <div className="flex flex-col text-left leading-none">
+              <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[100px] truncate">
+                {currentUser?.name || "William R."}
+              </span>
+              <span className="text-[9px] text-gray-400 font-mono max-w-[100px] truncate">
+                {currentUser?.role || "AI Leader"}
+              </span>
+            </div>
+            <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-200" />
           </button>
         </div>
       </header>
@@ -1605,18 +2106,16 @@ export default function App() {
               ))}
             </div>
 
-            {/* Authentic Scratch 3.0 Extension Library Button [ + | ≡ ] */}
+            {/* Mis Microservicios & Proyectos Workspace Button (Repurposed EXT) */}
             <div className="w-full px-2 pt-2 border-t border-gray-800/60">
               <button
-                onClick={() => setShowExtensionModal(true)}
-                title="Catálogo de Extensiones (196 Steps Oficiales y Plugins)"
+                type="button"
+                onClick={() => setShowProjectsModal(true)}
+                title="Mis Microservicios (Gestionar proyectos, crear, clonar)"
                 className="w-full aspect-square rounded-xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 text-white flex flex-col items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95 group border border-sky-400/40 cursor-pointer"
               >
-                <div className="flex items-center gap-0.5">
-                  <Plus size={14} className="stroke-[3]" />
-                  <Layers size={13} />
-                </div>
-                <span className="text-[8px] font-extrabold mt-0.5 tracking-tighter uppercase">EXT</span>
+                <FolderOpen size={16} className="text-white" />
+                <span className="text-[7.5px] font-black mt-0.5 tracking-tighter uppercase">PROY</span>
               </button>
             </div>
           </div>
@@ -2258,38 +2757,70 @@ export default function App() {
 
         {/* TAB 3: MERMAID FLOWCHART VIEW */}
         {activeMainTab === "flowchart" && (
-          <div className="flex-1 flex flex-col bg-[#07090e] overflow-hidden p-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+          <div className="flex-1 flex flex-col bg-[#07090e] overflow-hidden">
+            {/* Top Toolbar */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-950/80 border-b border-gray-800/80 text-xs">
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-gray-300">Zoom:</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 border border-gray-800 rounded-lg text-gray-400 text-[11px] font-medium mr-1 select-none">
+                  <Move size={12} className="text-sky-400" />
+                  <span>Arrastra fondo para mover • Rueda ratón para zoom</span>
+                </div>
+
+                <div className="flex items-center bg-gray-900 border border-gray-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setMermaidZoom((s) => Math.max(0.2, +(s - 0.15).toFixed(2)))}
+                    title="Reducir zoom (-)"
+                    className="p-1.5 hover:bg-gray-800 rounded text-sky-400 hover:text-sky-300 cursor-pointer transition"
+                  >
+                    <ZoomOut size={13} />
+                  </button>
+                  <span className="text-xs font-mono font-bold text-sky-400 w-14 text-center select-none">
+                    {Math.round(mermaidZoom * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setMermaidZoom((s) => Math.min(4.0, +(s + 0.15).toFixed(2)))}
+                    title="Aumentar zoom (+)"
+                    className="p-1.5 hover:bg-gray-800 rounded text-sky-400 hover:text-sky-300 cursor-pointer transition"
+                  >
+                    <ZoomIn size={13} />
+                  </button>
+                </div>
+
                 <button
-                  onClick={() => setZoomScale((s) => Math.max(0.3, s - 0.2))}
-                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sky-400 cursor-pointer"
-                >
-                  <ZoomOut size={14} />
-                </button>
-                <span className="text-xs font-mono text-sky-400 w-12 text-center">{Math.round(zoomScale * 100)}%</span>
-                <button
-                  onClick={() => setZoomScale((s) => Math.min(3.0, s + 0.2))}
-                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sky-400 cursor-pointer"
-                >
-                  <ZoomIn size={14} />
-                </button>
-                <button
-                  onClick={() => setZoomScale(1.0)}
-                  className="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-xs text-gray-300 cursor-pointer"
+                  onClick={handleResetMermaid}
+                  title="Restablecer zoom y posición a 100%"
+                  className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-xs font-semibold text-gray-300 hover:text-white cursor-pointer transition"
                 >
                   100%
+                </button>
+
+                <button
+                  onClick={handleCenterMermaid}
+                  title="Centrar y ajustar automáticamente el diagrama al lienzo"
+                  className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-xs font-semibold text-teal-400 hover:text-teal-300 flex items-center gap-1.5 cursor-pointer transition"
+                >
+                  <Maximize2 size={13} />
+                  <span>Ajustar y Centrar</span>
                 </button>
               </div>
 
               <div className="flex items-center space-x-2">
                 <button
+                  onClick={handleExportMermaidSvg}
+                  title="Descargar diagrama vectorial SVG para presentaciones o documentación"
+                  className="px-3 py-1.5 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
+                >
+                  <Download size={13} />
+                  <span>Exportar SVG</span>
+                </button>
+
+                <button
                   onClick={() => {
                     navigator.clipboard.writeText(mermaidCode);
-                    setStatusMessage("Código Mermaid copiado al portapapeles");
+                    setStatusMessage("Código Mermaid copiado al portapapeles ✓");
                   }}
-                  className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-sky-300 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  title="Copiar código fuente Mermaid"
+                  className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition"
                 >
                   <Copy size={13} />
                   <span>Copiar Mermaid</span>
@@ -2304,9 +2835,10 @@ export default function App() {
                     a.href = mdUrl;
                     a.download = `${projectName}_work_plan.md`;
                     a.click();
-                    setStatusMessage("Plan de trabajo (.md) descargado");
+                    setStatusMessage("Plan de trabajo (.md) descargado ✓");
                   }}
-                  className="px-3 py-1 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  title="Exportar plan de trabajo en formato Markdown"
+                  className="px-3 py-1.5 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800/80 text-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
                 >
                   <Download size={13} />
                   <span>Exportar Plan (.md)</span>
@@ -2314,12 +2846,24 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-8 custom-modal-scrollbar text-center">
+            {/* Interactive Pan-Zoom Canvas */}
+            <div
+              ref={mermaidContainerRef}
+              onMouseDown={handleMermaidMouseDown}
+              onMouseMove={handleMermaidMouseMove}
+              onMouseUp={handleMermaidMouseUp}
+              onMouseLeave={handleMermaidMouseUp}
+              onWheel={handleMermaidWheel}
+              className={`flex-1 relative overflow-hidden mermaid-viewport ${mermaidIsDragging ? "is-dragging" : ""}`}
+            >
               <div
                 ref={mermaidFullRef}
-                style={{ transform: `scale(${zoomScale})`, transformOrigin: "top center", transition: "transform 0.15s ease-out" }}
-                className="inline-block"
-              ></div>
+                style={{
+                  transform: `translate(${mermaidPan.x}px, ${mermaidPan.y}px) scale(${mermaidZoom})`,
+                  transition: mermaidIsDragging ? "none" : "transform 0.12s cubic-bezier(0.2, 0, 0, 1)",
+                }}
+                className="mermaid-svg-stage select-none"
+              />
             </div>
           </div>
         )}
@@ -2670,43 +3214,58 @@ export default function App() {
                       {/* Code Content or Editor */}
                       {isEditingFile ? (
                         <div className="flex-1 flex flex-col bg-[#090d13] overflow-hidden relative">
-                          <div className="bg-[#111620] px-4 py-2 border-b border-[#30363d] text-[11px] text-gray-300 font-mono flex items-center justify-between">
+                          <div className="bg-[#111620] px-4 py-2 border-b border-[#30363d] text-[11px] text-gray-300 font-mono flex items-center justify-between shrink-0">
                             <span className="flex items-center gap-2 text-sky-400 font-semibold">
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Modo Edición: puedes editar el código libremente. Pulsa "Guardar Cambios" para aplicar.
+                              Modo Edición: coloreado de sintaxis activo en tiempo real.
                             </span>
                             <div className="flex items-center gap-3 text-gray-400">
                               <span>💡 Tab sangra 4 espacios</span>
                               <span className="font-bold text-gray-200">{editingFileContent.split("\n").length} líneas</span>
                             </div>
                           </div>
-                          <div className="flex-1 flex overflow-hidden bg-[#090d13]">
+                          <div className="flex-1 flex overflow-hidden bg-[#090d13] relative">
                             {/* Line Numbers for Editor */}
                             <div
+                              ref={editorLineNumbersRef}
                               className="editor-line-numbers border-r border-[#30363d] py-4 px-3 text-right select-none font-mono text-xs overflow-hidden shrink-0"
                               style={{ backgroundColor: "#0b0f17", color: "#6b7280" }}
                             >
                               {editingFileContent.split("\n").map((_, i) => (
-                                <div key={i} className="leading-relaxed">
+                                <div key={i} style={{ height: "20px", lineHeight: "20px" }}>
                                   {i + 1}
                                 </div>
                               ))}
                             </div>
-                            <textarea
-                              value={editingFileContent}
-                              onChange={(e) => setEditingFileContent(e.target.value)}
-                              onKeyDown={handleEditorKeyDown}
-                              spellCheck={false}
-                              autoFocus
-                              placeholder="Escribe o edita el código aquí..."
-                              className="code-editor-textarea flex-1 w-full p-4 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-sky-700 custom-modal-scrollbar"
-                              style={{
-                                tabSize: 4,
-                                backgroundColor: "#090d13",
-                                color: "#e6edf3",
-                                caretColor: "#38bdf8",
-                              }}
-                            />
+
+                            {/* Live Syntax-Highlighted Editor Viewport */}
+                            <div className="relative flex-1 h-full overflow-hidden live-editor-viewport">
+                              {/* Syntax Highlighted Layer (Rendered with Prism) */}
+                              <pre
+                                ref={editorPreRef}
+                                aria-hidden="true"
+                                className="live-code-pre pointer-events-none"
+                                dangerouslySetInnerHTML={{
+                                  __html: highlightCode(
+                                    editingFileContent.endsWith("\n") ? editingFileContent + " " : editingFileContent,
+                                    githubViewingFile.path
+                                  ),
+                                }}
+                              />
+
+                              {/* Transparent Interactive Textarea with visible caret & selection */}
+                              <textarea
+                                ref={editorTextareaRef}
+                                value={editingFileContent}
+                                onChange={(e) => setEditingFileContent(e.target.value)}
+                                onKeyDown={handleEditorKeyDown}
+                                onScroll={handleEditorScroll}
+                                spellCheck={false}
+                                autoFocus
+                                placeholder="Escribe o edita el código aquí..."
+                                className="live-code-textarea"
+                              />
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -2718,23 +3277,29 @@ export default function App() {
                           {!githubRawMode ? (
                             <>
                               {/* Line Numbers Column */}
-                              <div className="bg-[#0d1117] border-r border-[#30363d] py-3 px-3 text-right text-gray-600 select-none font-mono text-xs shrink-0">
+                              <div className="bg-[#0d1117] border-r border-[#30363d] py-4 px-3 text-right text-gray-600 select-none font-mono text-xs shrink-0">
                                 {githubViewingFile.content.split("\n").map((_, i) => (
-                                  <div key={i} className="leading-relaxed">
+                                  <div key={i} style={{ height: "20px", lineHeight: "20px" }}>
                                     {i + 1}
                                   </div>
                                 ))}
                               </div>
                               {/* Highlighted Code Text via Prism */}
                               <pre
-                                className="py-3 px-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono"
+                                className="p-4 text-gray-200 whitespace-pre flex-1 overflow-visible font-mono text-xs"
+                                style={{
+                                  fontFamily:
+                                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                                  lineHeight: "20px",
+                                  margin: 0,
+                                }}
                                 dangerouslySetInnerHTML={{
                                   __html: highlightCode(githubViewingFile.content, githubViewingFile.path),
                                 }}
                               />
                             </>
                           ) : (
-                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono">
+                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono" style={{ lineHeight: "20px", margin: 0 }}>
                               {githubViewingFile.content}
                             </pre>
                           )}
@@ -2870,123 +3435,440 @@ export default function App() {
       </div>
 
 
-      {/* 4. EXTENSION LIBRARY MODAL (196 Catalog Steps) */}
-      {showExtensionModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-[#0f172a] border border-sky-800/80 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <div>
-                <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
-                  📚 Catálogo de Extensiones WPipe (196 Steps de Release)
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Selecciona y añade pasos oficiales y comunitarios de release a tu workspace de Scratch.
-                </p>
+      {/* 4. MIS MICROSERVICIOS & PROYECTOS MODAL (Multi-Tenant Workspaces) */}
+      {showProjectsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-[#0b0f19] border border-sky-800/70 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[88vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-lg shadow-md shadow-sky-500/20">
+                  📁
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
+                      Mis Microservicios & Proyectos
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 flex items-center gap-1">
+                      <ShieldCheck size={11} /> Aislamiento Multi-Tenant Activo
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Espacio privado de <strong className="text-gray-200">{currentUser?.name || "William R."}</strong> (
+                    <span className="font-mono text-[11px] text-sky-400/90">backend/data/workspaces/{currentUser?.id || "usr_william"}/</span>)
+                  </p>
+                </div>
               </div>
               <button
-                onClick={() => setShowExtensionModal(false)}
-                className="text-gray-400 hover:text-white font-bold p-1 text-lg"
+                onClick={() => {
+                  setShowProjectsModal(false);
+                  setIsCreatingProject(false);
+                }}
+                className="text-gray-400 hover:text-white font-bold p-1 text-lg rounded-lg hover:bg-gray-800/60 transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Search and Filters */}
-            <div className="flex items-center space-x-3">
+            {/* Actions Bar & Search */}
+            <div className="flex items-center justify-between gap-3">
               <div className="flex-1 relative">
                 <Search size={14} className="absolute left-3 top-3 text-gray-500" />
                 <input
                   type="text"
-                  placeholder="Buscar en el catálogo (ej: redis, waf, yolo, mysql, http)..."
-                  value={extensionSearch}
-                  onChange={(e) => setExtensionSearch(e.target.value)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-9 pr-3 text-xs text-gray-200 focus:outline-none"
+                  placeholder="Buscar microservicio por nombre o descripción..."
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-9 pr-3 text-xs text-gray-200 focus:outline-none focus:border-sky-500 transition"
                 />
               </div>
 
-              <select
-                value={extensionRepoFilter}
-                onChange={(e) => setExtensionRepoFilter(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-300 focus:outline-none"
+              <button
+                onClick={() => setIsCreatingProject(!isCreatingProject)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer ${
+                  isCreatingProject
+                    ? "bg-gray-800 hover:bg-gray-700 text-gray-200"
+                    : "bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-sky-600/30"
+                }`}
               >
-                <option value="ALL">🌐 Todos los Repos</option>
-                <option value="Official">📦 Oficiales (wpipe-steps)</option>
-                <option value="Plugin">🧩 Plugins (wpipe-plugins)</option>
-              </select>
-
-              <select
-                value={extensionCategoryFilter}
-                onChange={(e) => setExtensionCategoryFilter(e.target.value)}
-                className="bg-gray-950 border border-gray-800 rounded-xl py-2 px-3 text-xs text-gray-300 focus:outline-none"
-              >
-                <option value="ALL">Todas las Categorías</option>
-                {Array.from(new Set(catalog.map((s) => s.category).filter(Boolean))).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <FolderPlus size={14} />
+                <span>{isCreatingProject ? "Cancelar" : "Nuevo Microservicio"}</span>
+              </button>
             </div>
 
-            {/* Catalog Grid */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 pr-1">
-              {catalog
-                .filter((s) => {
-                  if (extensionRepoFilter !== "ALL") {
-                    const r = (s.repo || "").toLowerCase();
-                    const ns = (s.namespace || "").toLowerCase();
-                    const isPl = r === "plugin" || r === "community" || ns.includes("plugin") || ns.startsWith("wpipe_plugins");
-                    if (extensionRepoFilter === "Plugin" && !isPl) return false;
-                    if (extensionRepoFilter === "Official" && isPl) return false;
-                  }
-                  if (extensionCategoryFilter !== "ALL" && s.category.toLowerCase() !== extensionCategoryFilter.toLowerCase()) {
-                    return false;
-                  }
-                  if (!extensionSearch) return true;
-                  const q = extensionSearch.toLowerCase();
-                  return (
-                    s.name.toLowerCase().includes(q) ||
-                    s.func_name.toLowerCase().includes(q) ||
-                    s.category.toLowerCase().includes(q) ||
-                    s.description.toLowerCase().includes(q)
-                  );
-                })
-                .slice(0, 100)
-                .map((step, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 bg-gray-950/70 border border-gray-800/80 hover:border-sky-500 rounded-xl transition flex flex-col justify-between group"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-gray-100 flex items-center gap-1.5">
-                          <span>📦</span> {step.name}
-                        </span>
-                        <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
-                          step.repo === "Official" ? "bg-sky-950 text-sky-300 border border-sky-800" : "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                        }`}>
-                          {step.repo}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 line-clamp-2">{step.description || "Paso modular de procesamiento."}</p>
-                    </div>
+            {/* Inline New Project Form */}
+            {isCreatingProject && (
+              <form
+                onSubmit={handleCreateProject}
+                className="p-4 bg-gray-950/90 border border-sky-600/40 rounded-xl space-y-3 shadow-inner"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-sky-300 flex items-center gap-1.5">
+                    <Plus size={13} /> Crear Nuevo Microservicio Aislado
+                  </span>
+                  <span className="text-[10px] text-gray-400">Se creará su propio directorio en tu workspace</span>
+                </div>
 
-                    <div className="mt-3 pt-2 border-t border-gray-900 flex items-center justify-between">
-                      <span className="text-[10px] text-gray-500 font-mono">cat: {step.category}</span>
-                      <button
-                        onClick={() => {
-                          addStepBlockToWorkspace(step.name, step.namespace, "catalog");
-                          setStatusMessage(`Paso '${step.name}' añadido al workspace`);
-                          setShowExtensionModal(false);
-                        }}
-                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-[11px] font-bold shadow transition flex items-center gap-1"
-                      >
-                        <Plus size={12} />
-                        <span>Añadir</span>
-                      </button>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Nombre del Microservicio *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ej: image_yolo_service"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Descripción</label>
+                    <input
+                      type="text"
+                      placeholder="Detección de objetos con pipeline modular"
+                      value={newProjectDesc}
+                      onChange={(e) => setNewProjectDesc(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Imagen Docker Base</label>
+                    <input
+                      type="text"
+                      placeholder="python:3.11-slim"
+                      value={newProjectDockerImage}
+                      onChange={(e) => setNewProjectDockerImage(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingProject(false)}
+                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold shadow-md shadow-sky-600/30 cursor-pointer"
+                  >
+                    Crear y Cargar en Lienzo
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Microservices Grid */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2.5 max-h-[50vh]">
+              {userProjects.filter((p) => {
+                if (!projectSearch.trim()) return true;
+                const q = projectSearch.toLowerCase();
+                return p.name.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
+              }).length === 0 ? (
+                <div className="py-12 text-center text-gray-500 space-y-2">
+                  <FolderOpen size={36} className="mx-auto opacity-40 text-sky-400" />
+                  <p className="text-xs font-semibold text-gray-400">
+                    {projectSearch.trim() ? "No se encontraron microservicios con ese filtro." : "Aún no tienes microservicios guardados en tu espacio."}
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    Haz clic en "Nuevo Microservicio" o guarda el pipeline actual usando el botón Guardar del encabezado.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {userProjects
+                    .filter((p) => {
+                      if (!projectSearch.trim()) return true;
+                      const q = projectSearch.toLowerCase();
+                      return p.name.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
+                    })
+                    .map((project) => {
+                      const isActive = activeProjectId === project.id;
+                      return (
+                        <div
+                          key={project.id}
+                          className={`p-4 rounded-xl border transition flex flex-col justify-between group ${
+                            isActive
+                              ? "bg-gradient-to-br from-sky-950/70 via-gray-900/90 to-indigo-950/60 border-sky-500/80 shadow-lg shadow-sky-950/40"
+                              : "bg-gray-950/70 border-gray-800/80 hover:border-gray-700"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-xs font-bold text-gray-100 flex items-center gap-1.5 truncate">
+                                <span>⚙️</span>
+                                <span className="font-mono">{project.name}</span>
+                              </span>
+                              {isActive && (
+                                <span className="text-[9px] px-2 py-0.5 rounded font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 animate-pulse">
+                                  ACTIVO EN LIENZO
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-400 line-clamp-2 mb-2">
+                              {project.description || "Microservicio modular generado con WPipe Studio."}
+                            </p>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono">
+                              <span className="bg-gray-900 px-2 py-0.5 rounded border border-gray-800 text-sky-400">
+                                🐳 {project.docker_image || "python:3.11-slim"}
+                              </span>
+                              <span className="bg-gray-900 px-2 py-0.5 rounded border border-gray-800 text-purple-400">
+                                🧩 {project.node_count || 0} bloques
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-gray-800/70 flex items-center justify-between gap-1">
+                            <span className="text-[9px] text-gray-500 font-mono flex items-center gap-1">
+                              <Clock size={10} /> {new Date(project.updated_at).toLocaleDateString()}
+                            </span>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenProject(project.id)}
+                                className={`px-2.5 py-1 rounded text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                                  isActive
+                                    ? "bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30"
+                                    : "bg-sky-600 hover:bg-sky-500 text-white shadow-sm"
+                                }`}
+                                title="Cargar este microservicio en el lienzo y visor de código"
+                              >
+                                <Play size={11} />
+                                <span>{isActive ? "Recargar" : "Abrir"}</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDuplicateProject(project.id)}
+                                className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[11px] font-medium transition cursor-pointer"
+                                title="Clonar este microservicio en uno nuevo"
+                              >
+                                <Copy size={11} />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteProject(project.id, project.name)}
+                                className="px-2 py-1 bg-gray-800 hover:bg-rose-950 text-gray-400 hover:text-rose-300 rounded text-[11px] font-medium transition cursor-pointer"
+                                title="Eliminar permanentemente este microservicio"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Isolation Explainer */}
+            <div className="pt-2 border-t border-gray-800/80 text-[11px] text-gray-400 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-emerald-400" />
+                <span>Cada proyecto reside en su directorio físico aislado. Ningún archivo se cruza con otros microservicios.</span>
+              </span>
+              <span className="text-[10px] text-gray-500 font-mono">
+                {userProjects.length} microservicio{userProjects.length === 1 ? "" : "s"} registrado{userProjects.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MULTI-TENANT USER IDENTITY & LOGIN MODAL */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-[#0b0f19] border border-sky-800/70 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-lg shadow-md shadow-purple-600/20">
+                  👤
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
+                    Identidad de Usuario (Multi-Tenant)
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Cambia de usuario o registra uno nuevo. Cada usuario cuenta con un espacio de microservicios estrictamente aislado.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setIsRegisteringUser(false);
+                }}
+                className="text-gray-400 hover:text-white font-bold p-1 text-lg rounded-lg hover:bg-gray-800/60 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Current Active User Banner */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/60 via-indigo-950/40 to-gray-900 border border-sky-600/40 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black text-white shadow-md"
+                  style={{ backgroundColor: currentUser?.avatar_color || "#38bdf8" }}
+                >
+                  {(currentUser?.name || "W")[0].toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-white">{currentUser?.name || "William R."}</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      @{currentUser?.username || "william.rodriguez"}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-300">{currentUser?.role || "AI Leader & Solutions Architect"}</span>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-700/60">
+                SESIÓN ACTIVA
+              </span>
+            </div>
+
+            {/* Switch User Section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                  <Users size={14} className="text-sky-400" /> Cambiar a otro usuario del sistema:
+                </span>
+                <span className="text-[10px] text-gray-500 font-mono">{availableUsers.length} disponibles</span>
+              </div>
+
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {availableUsers.map((user) => {
+                  const isCurrent = currentUser?.id === user.id;
+                  return (
+                    <div
+                      key={user.id}
+                      onClick={() => !isCurrent && handleSwitchUser(user)}
+                      className={`p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                        isCurrent
+                          ? "bg-sky-950/40 border-sky-500/60 shadow-sm"
+                          : "bg-gray-950/60 border-gray-800/80 hover:border-gray-700 hover:bg-gray-900/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm"
+                          style={{ backgroundColor: user.avatar_color }}
+                        >
+                          {user.name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-gray-200">{user.name}</span>
+                            <span className="text-[10px] text-gray-500 font-mono">@{user.username}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 block">{user.role}</span>
+                        </div>
+                      </div>
+
+                      {isCurrent ? (
+                        <span className="text-[10px] text-sky-400 font-bold font-mono">Activo</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="px-2 py-0.5 bg-gray-800 hover:bg-sky-600 text-gray-300 hover:text-white rounded text-[10px] font-semibold transition"
+                        >
+                          Seleccionar
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Register New User Section */}
+            <div className="pt-2 border-t border-gray-800/80">
+              {!isRegisteringUser ? (
+                <button
+                  onClick={() => setIsRegisteringUser(true)}
+                  className="w-full py-2 bg-gray-900/80 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={14} className="text-sky-400" />
+                  <span>Registrar Nueva Identidad de Usuario</span>
+                </button>
+              ) : (
+                <form onSubmit={handleRegisterUser} className="space-y-3 bg-gray-950/90 p-3.5 border border-sky-600/40 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-300">Registrar Nuevo Usuario</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsRegisteringUser(false)}
+                      className="text-gray-400 hover:text-white text-xs"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Username *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="maria.dev"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Nombre Completo *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="María Gómez"
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 block mb-0.5">Rol / Cargo</label>
+                      <input
+                        type="text"
+                        placeholder="CV Engineer"
+                        value={newUserRole}
+                        onChange={(e) => setNewUserRole(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-sky-500"
+                      />
                     </div>
                   </div>
-                ))}
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsRegisteringUser(false)}
+                      className="px-2.5 py-1 bg-gray-800 text-gray-400 rounded-lg text-xs"
+                    >
+                      Descartar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3 py-1 bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-lg text-xs font-bold shadow-md cursor-pointer"
+                    >
+                      Registrar e Iniciar
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Isolation Note */}
+            <div className="text-[10px] text-gray-500 font-mono pt-1 text-center">
+              🔒 Workspace: backend/data/workspaces/{currentUser?.id}/ • Multi-Tenant SQLite Database
             </div>
           </div>
         </div>

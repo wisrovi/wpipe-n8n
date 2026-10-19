@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.engine import Engine
+
+from alembic import context
 
 target_metadata: Any = None
 

@@ -58,6 +58,10 @@ import {
   Layers,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
+  PanelLeft,
+  PanelLeftClose,
+  GitMerge,
   Check,
   Search,
   Plus,
@@ -461,7 +465,9 @@ export default function App() {
   const [githubCurrentDir, setGithubCurrentDir] = useState<string>("");
   const [githubViewingFile, setGithubViewingFile] = useState<{ path: string; content: string } | null>(null);
   const [githubFileSearch, setGithubFileSearch] = useState<string>("");
-  const [githubShowTreeSidebar, setGithubShowTreeSidebar] = useState<boolean>(true);
+  const [showSidebar, setShowSidebar] = useState<boolean>(true);
+  const githubShowTreeSidebar = showSidebar;
+  const setGithubShowTreeSidebar = setShowSidebar;
   const [githubRawMode, setGithubRawMode] = useState<boolean>(false);
   const [isEditingFile, setIsEditingFile] = useState<boolean>(false);
   const [editingFileContent, setEditingFileContent] = useState<string>("");
@@ -472,11 +478,71 @@ export default function App() {
   const toggleFolder = (path: string) =>
     setExpandedFolders((prev) => ({ ...prev, [path]: prev[path] === false ? true : false }));
 
-  // VS Code Experience State (Microservicio Python)
+  // Global Unified Sidebar & VS Code Experience State
   const [openTabs, setOpenTabs] = useState<{ path: string; content: string }[]>([]);
-  const [activeActivityTab, setActiveActivityTab] = useState<"explorer" | "search" | "git" | "settings">("explorer");
+  const [activeActivityTab, setActiveActivityTab] = useState<
+    "blocks" | "explorer" | "simulation" | "flowchart" | "search" | "git" | "settings"
+  >("blocks");
   const [cursorPos, setCursorPos] = useState<{ line: number; col: number }>({ line: 1, col: 1 });
   const [readmePreviewMode, setReadmePreviewMode] = useState<boolean>(false);
+
+  // Synchronized Tab Switching for Unified Activity Bar & Sub-Header Tabs
+  const switchMainTab = (tab: "code" | "simulation" | "flowchart" | "python") => {
+    setActiveMainTab(tab);
+    if (tab === "code") {
+      setActiveActivityTab("blocks");
+      setShowSidebar(true);
+    } else if (tab === "python") {
+      setActiveActivityTab("explorer");
+      setShowSidebar(true);
+    } else if (tab === "simulation") {
+      setActiveActivityTab("simulation");
+    } else if (tab === "flowchart") {
+      setActiveActivityTab("flowchart");
+      handleOpenFlowchart();
+    }
+  };
+
+  const handleActivityTabClick = (
+    tab: "blocks" | "explorer" | "simulation" | "flowchart" | "search" | "git"
+  ) => {
+    if (activeActivityTab === tab) {
+      setShowSidebar((prev) => !prev);
+    } else {
+      setActiveActivityTab(tab);
+      setShowSidebar(true);
+      if (tab === "blocks") setActiveMainTab("code");
+      else if (tab === "explorer") setActiveMainTab("python");
+      else if (tab === "simulation") setActiveMainTab("simulation");
+      else if (tab === "flowchart") {
+        setActiveMainTab("flowchart");
+        handleOpenFlowchart();
+      }
+    }
+  };
+
+  // Keyboard shortcut (Ctrl+B / Cmd+B) to toggle primary sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (tag !== "input" && tag !== "textarea") {
+          e.preventDefault();
+          setShowSidebar((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Trigger resize event for Blockly & Mermaid when sidebar toggles or tab changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [showSidebar, activeMainTab]);
 
   const openFileInTab = (file: { path: string; content: string }) => {
     setIsEditingFile(false);
@@ -2295,7 +2361,19 @@ export default function App() {
         <div className="h-10 border-b border-gray-800/80 bg-[#0b0f19] px-4 flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center space-x-1">
             <button
-              onClick={() => setActiveMainTab("code")}
+              onClick={() => setShowSidebar(!showSidebar)}
+              title={showSidebar ? "Ocultar panel lateral (Ctrl+B)" : "Mostrar panel lateral (Ctrl+B)"}
+              className={`p-1.5 rounded-lg transition mr-1.5 cursor-pointer ${
+                showSidebar
+                  ? "text-sky-400 bg-sky-950/70 border border-sky-800/80 hover:bg-sky-900/60"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800 border border-transparent"
+              }`}
+            >
+              <PanelLeft size={15} />
+            </button>
+
+            <button
+              onClick={() => switchMainTab("code")}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeMainTab === "code"
                   ? "bg-sky-950/80 text-sky-400 border border-sky-700/80 shadow-md shadow-sky-950/50"
@@ -2306,7 +2384,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveMainTab("simulation")}
+              onClick={() => switchMainTab("simulation")}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeMainTab === "simulation"
                   ? "bg-emerald-950/80 text-emerald-400 border border-emerald-700/80 shadow-md shadow-emerald-950/50"
@@ -2320,7 +2398,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={handleOpenFlowchart}
+              onClick={() => switchMainTab("flowchart")}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeMainTab === "flowchart"
                   ? "bg-indigo-950/80 text-indigo-400 border border-indigo-700/80 shadow-md shadow-indigo-950/50"
@@ -2331,7 +2409,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveMainTab("python")}
+              onClick={() => switchMainTab("python")}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeMainTab === "python"
                   ? "bg-purple-950/80 text-purple-400 border border-purple-700/80 shadow-md shadow-purple-950/50"
@@ -2377,351 +2455,942 @@ export default function App() {
           </div>
         </div>
 
-        {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE (Permanently Mounted in DOM to preserve blocks) */}
-        <div className={activeMainTab === "code" ? "flex-1 flex overflow-hidden relative" : "hidden"}>
-          {/* 1. SCRATCH 3.0 CATEGORY STRIP (Far Left Rail) */}
-          <div className="w-16 bg-[#080c16] border-r border-gray-800/80 flex flex-col justify-between items-center py-2.5 select-none z-20 shrink-0">
-            <div className="flex flex-col items-center space-y-2 w-full px-1">
-              {[
-                { id: "all", label: "Todos", count: 11, icon: "🌐", dot: "bg-sky-400" },
-                { id: "trigger", label: "Inicio/Fin", count: 2, icon: "🚀", dot: "bg-amber-400" },
-                { id: "steps", label: "Pasos", count: 3, icon: "📦", dot: "bg-blue-500" },
-                { id: "control", label: "Control", count: 2, icon: "🔀", dot: "bg-orange-500" },
-                { id: "loops", label: "Bucles", count: 2, icon: "🔁", dot: "bg-yellow-400" },
-                { id: "parallel", label: "Paralelo", count: 2, icon: "⚡", dot: "bg-emerald-500" },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  title={`${cat.label} (${cat.count} bloques)`}
-                  className={`flex flex-col items-center justify-center w-full py-2 rounded-xl transition cursor-pointer relative group ${
-                    selectedCategory === cat.id
-                      ? "bg-gray-800/95 text-white shadow-lg border border-sky-500/50"
-                      : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
-                  }`}
-                >
-                  <span className="text-sm mb-0.5">{cat.icon}</span>
-                  <span className="text-[9px] font-bold leading-none">{cat.label}</span>
-                  <span
-                    className={`text-[8px] font-mono mt-0.5 px-1 rounded-full ${
-                      selectedCategory === cat.id
-                        ? "bg-sky-500/30 text-sky-300 font-bold"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {cat.count}
+        {/* WORKSPACE ROW: GLOBAL ACTIVITY BAR + UNIFIED PRIMARY SIDEBAR + MAIN TABS VIEWPORT */}
+        <div className="flex-1 flex overflow-hidden relative bg-[#1e1e1e]">
+          {/* 1. GLOBAL ACTIVITY BAR (w-12 bg-[#181818]) */}
+          <div className="w-12 bg-[#181818] border-r border-[#2b2b2b] flex flex-col justify-between items-center py-2 shrink-0 z-20 select-none">
+            {/* Top Activity Icons */}
+            <div className="flex flex-col items-center w-full space-y-2">
+              <button
+                onClick={() => handleActivityTabClick("blocks")}
+                title="Paleta de Bloques WPipe (Canvas)"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "blocks" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "blocks" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <Layers size={20} />
+              </button>
+
+              <button
+                onClick={() => handleActivityTabClick("explorer")}
+                title="Explorador de Archivos / Microservicio (Ctrl+Shift+E)"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "explorer" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "explorer" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <Folder size={20} />
+              </button>
+
+              <button
+                onClick={() => handleActivityTabClick("simulation")}
+                title="Simulación & Depuración en Vivo"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "simulation" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "simulation" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <Play size={20} />
+                {isSimulating && (
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </button>
+
+              <button
+                onClick={() => handleActivityTabClick("flowchart")}
+                title="Flujo Visual (Mermaid DAG)"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "flowchart" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "flowchart" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <GitMerge size={20} />
+              </button>
+
+              <div className="w-6 h-[1px] bg-[#2b2b2b] my-1" />
+
+              <button
+                onClick={() => handleActivityTabClick("search")}
+                title="Buscar en Archivos / Bloques (Ctrl+Shift+F)"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "search" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "search" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <Search size={20} />
+              </button>
+
+              <button
+                onClick={() => handleActivityTabClick("git")}
+                title="Control de Código Fuente (Git)"
+                className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                  activeActivityTab === "git" && showSidebar
+                    ? "text-white"
+                    : "text-[#858585] hover:text-white"
+                }`}
+              >
+                {activeActivityTab === "git" && showSidebar && (
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                )}
+                <GitBranch size={20} />
+                {modifiedFiles.size > 0 && (
+                  <span className="absolute top-2 right-2 w-4 h-4 bg-[#007acc] text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+                    {modifiedFiles.size}
                   </span>
-                  {selectedCategory === cat.id && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r bg-sky-400 shadow-sm" />
-                  )}
-                </button>
-              ))}
+                )}
+              </button>
             </div>
 
-            {/* Mis Microservicios & Proyectos Workspace Button (Repurposed EXT) */}
-            <div className="w-full px-2 pt-2 border-t border-gray-800/60">
+            {/* Bottom Activity Icons */}
+            <div className="flex flex-col items-center w-full space-y-2">
               <button
-                type="button"
                 onClick={() => setShowProjectsModal(true)}
                 title="Mis Microservicios (Gestionar proyectos, crear, clonar)"
-                className="w-full aspect-square rounded-xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 text-white flex flex-col items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95 group border border-sky-400/40 cursor-pointer"
+                className="w-full h-10 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
               >
-                <FolderOpen size={16} className="text-white" />
-                <span className="text-[7.5px] font-black mt-0.5 tracking-tighter uppercase">PROY</span>
+                <FolderOpen size={18} />
+              </button>
+
+              <button
+                onClick={() => setShowFaqModal(true)}
+                title="Guía de Arquitectura y FAQ"
+                className="w-full h-10 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
+              >
+                <BookOpen size={18} />
+              </button>
+
+              <button
+                onClick={() => setShowProjectsModal(true)}
+                title={currentUser ? `Usuario: ${currentUser.name} (${currentUser.role})` : "Iniciar Sesión"}
+                className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition relative"
+              >
+                {currentUser ? (
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm"
+                    style={{ backgroundColor: getUserColor(currentUser) }}
+                  >
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                ) : (
+                  <User size={19} />
+                )}
               </button>
             </div>
           </div>
 
-          {/* 2. SCRATCH BLOCK PALETTE (Interlocking Scratch Block Cards) */}
-          <div className="w-72 bg-[#0b0f19] border-r border-gray-800/80 flex flex-col justify-between overflow-hidden z-20 shrink-0">
-            {/* Header with Search */}
-            <div className="p-3 border-b border-gray-800/80 bg-gray-950/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs shadow-sm">
-                    🧩
-                  </div>
-                  <span className="font-extrabold text-xs text-gray-200">Paleta de Bloques</span>
-                </div>
-                <span className="text-[10px] text-gray-400 font-mono">
-                  {categorySearch.trim() ? "Filtrando..." : "11 Bloques"}
-                </span>
-              </div>
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-2.5 text-gray-500" />
-                <input
-                  type="text"
-                  value={categorySearch}
-                  onChange={(e) => setCategorySearch(e.target.value)}
-                  placeholder="Buscar bloques (ej: trigger, if)..."
-                  className="w-full bg-gray-900 border border-gray-800 rounded-lg py-1.5 pl-8 pr-7 text-xs text-gray-200 focus:outline-none focus:border-sky-500 transition placeholder:text-gray-500 font-mono"
-                />
-                {categorySearch && (
-                  <button
-                    onClick={() => setCategorySearch("")}
-                    className="absolute right-2 top-2 text-gray-500 hover:text-white text-xs font-bold"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Scrollable List of Blocks with Interlocking Shape & Hover Descriptions */}
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 custom-modal-scrollbar">
-              {[
-                // 1. Lanzador (Trigger)
-                {
-                  id: "trigger",
-                  cat: "trigger",
-                  name: "Lanzador de Pipeline",
-                  icon: "🚀",
-                  badge: "Disparador Ingress",
-                  isHat: true,
-                  gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
-                  tabColor: "bg-amber-500 border-amber-300/80",
-                  description:
-                    "Punto de entrada oficial del microservicio WPipe. Define el disparador inicial que recibe la carga de trabajo y activa el pipeline: API REST FastAPI (POST /run), Kafka Topic Consumer, cola Redis Stream, Cron Job periódico o comando CLI.",
-                  params: "Tipo (API / Kafka / Redis / Cron / CLI), Parámetro de ruta/tópico/clave",
-                  pythonSnippet: '@app.post("/run")\ndef run_pipeline(payload: dict):\n    return pipe.run(payload)',
-                  action: () => {
-                    addTriggerBlockToWorkspace();
-                    setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas ✓");
-                  },
-                },
-                // 2. Cierre / Salida del Pipeline (Response)
-                {
-                  id: "response",
-                  cat: "trigger",
-                  name: "Cierre de Pipeline",
-                  icon: "🏁",
-                  badge: "Cierre y Salida Egress",
-                  isCap: true,
-                  gradient: "from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 border-rose-400/80 shadow-rose-950/50",
-                  tabColor: "bg-rose-600 border-rose-400/80",
-                  description:
-                    "Bloque terminal Cap de cierre del microservicio WPipe (base plana terminal). Define la salida o respuesta final: Respuesta HTTP 200 JSON, publicación en tópico Kafka, cola Redis, exportación a archivo o retorno directo del contexto.",
-                  params: "Tipo (HTTP JSON / Kafka / Redis / Archivo / Terminate), Detalle/Payload",
-                  pythonSnippet: 'return JSONResponse(\n    status_code=200,\n    content={"status": "success", "data": context}\n)',
-                  action: () => {
-                    addResponseBlockToWorkspace();
-                    setStatusMessage("Añadido 'Cierre de Pipeline' al canvas ✓");
-                  },
-                },
-                // 2. Paso de Catálogo
-                {
-                  id: "step",
-                  cat: "steps",
-                  name: "Paso de Catálogo",
-                  icon: "📦",
-                  badge: "wpipe-steps Oficial & Plugins",
-                  isHat: false,
-                  gradient: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-400/80 shadow-blue-950/50",
-                  tabColor: "bg-blue-600 border-blue-400/80",
-                  description:
-                    "Inserta un paso modular verificado de la suite WPipe (196 pasos oficiales de wpipe-steps y plugins comunitarios como ecam_yolo o rss_parser). Incluye selectores directos de origen (Official/Plugin), categoría y filtro de búsqueda.",
-                  params: "Origen (Official/Plugin), Categoría, Filtro de texto, Estado, Namespace",
-                  pythonSnippet: 'pipe.set_steps([\n    HttpRequest(url="https://api.site.com/v1"),\n    ImageECamYOLO(conf=0.25)\n])',
-                  action: () => {
-                    addStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso de Catálogo' al canvas ✓");
-                  },
-                },
-                // 3. Paso con IA
-                {
-                  id: "ai_step",
-                  cat: "steps",
-                  name: "Paso con IA",
-                  icon: "✨",
-                  badge: "Dialecto A (@step + DTO)",
-                  isHat: false,
-                  gradient: "from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-400/80 shadow-purple-950/50",
-                  tabColor: "bg-purple-600 border-purple-400/80",
-                  description:
-                    "Genera un estado personalizado para WPipe a partir de una descripción en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A: función @step en app/states/ y contrato Pydantic Context DTO en app/dto/.",
-                  params: "Nombre del estado, Prompt descriptivo en lenguaje natural",
-                  pythonSnippet: '@step(name="custom_ai")\n@to_obj(CustomContext)\ndef custom_ai_step(context: CustomContext) -> dict:\n    # Auto-generado por IA\n    return {"processed": True}',
-                  action: () => {
-                    addAiStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso con IA' al canvas ✓");
-                  },
-                },
-                // 4. Paso Personalizado (.py)
-                {
-                  id: "custom_file",
-                  cat: "steps",
-                  name: "Paso Personalizado (.py)",
-                  icon: "📄",
-                  badge: "Archivo Python Local",
-                  isHat: false,
-                  gradient: "from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 border-teal-400/80 shadow-teal-950/50",
-                  tabColor: "bg-teal-600 border-teal-400/80",
-                  description:
-                    "Adjunta un archivo Python propio (.py) con tus funciones de negocio. WPipe Studio lo integra automáticamente en app/states/ al generar el microservicio empaquetado, preservando tu código original.",
-                  params: "Archivo Python (.py) adjunto, función exportada",
-                  pythonSnippet: 'from app.states.custom_module import my_custom_step\n\npipe.set_steps([my_custom_step])',
-                  action: () => {
-                    addUserFileStepBlockToWorkspace();
-                    setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas ✓");
-                  },
-                },
-                // 5. Condición (Si)
-                {
-                  id: "if",
-                  cat: "control",
-                  name: "Condición (Si)",
-                  icon: "🔀",
-                  badge: "Control Condition Simple",
-                  isHat: false,
-                  gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
-                  tabColor: "bg-amber-500 border-amber-300/80",
-                  description:
-                    "Bloque Condition de WPipe. Evalúa una expresión condicional booleana sobre el contexto de datos; si es True, ejecuta la rama contenida. Omite la rama falsa para flujos limpios y directos.",
-                  params: "Expresión condicional booleana (ej. status_code == 200)",
-                  pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_success_step]\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_if");
-                    setStatusMessage("Añadida 'Condición Si' al canvas ✓");
-                  },
-                },
-                // 6. Condición (Si / Sino)
-                {
-                  id: "if_else",
-                  cat: "control",
-                  name: "Condición (Si / Sino)",
-                  icon: "⚖️",
-                  badge: "Control Condition Dual",
-                  isHat: false,
-                  gradient: "from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border-amber-400/80 shadow-amber-950/50",
-                  tabColor: "bg-amber-600 border-amber-400/80",
-                  description:
-                    "Bifurcación completa en WPipe. Ejecuta la rama branch_true si la condición es verdadera (True), o la rama branch_false si es falsa (False), facilitando el manejo de contingencias o errores.",
-                  params: "Expresión condicional, rama verdadera y rama falsa",
-                  pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_step],\n    branch_false=[error_handler_step]\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_if_else");
-                    setStatusMessage("Añadida 'Condición Si / Sino' al canvas ✓");
-                  },
-                },
-                // 7. Bucle Mientras (While)
-                {
-                  id: "while",
-                  cat: "loops",
-                  name: "Bucle Mientras (While)",
-                  icon: "🔁",
-                  badge: "Bucle Condicional While",
-                  isHat: false,
-                  gradient: "from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 border-orange-400/80 shadow-orange-950/50",
-                  tabColor: "bg-orange-600 border-orange-400/80",
-                  description:
-                    "Repite los pasos contenidos continuamente mientras la condición sea True. El motor WPipe incorpora control automático de iteraciones y prevención de bloqueos infinitos.",
-                  params: "Expresión condicional de continuación (ej. retry_count < 3)",
-                  pythonSnippet: 'Condition(\n    expression="retry_count < 3",\n    branch_true=[retry_step]\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_while");
-                    setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas ✓");
-                  },
-                },
-                // 8. Bucle Repetir (For)
-                {
-                  id: "for",
-                  cat: "loops",
-                  name: "Bucle Repetir (For)",
-                  icon: "🔢",
-                  badge: "Iterador Fijo For",
-                  isHat: false,
-                  gradient: "from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 border-orange-300/80 shadow-orange-950/50",
-                  tabColor: "bg-orange-500 border-orange-300/80",
-                  description:
-                    "Bloque For nativo de WPipe. Ejecuta los pasos contenidos un número exacto de iteraciones de manera secuencial y determinista, pasando el contexto actualizado en cada vuelta.",
-                  params: "Número entero de iteraciones (ej. 5), pasos contenidos",
-                  pythonSnippet: 'For(\n    iterations=5,\n    steps=[process_batch_step]\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_for");
-                    setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas ✓");
-                  },
-                },
-                // 9. Ejecución Paralela
-                {
-                  id: "parallel",
-                  cat: "parallel",
-                  name: "Ejecución Paralela",
-                  icon: "⚡",
-                  badge: "Concurrencia Multi-hilo",
-                  isHat: false,
-                  gradient: "from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 border-emerald-400/80 shadow-emerald-950/50",
-                  tabColor: "bg-emerald-600 border-emerald-400/80",
-                  description:
-                    "Bloque Parallel de WPipe. Despacha múltiples ramas de pasos concurrentemente y fusiona los resultados en el contexto común según la política seleccionada (accumulate o last_wins).",
-                  params: "Ramas paralelas de pasos, Política de fusión (accumulate / last_wins)",
-                  pythonSnippet: 'Parallel(\n    steps=[step_fetch_user, step_fetch_orders],\n    merge_policy="accumulate"\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_parallel");
-                    setStatusMessage("Añadida 'Ejecución Paralela' al canvas ✓");
-                  },
-                },
-                // 10. Tarea en Segundo Plano (Background)
-                {
-                  id: "background",
-                  cat: "parallel",
-                  name: "Segundo Plano (Background)",
-                  icon: "⏳",
-                  badge: "Hilo Asíncrono No Bloqueante",
-                  isHat: false,
-                  gradient: "from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 border-indigo-400/80 shadow-indigo-950/50",
-                  tabColor: "bg-indigo-600 border-indigo-400/80",
-                  description:
-                    "Bloque Background de WPipe. Ejecuta un paso en un hilo en segundo plano sin esperar su finalización ni bloquear el avance del pipeline principal (ideal para telemetría, auditoría o alertas).",
-                  params: "Paso asíncrono a lanzar en segundo plano",
-                  pythonSnippet: 'Background(\n    step=audit_logging_step\n)',
-                  action: () => {
-                    addControlBlockToWorkspace("wpipe_background");
-                    setStatusMessage("Añadida 'Tarea en Segundo Plano' al canvas ✓");
-                  },
-                },
-              ]
-                .filter((b) => {
-                  if (selectedCategory !== "all" && b.cat !== selectedCategory) return false;
-                  if (!categorySearch.trim()) return true;
-                  const q = categorySearch.toLowerCase().trim();
-                  return b.name.toLowerCase().includes(q) || b.description.toLowerCase().includes(q) || b.badge.toLowerCase().includes(q);
-                })
-                .map((b) => (
-                  <div
-                    key={b.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      b.action();
-                    }}
-                    onMouseEnter={(e) => handleBlockMouseEnter(b, e)}
-                    onMouseLeave={handleBlockMouseLeave}
-                    className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    {b.isHat ? (
-                      <div className="w-12 h-2.5 rounded-t-full -mb-1 ml-3 bg-amber-500 border-t border-l border-r border-amber-300/80 shadow-sm" />
-                    ) : (
-                      <div className={`w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 ${b.tabColor} shadow-sm`} />
-                    )}
-                    <div className={`px-3 py-2 rounded-xl bg-gradient-to-r ${b.gradient} border shadow-md flex items-center justify-between text-white`}>
-                      <div className="flex items-center gap-2.5 truncate">
-                        <span className="text-base shrink-0 p-1 rounded-lg bg-black/20 shadow-inner">{b.icon}</span>
-                        <div className="flex flex-col truncate min-w-0">
-                          <span className="text-xs font-bold tracking-tight truncate leading-tight">{b.name}</span>
-                          <span className="text-[10px] text-white/75 font-medium truncate leading-tight mt-0.5">{b.badge}</span>
+          {/* 2. UNIFIED PRIMARY SIDEBAR (w-72 bg-[#252526]) */}
+          {showSidebar && (
+            <div className="w-72 bg-[#252526] border-r border-[#2b2b2b] flex flex-col overflow-hidden shrink-0 z-10 select-none">
+              {/* 2.1 Blocks Palette View */}
+              {activeActivityTab === "blocks" && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="p-3 border-b border-[#2b2b2b] bg-[#202020] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs shadow-sm">
+                          🧩
                         </div>
+                        <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Paleta de Bloques</span>
                       </div>
-                      <div className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-white/90 text-xs font-bold group-hover:bg-white/20 transition shrink-0 ml-1 shadow-sm">
-                        +
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-[#858585] font-mono">
+                          {categorySearch.trim() ? "Filtrando..." : "11 Bloques"}
+                        </span>
+                        <button
+                          onClick={() => setShowSidebar(false)}
+                          title="Ocultar panel lateral (Ctrl+B)"
+                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
                       </div>
                     </div>
-                    <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#0b0f19] border-t border-l border-r border-gray-900" />
-                  </div>
-                ))}
-            </div>
-          </div>
 
-          {/* 3. CENTER CANVAS: BLOCKLY WORKSPACE + FLOATING ACTION TOOLBAR */}
-          <div className="flex-1 bg-[#07090e] relative overflow-hidden flex flex-col">
+                    {/* Search input */}
+                    <div className="relative">
+                      <Search size={13} className="absolute left-2.5 top-2 text-[#858585]" />
+                      <input
+                        type="text"
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        placeholder="Buscar bloques (ej: trigger, if)..."
+                        className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded-lg py-1 pl-8 pr-7 text-xs text-gray-200 focus:outline-none transition placeholder:text-gray-500 font-mono"
+                      />
+                      {categorySearch && (
+                        <button
+                          onClick={() => setCategorySearch("")}
+                          className="absolute right-2 top-1.5 text-[#858585] hover:text-white text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Category Filter Pills */}
+                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1">
+                      {[
+                        { id: "all", label: "Todos", count: 11, icon: "🌐" },
+                        { id: "trigger", label: "Inicio/Fin", count: 2, icon: "🚀" },
+                        { id: "steps", label: "Pasos", count: 3, icon: "📦" },
+                        { id: "control", label: "Control", count: 2, icon: "🔀" },
+                        { id: "loops", label: "Bucles", count: 2, icon: "🔁" },
+                        { id: "parallel", label: "Paralelo", count: 2, icon: "⚡" },
+                      ].map((cat) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 shrink-0 transition cursor-pointer ${
+                            selectedCategory === cat.id
+                              ? "bg-sky-600 text-white shadow-sm"
+                              : "bg-[#2d2d2d] text-[#969696] hover:bg-[#37373d] hover:text-white"
+                          }`}
+                        >
+                          <span>{cat.icon}</span>
+                          <span>{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Scrollable List of Blocks with Interlocking Shape & Hover Descriptions */}
+                  <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 custom-modal-scrollbar">
+                    {[
+                      {
+                        id: "trigger",
+                        cat: "trigger",
+                        name: "Lanzador de Pipeline",
+                        icon: "🚀",
+                        badge: "Disparador Ingress",
+                        isHat: true,
+                        gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
+                        tabColor: "bg-amber-500 border-amber-300/80",
+                        description:
+                          "Punto de entrada oficial del microservicio WPipe. Define el disparador inicial que recibe la carga de trabajo y activa el pipeline: API REST FastAPI (POST /run), Kafka Topic Consumer, cola Redis Stream, Cron Job periódico o comando CLI.",
+                        params: "Tipo (API / Kafka / Redis / Cron / CLI), Parámetro de ruta/tópico/clave",
+                        pythonSnippet: '@app.post("/run")\ndef run_pipeline(payload: dict):\n    return pipe.run(payload)',
+                        action: () => {
+                          addTriggerBlockToWorkspace();
+                          setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "response",
+                        cat: "trigger",
+                        name: "Cierre de Pipeline",
+                        icon: "🏁",
+                        badge: "Cierre y Salida Egress",
+                        isCap: true,
+                        gradient: "from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 border-rose-400/80 shadow-rose-950/50",
+                        tabColor: "bg-rose-600 border-rose-400/80",
+                        description:
+                          "Bloque terminal Cap de cierre del microservicio WPipe (base plana terminal). Define la salida o respuesta final: Respuesta HTTP 200 JSON, publicación en tópico Kafka, cola Redis, exportación a archivo o retorno directo del contexto.",
+                        params: "Tipo (HTTP JSON / Kafka / Redis / Archivo / Terminate), Detalle/Payload",
+                        pythonSnippet: 'return JSONResponse(\n    status_code=200,\n    content={"status": "success", "data": context}\n)',
+                        action: () => {
+                          addResponseBlockToWorkspace();
+                          setStatusMessage("Añadido 'Cierre de Pipeline' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "step",
+                        cat: "steps",
+                        name: "Paso de Catálogo",
+                        icon: "📦",
+                        badge: "wpipe-steps Oficial & Plugins",
+                        isHat: false,
+                        gradient: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-400/80 shadow-blue-950/50",
+                        tabColor: "bg-blue-600 border-blue-400/80",
+                        description:
+                          "Inserta un paso modular verificado de la suite WPipe (196 pasos oficiales de wpipe-steps y plugins comunitarios como ecam_yolo o rss_parser). Incluye selectores directos de origen (Official/Plugin), categoría y filtro de búsqueda.",
+                        params: "Origen (Official/Plugin), Categoría, Filtro de texto, Estado, Namespace",
+                        pythonSnippet: 'pipe.set_steps([\n    HttpRequest(url="https://api.site.com/v1"),\n    ImageECamYOLO(conf=0.25)\n])',
+                        action: () => {
+                          addStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso de Catálogo' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "ai_step",
+                        cat: "steps",
+                        name: "Paso con IA",
+                        icon: "✨",
+                        badge: "Dialecto A (@step + DTO)",
+                        isHat: false,
+                        gradient: "from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-400/80 shadow-purple-950/50",
+                        tabColor: "bg-purple-600 border-purple-400/80",
+                        description:
+                          "Genera un estado personalizado para WPipe a partir de una descripción en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A: función @step en app/states/ y contrato Pydantic Context DTO en app/dto/.",
+                        params: "Nombre del estado, Prompt descriptivo en lenguaje natural",
+                        pythonSnippet: '@step(name="custom_ai")\n@to_obj(CustomContext)\ndef custom_ai_step(context: CustomContext) -> dict:\n    # Auto-generado por IA\n    return {"processed": True}',
+                        action: () => {
+                          addAiStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso con IA' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "custom_file",
+                        cat: "steps",
+                        name: "Paso Personalizado (.py)",
+                        icon: "📄",
+                        badge: "Archivo Python Local",
+                        isHat: false,
+                        gradient: "from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 border-teal-400/80 shadow-teal-950/50",
+                        tabColor: "bg-teal-600 border-teal-400/80",
+                        description:
+                          "Adjunta un archivo Python propio (.py) con tus funciones de negocio. WPipe Studio lo integra automáticamente en app/states/ al generar el microservicio empaquetado, preservando tu código original.",
+                        params: "Archivo Python (.py) adjunto, función exportada",
+                        pythonSnippet: 'from app.states.custom_module import my_custom_step\n\npipe.set_steps([my_custom_step])',
+                        action: () => {
+                          addUserFileStepBlockToWorkspace();
+                          setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "if",
+                        cat: "control",
+                        name: "Condición (Si)",
+                        icon: "🔀",
+                        badge: "Control Condition Simple",
+                        isHat: false,
+                        gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
+                        tabColor: "bg-amber-500 border-amber-300/80",
+                        description:
+                          "Bloque Condition de WPipe. Evalúa una expresión condicional booleana sobre el contexto de datos; si es True, ejecuta la rama contenida. Omite la rama falsa para flujos limpios y directos.",
+                        params: "Expresión condicional booleana (ej. status_code == 200)",
+                        pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_success_step]\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_if");
+                          setStatusMessage("Añadida 'Condición Si' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "if_else",
+                        cat: "control",
+                        name: "Condición (Si / Sino)",
+                        icon: "⚖️",
+                        badge: "Control Condition Dual",
+                        isHat: false,
+                        gradient: "from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border-amber-400/80 shadow-amber-950/50",
+                        tabColor: "bg-amber-600 border-amber-400/80",
+                        description:
+                          "Bifurcación completa en WPipe. Ejecuta la rama branch_true si la condición es verdadera (True), o la rama branch_false si es falsa (False), facilitando el manejo de contingencias o errores.",
+                        params: "Expresión condicional, rama verdadera y rama falsa",
+                        pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_step],\n    branch_false=[error_handler_step]\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_if_else");
+                          setStatusMessage("Añadida 'Condición Si / Sino' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "while",
+                        cat: "loops",
+                        name: "Bucle Mientras (While)",
+                        icon: "🔁",
+                        badge: "Bucle Condicional While",
+                        isHat: false,
+                        gradient: "from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 border-orange-400/80 shadow-orange-950/50",
+                        tabColor: "bg-orange-600 border-orange-400/80",
+                        description:
+                          "Repite los pasos contenidos continuamente mientras la condición sea True. El motor WPipe incorpora control automático de iteraciones y prevención de bloqueos infinitos.",
+                        params: "Expresión condicional de continuación (ej. retry_count < 3)",
+                        pythonSnippet: 'Condition(\n    expression="retry_count < 3",\n    branch_true=[retry_step]\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_while");
+                          setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "for",
+                        cat: "loops",
+                        name: "Bucle Repetir (For)",
+                        icon: "🔢",
+                        badge: "Iterador Fijo For",
+                        isHat: false,
+                        gradient: "from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 border-orange-300/80 shadow-orange-950/50",
+                        tabColor: "bg-orange-500 border-orange-300/80",
+                        description:
+                          "Bloque For nativo de WPipe. Ejecuta los pasos contenidos un número exacto de iteraciones de manera secuencial y determinista, pasando el contexto actualizado en cada vuelta.",
+                        params: "Número entero de iteraciones (ej. 5), pasos contenidos",
+                        pythonSnippet: 'For(\n    iterations=5,\n    steps=[process_batch_step]\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_for");
+                          setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "parallel",
+                        cat: "parallel",
+                        name: "Ejecución Paralela",
+                        icon: "⚡",
+                        badge: "Concurrencia Multi-hilo",
+                        isHat: false,
+                        gradient: "from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 border-emerald-400/80 shadow-emerald-950/50",
+                        tabColor: "bg-emerald-600 border-emerald-400/80",
+                        description:
+                          "Bloque Parallel de WPipe. Despacha múltiples ramas de pasos concurrentemente y fusiona los resultados en el contexto común según la política seleccionada (accumulate o last_wins).",
+                        params: "Ramas paralelas de pasos, Política de fusión (accumulate / last_wins)",
+                        pythonSnippet: 'Parallel(\n    steps=[step_fetch_user, step_fetch_orders],\n    merge_policy="accumulate"\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_parallel");
+                          setStatusMessage("Añadida 'Ejecución Paralela' al canvas ✓");
+                        },
+                      },
+                      {
+                        id: "background",
+                        cat: "parallel",
+                        name: "Segundo Plano (Background)",
+                        icon: "⏳",
+                        badge: "Hilo Asíncrono No Bloqueante",
+                        isHat: false,
+                        gradient: "from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 border-indigo-400/80 shadow-indigo-950/50",
+                        tabColor: "bg-indigo-600 border-indigo-400/80",
+                        description:
+                          "Bloque Background de WPipe. Ejecuta un paso en un hilo en segundo plano sin esperar su finalización ni bloquear el avance del pipeline principal (ideal para telemetría, auditoría o alertas).",
+                        params: "Paso asíncrono a lanzar en segundo plano",
+                        pythonSnippet: 'Background(\n    step=audit_logging_step\n)',
+                        action: () => {
+                          addControlBlockToWorkspace("wpipe_background");
+                          setStatusMessage("Añadida 'Tarea en Segundo Plano' al canvas ✓");
+                        },
+                      },
+                    ]
+                      .filter((b) => {
+                        if (selectedCategory !== "all" && b.cat !== selectedCategory) return false;
+                        if (!categorySearch.trim()) return true;
+                        const q = categorySearch.toLowerCase().trim();
+                        return (
+                          b.name.toLowerCase().includes(q) ||
+                          b.description.toLowerCase().includes(q) ||
+                          b.badge.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((b) => (
+                        <div
+                          key={b.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            b.action();
+                          }}
+                          onMouseEnter={(e) => handleBlockMouseEnter(b, e)}
+                          onMouseLeave={handleBlockMouseLeave}
+                          className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          {b.isHat ? (
+                            <div className="w-12 h-2.5 rounded-t-full -mb-1 ml-3 bg-amber-500 border-t border-l border-r border-amber-300/80 shadow-sm" />
+                          ) : (
+                            <div className={`w-5 h-1.5 rounded-t-sm -mb-0.5 ml-4 ${b.tabColor} shadow-sm`} />
+                          )}
+                          <div
+                            className={`px-3 py-2 rounded-xl bg-gradient-to-r ${b.gradient} border shadow-md flex items-center justify-between text-white`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              <span className="text-base shrink-0 p-1 rounded-lg bg-black/20 shadow-inner">
+                                {b.icon}
+                              </span>
+                              <div className="flex flex-col truncate min-w-0">
+                                <span className="text-xs font-bold tracking-tight truncate leading-tight">
+                                  {b.name}
+                                </span>
+                                <span className="text-[10px] text-white/75 font-medium truncate leading-tight mt-0.5">
+                                  {b.badge}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-white/90 text-xs font-bold group-hover:bg-white/20 transition shrink-0 ml-1 shadow-sm">
+                              +
+                            </div>
+                          </div>
+                          <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#252526] border-t border-l border-r border-[#1e1e1e]" />
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2.2 Explorer View */}
+              {activeActivityTab === "explorer" && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="px-4 py-2 flex items-center justify-between text-[11px] font-bold text-[#bbbbbb] tracking-wider uppercase border-b border-[#2b2b2b] bg-[#202020]">
+                    <span>EXPLORADOR</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={handleSyncPythonCode}
+                        disabled={previewLoading}
+                        title="Sincronizar microservicio con los bloques del lienzo"
+                        className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                      >
+                        <RefreshCw size={12} className={previewLoading ? "animate-spin" : ""} />
+                      </button>
+                      <button
+                        onClick={handleGenerateZip}
+                        disabled={zipLoading}
+                        title="Descargar paquete completo (.zip)"
+                        className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                      >
+                        <Download size={12} />
+                      </button>
+                      <button
+                        onClick={() => setShowSidebar(false)}
+                        title="Ocultar panel lateral (Ctrl+B)"
+                        className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick File Filter */}
+                  <div className="px-3 py-2 border-b border-[#2b2b2b]">
+                    <div className="relative">
+                      <Search size={13} className="absolute left-2.5 top-2 text-[#858585]" />
+                      <input
+                        type="text"
+                        placeholder="Buscar archivo (filtro)..."
+                        value={githubFileSearch}
+                        onChange={(e) => setGithubFileSearch(e.target.value)}
+                        className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded py-1 pl-8 pr-6 text-xs text-gray-200 focus:outline-none font-mono"
+                      />
+                      {githubFileSearch && (
+                        <button
+                          onClick={() => setGithubFileSearch("")}
+                          className="absolute right-2 top-1.5 text-xs text-[#858585] hover:text-white cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Project Folder Header */}
+                  <div
+                    onClick={() => {
+                      setGithubCurrentDir("");
+                      setGithubViewingFile(null);
+                    }}
+                    className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] flex items-center justify-between text-xs font-bold text-gray-200 cursor-pointer transition border-b border-[#2b2b2b]"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <ChevronDown size={14} className="text-[#858585]" />
+                      <span className="truncate">{projectName ? projectName.toUpperCase() : "WPIPE_MICROSERVICE"}</span>
+                    </div>
+                    <span className="text-[10px] text-[#858585] font-mono bg-[#1e1e1e] px-1.5 py-0.2 rounded border border-[#3c3c3c]">
+                      {generatedFiles.length}
+                    </span>
+                  </div>
+
+                  {/* Explorer Tree Body */}
+                  <div className="flex-1 overflow-y-auto py-1 px-1 custom-modal-scrollbar">
+                    {previewLoading ? (
+                      <p className="text-xs text-[#858585] italic p-3">Sincronizando archivos...</p>
+                    ) : generatedFiles.length === 0 ? (
+                      <p className="text-xs text-[#858585] italic p-3">No hay archivos generados.</p>
+                    ) : githubFileSearch.trim() ? (
+                      <div className="space-y-0.5">
+                        {generatedFiles
+                          .filter((f) => f.path.toLowerCase().includes(githubFileSearch.toLowerCase()))
+                          .map((f) => (
+                            <div
+                              key={f.path}
+                              onClick={() => {
+                                setActiveMainTab("python");
+                                openFileInTab(f);
+                              }}
+                              className={`px-3 py-1 rounded flex items-center justify-between text-xs font-mono cursor-pointer transition ${
+                                githubViewingFile?.path === f.path
+                                  ? "bg-[#094771] text-white font-bold"
+                                  : "text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                {getGitHubFileIcon(f.path)}
+                                <span className="truncate">{f.path}</span>
+                              </div>
+                              <span className="text-[10px] text-[#858585] shrink-0 font-mono">
+                                {f.content.split("\n").length}L
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <FileTreeItem
+                        node={buildFileTree(generatedFiles)}
+                        selectedPath={githubViewingFile ? githubViewingFile.path : githubCurrentDir}
+                        onSelectFile={(file) => {
+                          setActiveMainTab("python");
+                          openFileInTab(file);
+                        }}
+                        onSelectFolder={(folderPath) => {
+                          setActiveMainTab("python");
+                          setGithubCurrentDir(folderPath);
+                          setGithubViewingFile(null);
+                        }}
+                        expandedFolders={expandedFolders}
+                        onToggleFolder={toggleFolder}
+                        modifiedFiles={modifiedFiles}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 2.3 Simulation Quick Controls View */}
+              {activeActivityTab === "simulation" && (
+                <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
+                    <div className="flex items-center gap-2">
+                      <Play size={14} className="text-emerald-400" />
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Simulación</span>
+                    </div>
+                    <button
+                      onClick={() => setShowSidebar(false)}
+                      title="Ocultar panel lateral (Ctrl+B)"
+                      className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {!isSimulating ? (
+                      <button
+                        onClick={handleStartSimulation}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                      >
+                        <Play size={14} className="fill-current" />
+                        <span>Iniciar Simulación (🏁)</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleStopSimulation}
+                        className="w-full py-2 bg-rose-600 hover:bg-rose-500 border border-rose-400 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition cursor-pointer animate-pulse"
+                      >
+                        <Square size={13} className="fill-current" />
+                        <span>Detener Simulación (🛑)</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        handleStopSimulation();
+                        setSimContext({});
+                        setSimSteps([]);
+                        setSimLogs([]);
+                        setStatusMessage("Simulación reiniciada");
+                      }}
+                      className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer border border-[#3c3c3c]"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Reiniciar Contexto</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-[#2b2b2b]">
+                    <span className="text-[10px] text-[#858585] font-mono uppercase font-bold">Presets de Carga (Ingress)</span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() =>
+                          setTestPayloadText(
+                            JSON.stringify({ request_id: "req_api_101", user_id: 42, url: "https://api.site.com/v1" }, null, 2)
+                          )
+                        }
+                        className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] text-[10px] font-mono text-sky-400 border border-[#3c3c3c] transition text-center"
+                      >
+                        🌐 API REST
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTestPayloadText(
+                            JSON.stringify({ topic: "events.input", partition: 0, key: "usr_99", payload: { type: "ORDER_CREATED" } }, null, 2)
+                          )
+                        }
+                        className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] text-[10px] font-mono text-purple-400 border border-[#3c3c3c] transition text-center"
+                      >
+                        📨 Kafka
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTestPayloadText(
+                            JSON.stringify({ queue: "tasks_high", job_id: "job_88", data: { image_url: "https://site.com/pic.jpg" } }, null, 2)
+                          )
+                        }
+                        className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] text-[10px] font-mono text-rose-400 border border-[#3c3c3c] transition text-center"
+                      >
+                        ⚡ Redis
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTestPayloadText(
+                            JSON.stringify({ schedule: "*/5 * * * *", timestamp: new Date().toISOString() }, null, 2)
+                          )
+                        }
+                        className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] text-[10px] font-mono text-amber-400 border border-[#3c3c3c] transition text-center"
+                      >
+                        ⏰ Cron
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col space-y-1 pt-1 min-h-[160px]">
+                    <span className="text-[10px] text-[#858585] font-mono uppercase font-bold">Payload de Entrada (JSON)</span>
+                    <textarea
+                      value={testPayloadText}
+                      onChange={(e) => setTestPayloadText(e.target.value)}
+                      className="flex-1 w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg p-2 font-mono text-[11px] text-gray-200 focus:outline-none focus:border-[#007acc] resize-none"
+                      placeholder='{"key": "value"}'
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 2.4 Flowchart Quick Actions View */}
+              {activeActivityTab === "flowchart" && (
+                <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
+                    <div className="flex items-center gap-2">
+                      <GitMerge size={14} className="text-indigo-400" />
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Flujo (DAG)</span>
+                    </div>
+                    <button
+                      onClick={() => setShowSidebar(false)}
+                      title="Ocultar panel lateral (Ctrl+B)"
+                      className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg p-1.5">
+                      <button
+                        onClick={() => setMermaidZoom((s) => Math.max(0.2, +(s - 0.15).toFixed(2)))}
+                        title="Reducir zoom (-)"
+                        className="p-1.5 hover:bg-[#2d2d2d] rounded text-sky-400 transition"
+                      >
+                        <ZoomOut size={14} />
+                      </button>
+                      <span className="text-xs font-mono font-bold text-sky-400 select-none">
+                        {Math.round(mermaidZoom * 100)}%
+                      </span>
+                      <button
+                        onClick={() => setMermaidZoom((s) => Math.min(4.0, +(s + 0.15).toFixed(2)))}
+                        title="Aumentar zoom (+)"
+                        className="p-1.5 hover:bg-[#2d2d2d] rounded text-sky-400 transition"
+                      >
+                        <ZoomIn size={14} />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleCenterMermaid}
+                      className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-teal-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-[#3c3c3c]"
+                    >
+                      <Maximize2 size={13} />
+                      <span>Ajustar y Centrar</span>
+                    </button>
+
+                    <button
+                      onClick={handleResetMermaid}
+                      className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-[#3c3c3c]"
+                    >
+                      <span>Restablecer a 100%</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 pt-3 border-t border-[#2b2b2b]">
+                    <span className="text-[10px] text-[#858585] font-mono uppercase font-bold">Exportar & Compartir</span>
+                    <button
+                      onClick={handleExportMermaidSvg}
+                      className="w-full py-1.5 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow"
+                    >
+                      <Download size={13} />
+                      <span>Exportar SVG</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(mermaidCode);
+                        setStatusMessage("Código Mermaid copiado al portapapeles ✓");
+                      }}
+                      className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-[#3c3c3c]"
+                    >
+                      <Copy size={13} />
+                      <span>Copiar Mermaid</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog);
+                        const mdBlob = new Blob([mdPlan], { type: "text/markdown;charset=utf-8" });
+                        const mdUrl = URL.createObjectURL(mdBlob);
+                        const a = document.createElement("a");
+                        a.href = mdUrl;
+                        a.download = `${projectName}_work_plan.md`;
+                        a.click();
+                        setStatusMessage("Plan de trabajo (.md) descargado ✓");
+                      }}
+                      className="w-full py-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Download size={13} />
+                      <span>Exportar Plan (.md)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 2.5 Global Search View */}
+              {activeActivityTab === "search" && (
+                <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
+                    <div className="flex items-center gap-2">
+                      <Search size={14} className="text-sky-400" />
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Buscar</span>
+                    </div>
+                    <button
+                      onClick={() => setShowSidebar(false)}
+                      title="Ocultar panel lateral (Ctrl+B)"
+                      className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-2 text-[#858585]" />
+                    <input
+                      type="text"
+                      placeholder="Buscar en archivos..."
+                      value={githubFileSearch}
+                      onChange={(e) => setGithubFileSearch(e.target.value)}
+                      className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded py-1 pl-8 pr-6 text-xs text-gray-200 focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-1 custom-modal-scrollbar">
+                    {generatedFiles
+                      .filter(
+                        (f) =>
+                          !githubFileSearch ||
+                          f.path.toLowerCase().includes(githubFileSearch.toLowerCase()) ||
+                          f.content.toLowerCase().includes(githubFileSearch.toLowerCase())
+                      )
+                      .map((f) => (
+                        <div
+                          key={f.path}
+                          onClick={() => {
+                            setActiveMainTab("python");
+                            openFileInTab(f);
+                          }}
+                          className="p-2 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] border border-[#2b2b2b] text-xs cursor-pointer transition"
+                        >
+                          <div className="flex items-center gap-1.5 font-mono text-sky-400 truncate">
+                            {getGitHubFileIcon(f.path)}
+                            <span className="truncate">{f.path}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-500 font-mono mt-1 block">
+                            {f.content.split("\n").length} líneas
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2.6 Source Control (Git) View */}
+              {activeActivityTab === "git" && (
+                <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
+                    <div className="flex items-center gap-2">
+                      <GitBranch size={14} className="text-amber-400" />
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Control de Código</span>
+                    </div>
+                    <button
+                      onClick={() => setShowSidebar(false)}
+                      title="Ocultar panel lateral (Ctrl+B)"
+                      className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded bg-[#1e1e1e] border border-[#2b2b2b] text-xs font-mono">
+                    <div className="flex items-center gap-1.5">
+                      <GitBranch size={13} className="text-sky-400" />
+                      <span>Rama: <strong className="text-white">main</strong></span>
+                    </div>
+                    <span className="text-[10px] text-gray-400">
+                      {modifiedFiles.size} modificados
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-1 custom-modal-scrollbar">
+                    <span className="text-[10px] text-[#858585] font-mono uppercase font-bold">Cambios Detectados</span>
+                    {modifiedFiles.size === 0 ? (
+                      <p className="text-xs text-gray-500 italic p-2">No hay archivos modificados.</p>
+                    ) : (
+                      Array.from(modifiedFiles).map((path) => {
+                        const file = generatedFiles.find((f) => f.path === path);
+                        return (
+                          <div
+                            key={path}
+                            onClick={() => {
+                              if (file) {
+                                setActiveMainTab("python");
+                                openFileInTab(file);
+                              }
+                            }}
+                            className="p-2 rounded bg-[#1e1e1e] hover:bg-[#2d2d2d] border border-amber-900/40 text-xs cursor-pointer flex items-center justify-between transition"
+                          >
+                            <div className="flex items-center gap-1.5 truncate font-mono text-gray-200">
+                              {getGitHubFileIcon(path)}
+                              <span className="truncate">{path}</span>
+                            </div>
+                            <span className="text-[10px] font-bold text-amber-400 font-mono bg-amber-950/60 px-1 rounded">
+                              M
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-[#2b2b2b]">
+                    <button
+                      onClick={handleGenerateZip}
+                      disabled={zipLoading}
+                      className="w-full py-2 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow"
+                    >
+                      <Download size={13} />
+                      <span>Descargar ZIP con Cambios</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. MAIN WORKSPACE VIEWPORT (Expands to 100% when sidebar is collapsed) */}
+          <div className="flex-1 flex flex-col overflow-hidden relative bg-[#1e1e1e]">
+            {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE (Permanently Mounted in DOM to preserve blocks) */}
+            <div className={activeMainTab === "code" ? "flex-1 bg-[#07090e] relative overflow-hidden flex flex-col" : "hidden"}>
             {/* Floating Action Toolbar */}
             <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-30">
               <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 font-medium border-r border-gray-800 mr-1 hidden sm:flex select-none">
@@ -2800,7 +3469,6 @@ export default function App() {
               <BlocklyComponent />
             </div>
           </div>
-        </div>
 
         {/* TAB 2: DEDICATED FULL-SCREEN SIMULATION & DEBUGGING STAGE */}
         {activeMainTab === "simulation" && (
@@ -3206,228 +3874,7 @@ export default function App() {
 
           return (
             <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden text-[#cccccc] font-sans">
-              {/* Upper area: Activity Bar + Explorer + Editor */}
-              <div className="flex-1 flex overflow-hidden">
-                {/* 1. VS CODE ACTIVITY BAR (Left narrow bar) */}
-                <div className="w-12 bg-[#181818] border-r border-[#2b2b2b] flex flex-col justify-between items-center py-2 shrink-0 z-20 select-none">
-                  {/* Top Activity Icons */}
-                  <div className="flex flex-col items-center w-full space-y-2">
-                    <button
-                      onClick={() => {
-                        setActiveActivityTab("explorer");
-                        setGithubShowTreeSidebar(activeActivityTab === "explorer" ? !githubShowTreeSidebar : true);
-                      }}
-                      title="Explorador de Archivos (Ctrl+Shift+E)"
-                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
-                        activeActivityTab === "explorer" && githubShowTreeSidebar
-                          ? "text-white"
-                          : "text-[#858585] hover:text-white"
-                      }`}
-                    >
-                      {activeActivityTab === "explorer" && githubShowTreeSidebar && (
-                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
-                      )}
-                      <Folder size={20} />
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setActiveActivityTab("search");
-                        setGithubShowTreeSidebar(true);
-                      }}
-                      title="Buscar en Archivos (Ctrl+Shift+F)"
-                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
-                        activeActivityTab === "search" && githubShowTreeSidebar
-                          ? "text-white"
-                          : "text-[#858585] hover:text-white"
-                      }`}
-                    >
-                      {activeActivityTab === "search" && githubShowTreeSidebar && (
-                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
-                      )}
-                      <Search size={20} />
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setActiveActivityTab("git");
-                        setGithubShowTreeSidebar(true);
-                      }}
-                      title="Control de Código Fuente (Git)"
-                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
-                        activeActivityTab === "git" && githubShowTreeSidebar
-                          ? "text-white"
-                          : "text-[#858585] hover:text-white"
-                      }`}
-                    >
-                      {activeActivityTab === "git" && githubShowTreeSidebar && (
-                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
-                      )}
-                      <GitBranch size={20} />
-                      {modifiedFiles.size > 0 && (
-                        <span className="absolute top-2 right-2 w-4 h-4 bg-[#007acc] text-white rounded-full text-[9px] font-bold flex items-center justify-center">
-                          {modifiedFiles.size}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Quick Switch to Blockly / Stage */}
-                    <div className="w-6 h-[1px] bg-[#2b2b2b] my-1" />
-
-                    <button
-                      onClick={() => setActiveMainTab("code")}
-                      title="Volver al Lienzo de Bloques (Blockly)"
-                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
-                    >
-                      <Layers size={18} />
-                    </button>
-
-                    <button
-                      onClick={() => setActiveMainTab("simulation")}
-                      title="Abrir Simulador Interactivo"
-                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
-                    >
-                      <Play size={18} />
-                    </button>
-                  </div>
-
-                  {/* Bottom Activity Icons */}
-                  <div className="flex flex-col items-center w-full space-y-2">
-                    <button
-                      onClick={() => setShowProjectsModal(true)}
-                      title={currentUser ? `Usuario: ${currentUser.name} (${currentUser.role})` : "Iniciar Sesión"}
-                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition relative"
-                    >
-                      {currentUser ? (
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm"
-                          style={{ backgroundColor: getUserColor(currentUser) }}
-                        >
-                          {currentUser.name.charAt(0).toUpperCase()}
-                        </div>
-                      ) : (
-                        <User size={19} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. VS CODE PRIMARY SIDEBAR (Explorer / Search / Git) */}
-                {githubShowTreeSidebar && (
-                  <div className="w-64 bg-[#252526] border-r border-[#2b2b2b] flex flex-col overflow-hidden shrink-0 z-10 select-none">
-                    {/* Explorer Title Bar */}
-                    <div className="px-4 py-2 flex items-center justify-between text-[11px] font-bold text-[#bbbbbb] tracking-wider uppercase">
-                      <span>{activeActivityTab === "search" ? "BUSCAR" : activeActivityTab === "git" ? "CONTROL DE CÓDIGO" : "EXPLORADOR"}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={handleSyncPythonCode}
-                          disabled={previewLoading}
-                          title="Sincronizar microservicio con los bloques del lienzo"
-                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
-                        >
-                          <RefreshCw size={12} className={previewLoading ? "animate-spin" : ""} />
-                        </button>
-                        <button
-                          onClick={handleGenerateZip}
-                          disabled={zipLoading}
-                          title="Descargar paquete completo (.zip)"
-                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
-                        >
-                          <Download size={12} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quick File Filter */}
-                    <div className="px-3 pb-2">
-                      <div className="relative">
-                        <Search size={13} className="absolute left-2.5 top-2 text-[#858585]" />
-                        <input
-                          type="text"
-                          placeholder="Buscar archivo (filtro)..."
-                          value={githubFileSearch}
-                          onChange={(e) => setGithubFileSearch(e.target.value)}
-                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded py-1 pl-8 pr-6 text-xs text-gray-200 focus:outline-none font-mono"
-                        />
-                        {githubFileSearch && (
-                          <button
-                            onClick={() => setGithubFileSearch("")}
-                            className="absolute right-2 top-1.5 text-xs text-[#858585] hover:text-white cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Project Folder Header */}
-                    <div
-                      onClick={() => {
-                        setGithubCurrentDir("");
-                        setGithubViewingFile(null);
-                      }}
-                      className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] flex items-center justify-between text-xs font-bold text-gray-200 cursor-pointer transition border-t border-b border-[#2b2b2b]"
-                    >
-                      <div className="flex items-center gap-1.5 truncate">
-                        <ChevronDown size={14} className="text-[#858585]" />
-                        <span className="truncate">{projectName ? projectName.toUpperCase() : "WPIPE_MICROSERVICE"}</span>
-                      </div>
-                      <span className="text-[10px] text-[#858585] font-mono bg-[#1e1e1e] px-1.5 py-0.2 rounded border border-[#3c3c3c]">
-                        {generatedFiles.length}
-                      </span>
-                    </div>
-
-                    {/* Explorer Tree Body */}
-                    <div className="flex-1 overflow-y-auto py-1 px-1 custom-modal-scrollbar">
-                      {previewLoading ? (
-                        <p className="text-xs text-[#858585] italic p-3">Sincronizando archivos...</p>
-                      ) : generatedFiles.length === 0 ? (
-                        <p className="text-xs text-[#858585] italic p-3">No hay archivos generados.</p>
-                      ) : githubFileSearch.trim() ? (
-                        <div className="space-y-0.5">
-                          {generatedFiles
-                            .filter((f) => f.path.toLowerCase().includes(githubFileSearch.toLowerCase()))
-                            .map((f) => (
-                              <div
-                                key={f.path}
-                                onClick={() => openFileInTab(f)}
-                                className={`px-3 py-1 rounded flex items-center justify-between text-xs font-mono cursor-pointer transition ${
-                                  githubViewingFile?.path === f.path
-                                    ? "bg-[#094771] text-white font-bold"
-                                    : "text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 truncate">
-                                  {getGitHubFileIcon(f.path)}
-                                  <span className="truncate">{f.path}</span>
-                                </div>
-                                <span className="text-[10px] text-[#858585] shrink-0 font-mono">
-                                  {f.content.split("\n").length}L
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      ) : (
-                        <FileTreeItem
-                          node={buildFileTree(generatedFiles)}
-                          selectedPath={githubViewingFile ? githubViewingFile.path : githubCurrentDir}
-                          onSelectFile={(file) => openFileInTab(file)}
-                          onSelectFolder={(folderPath) => {
-                            setGithubCurrentDir(folderPath);
-                            setGithubViewingFile(null);
-                          }}
-                          expandedFolders={expandedFolders}
-                          onToggleFolder={toggleFolder}
-                          modifiedFiles={modifiedFiles}
-                        />
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. VS CODE EDITOR AREA (Tabs + Breadcrumbs + Viewport) */}
-                <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden">
-                  {/* 3.1 VS Code Tabs Bar */}
+              {/* 3.1 VS Code Tabs Bar */}
                   <div className="bg-[#252526] border-b border-[#1e1e1e] flex items-center justify-between overflow-x-auto select-none no-scrollbar shrink-0 h-9">
                     {/* Tabs List */}
                     <div className="flex items-center h-full overflow-x-auto no-scrollbar">
@@ -3902,50 +4349,77 @@ export default function App() {
                       )
                     )}
                   </div>
-                </div>
-              </div>
-
-              {/* 4. VS CODE STATUS BAR (Bottom bar) */}
-              <div className="h-6 bg-[#007acc] text-white flex items-center justify-between px-3 text-[11px] font-mono select-none shrink-0 z-20">
-                <div className="flex items-center gap-3">
-                  <div
-                    onClick={() => setShowProjectsModal(true)}
-                    className="bg-[#005999] px-2 h-full flex items-center gap-1.5 font-bold cursor-pointer hover:bg-[#004d80]"
-                    title="Entorno Remoto WPipe Studio (Espacio de trabajo)"
-                  >
-                    <span>{"><"}</span>
-                    <span>WPipe Studio</span>
-                  </div>
-                  <div className="flex items-center gap-1 cursor-pointer hover:opacity-80">
-                    <GitBranch size={12} />
-                    <span>main{modifiedFiles.size > 0 ? "*" : ""}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] opacity-90">
-                    <span>0 ⚠️</span>
-                    <span>0 ❌</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  {githubViewingFile ? (
-                    <>
-                      <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
-                      <span>Spaces: 4</span>
-                      <span>UTF-8</span>
-                      <span>LF</span>
-                      <span className="font-semibold">{getLanguageFromPath(githubViewingFile.path)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>{directoryItems.length} elementos</span>
-                      <span>Espacio de Trabajo Activo</span>
-                    </>
-                  )}
-                </div>
-              </div>
             </div>
           );
         })()}
+
+            </div>
+          </div>
+
+          {/* 4. GLOBAL VS CODE STATUS BAR (Bottom bar) */}
+          <div className="h-6 bg-[#007acc] text-white flex items-center justify-between px-3 text-[11px] font-mono select-none shrink-0 z-20">
+            <div className="flex items-center gap-3">
+              <div
+                onClick={() => setShowProjectsModal(true)}
+                className="bg-[#005999] px-2 h-full flex items-center gap-1.5 font-bold cursor-pointer hover:bg-[#004d80]"
+                title="Entorno Remoto WPipe Studio (Espacio de trabajo)"
+              >
+                <span>{"><"}</span>
+                <span>WPipe Studio</span>
+              </div>
+              <div
+                onClick={() => {
+                  setActiveActivityTab("git");
+                  setShowSidebar(true);
+                }}
+                className="flex items-center gap-1 cursor-pointer hover:opacity-80"
+                title="Control de Código Fuente (Git)"
+              >
+                <GitBranch size={12} />
+                <span>main{modifiedFiles.size > 0 ? "*" : ""}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] opacity-90">
+                <span>0 ⚠️</span>
+                <span>0 ❌</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {activeMainTab === "python" && githubViewingFile ? (
+                <>
+                  <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+                  <span>Spaces: 4</span>
+                  <span>UTF-8</span>
+                  <span>LF</span>
+                  <span className="font-semibold">{getLanguageFromPath(githubViewingFile.path)}</span>
+                </>
+              ) : activeMainTab === "python" ? (
+                <>
+                  <span>{getGitHubDirectoryItems(generatedFiles, githubCurrentDir).length} elementos</span>
+                  <span>Espacio de Trabajo Activo</span>
+                </>
+              ) : activeMainTab === "code" ? (
+                <>
+                  <span>Lienzo Blockly</span>
+                  <span>Dialecto A</span>
+                  <span>WPipe v2.5.13</span>
+                </>
+              ) : activeMainTab === "simulation" ? (
+                <>
+                  <span>{isSimulating ? "Simulación en Curso (⚡)" : "Simulación en Reposo (🏁)"}</span>
+                  <span>{simSteps.length} Pasos</span>
+                </>
+              ) : (
+                <>
+                  <span>Diagrama DAG Mermaid</span>
+                  <span>Zoom: {Math.round(mermaidZoom * 100)}%</span>
+                </>
+              )}
+              <span className="text-[10px] opacity-80 border-l border-white/20 pl-3 truncate max-w-[280px]">
+                {statusMessage}
+              </span>
+            </div>
+          </div>
       </div>
 
 

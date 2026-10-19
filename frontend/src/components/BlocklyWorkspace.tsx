@@ -633,6 +633,11 @@ export function expandAllBlocksInWorkspace() {
   });
 }
 
+export function centerWorkspace() {
+  if (!activeWorkspaceRef) return;
+  activeWorkspaceRef.scrollCenter();
+}
+
 export function zoomFitWorkspace() {
   if (!activeWorkspaceRef) return;
   if (typeof (activeWorkspaceRef as any).zoomToFit === "function") {
@@ -977,8 +982,12 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     let finalExits = branchExits;
     if (block.nextConnection && block.nextConnection.targetBlock()) {
       const nextRes = processBlock(block.nextConnection.targetBlock()!, parentId, slotType);
+      // Direct sequence edge between current container block and the next block
+      edges.push({ id: `e_seq_${currentId}_${nextRes.entryId}`, source: currentId, target: nextRes.entryId });
       branchExits.forEach((exId) => {
-        edges.push({ id: `e_${exId}_${nextRes.entryId}`, source: exId, target: nextRes.entryId });
+        if (exId !== currentId) {
+          edges.push({ id: `e_${exId}_${nextRes.entryId}`, source: exId, target: nextRes.entryId });
+        }
       });
       finalExits = nextRes.exitNodes;
     }
@@ -1108,6 +1117,14 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
         collapse: true,
         comments: true,
         disable: true,
+        move: {
+          scrollbars: {
+            horizontal: true,
+            vertical: true,
+          },
+          drag: true,
+          wheel: false,
+        },
         grid: {
           spacing: 20,
           length: 3,
@@ -1121,6 +1138,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
           maxScale: 3,
           minScale: 0.3,
           scaleSpeed: 1.2,
+          pinch: true,
         },
         trashcan: true,
         sounds: false,
@@ -1267,6 +1285,13 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       if (whileDo && whileDo.connection && blockRetryStep.previousConnection) {
         whileDo.connection.connect(blockRetryStep.previousConnection);
       }
+
+      // Initial auto-centering so blocks are not stuck in the corner
+      setTimeout(() => {
+        if (ws) {
+          ws.scrollCenter();
+        }
+      }, 150);
 
       ws.addChangeListener((e) => {
         if (e && (e as any).type === Blockly.Events.BLOCK_CREATE) {

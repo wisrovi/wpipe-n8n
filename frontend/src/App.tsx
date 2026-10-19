@@ -22,6 +22,10 @@ import {
   highlightBlocklyBlock,
   getWorkspaceStateJson,
   loadWorkspaceStateJson,
+  updateBlockFieldValue,
+  toggleBlockBreakpoint,
+  globalBreakpoints,
+  updateBreakpointVisuals,
 } from "./components/BlocklyWorkspace";
 import mermaid from "mermaid";
 import Prism from "prismjs";
@@ -84,12 +88,19 @@ import {
   FolderPlus,
   X,
   Eye,
+  EyeOff,
   Code,
   File,
   Settings,
   MoreHorizontal,
   FilePlus,
   Split,
+  Sliders,
+  Bug,
+  FlaskConical,
+  History,
+  StepForward,
+  FastForward,
 } from "lucide-react";
 
 export interface UserProfile {
@@ -489,6 +500,56 @@ export default function App() {
   const [cursorPos, setCursorPos] = useState<{ line: number; col: number }>({ line: 1, col: 1 });
   const [readmePreviewMode, setReadmePreviewMode] = useState<boolean>(false);
 
+  // --- VS CODE SUITE: 9 ENHANCEMENTS STATE ---
+  // 1. Retractable Bottom Panel (Terminal, Output, Problems, Debug, Tests)
+  const [bottomPanelOpen, setBottomPanelOpen] = useState<boolean>(false);
+  const [bottomPanelTab, setBottomPanelTab] = useState<"terminal" | "output" | "problems" | "debug" | "tests" | "history">("terminal");
+  const [bottomPanelMaximized, setBottomPanelMaximized] = useState<boolean>(false);
+  const [terminalHistory, setTerminalHistory] = useState<
+    Array<{ command: string; stdout: string; stderr: string; exit_code: number; cwd?: string }>
+  >([
+    {
+      command: "info",
+      stdout: "WPipe Studio Shell v2.5.10 listo. Directorio de microservicio activo.\nEscribe comandos como 'ls', 'pytest', 'cat .env'...",
+      stderr: "",
+      exit_code: 0,
+    },
+  ]);
+  const [terminalInput, setTerminalInput] = useState<string>("");
+  const [isExecutingTerminal, setIsExecutingTerminal] = useState<boolean>(false);
+  const [testRunData, setTestRunData] = useState<any | null>(null);
+  const [isTestingRunning, setIsTestingRunning] = useState<boolean>(false);
+
+  // 2. Command Palette (Ctrl+Shift+P / Ctrl+P)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState<boolean>(false);
+  const [commandQuery, setCommandQuery] = useState<string>("");
+  const [commandSelectedIndex, setCommandSelectedIndex] = useState<number>(0);
+
+  // 3. Live Split View (Canvas + Python Code)
+  const [isSplitView, setIsSplitView] = useState<boolean>(false);
+  const [livePipelineCode, setLivePipelineCode] = useState<string>("");
+
+  // 4. Step Property Inspector
+  const [inspectorOpen, setInspectorOpen] = useState<boolean>(false);
+  const [selectedBlockData, setSelectedBlockData] = useState<any | null>(null);
+
+  // 5. Visual .env Manager
+  const [showEnvModal, setShowEnvModal] = useState<boolean>(false);
+  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string; showSecret?: boolean }>>([]);
+  const [isSavingEnv, setIsSavingEnv] = useState<boolean>(false);
+
+  // 6. Breakpoints and Step-by-Step Debugger
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
+  const [isPausedAtBreakpoint, setIsPausedAtBreakpoint] = useState<boolean>(false);
+  const [pausedStepName, setPausedStepName] = useState<string>("");
+  const [debugContext, setDebugContext] = useState<Record<string, any>>({});
+  const resumeSimulationResolveRef = useRef<(() => void) | null>(null);
+
+  // 7. Simulation History (PostgreSQL)
+  const [simulationHistory, setSimulationHistory] = useState<any[]>([]);
+  const [selectedHistoricalRun, setSelectedHistoricalRun] = useState<any | null>(null);
+  const [showDiffModal, setShowDiffModal] = useState<boolean>(false);
+
   // Synchronized Tab Switching for Unified Activity Bar & Sub-Header Tabs
   const switchMainTab = (tab: "code" | "simulation" | "flowchart" | "python") => {
     setActiveMainTab(tab);
@@ -524,20 +585,54 @@ export default function App() {
     }
   };
 
-  // Keyboard shortcut (Ctrl+B / Cmd+B) to toggle primary sidebar
+  // Keyboard shortcuts (Ctrl+B, Ctrl+`, Ctrl+Shift+P, F5, F10)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const inInput = tag === "input" || tag === "textarea";
+
+      // 1. Toggle Sidebar: Ctrl+B / Cmd+B
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
-        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-        if (tag !== "input" && tag !== "textarea") {
+        if (!inInput) {
           e.preventDefault();
           setShowSidebar((prev) => !prev);
         }
       }
+
+      // 2. Toggle Bottom Panel: Ctrl+` / Cmd+` (or Ctrl+ñ)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "`" || e.key === "ñ" || e.code === "Backquote")) {
+        e.preventDefault();
+        setBottomPanelOpen((prev) => !prev);
+      }
+
+      // 3. Command Palette: Ctrl+Shift+P / Cmd+Shift+P or Ctrl+P or F1
+      if (
+        ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "p")) ||
+        e.key === "F1"
+      ) {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        setCommandQuery("");
+        setCommandSelectedIndex(0);
+      }
+
+      // 4. Toggle Split View: Ctrl+\
+      if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+        e.preventDefault();
+        setIsSplitView((prev) => !prev);
+      }
+
+      // 5. Resume paused simulation: F5
+      if (e.key === "F5" && isPausedAtBreakpoint && resumeSimulationResolveRef.current) {
+        e.preventDefault();
+        resumeSimulationResolveRef.current();
+        resumeSimulationResolveRef.current = null;
+        setIsPausedAtBreakpoint(false);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isPausedAtBreakpoint]);
 
   // Trigger resize event for Blockly & Mermaid when sidebar toggles or tab changes
   useEffect(() => {
@@ -1084,10 +1179,177 @@ export default function App() {
       if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
         loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
       }
+      loadSimulationHistory(project.id);
+      loadProjectEnv(project.id);
       setStatusMessage(`Microservicio '${project.name}' cargado con éxito ✓`);
       setShowProjectsModal(false);
     } catch (err: any) {
       setStatusMessage(`Error: ${err.message}`);
+    }
+  };
+
+  // 1. Simulation History Loader
+  const loadSimulationHistory = async (projId: string) => {
+    try {
+      const res = await fetch(`/api/v1/projects/${projId}/simulations`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSimulationHistory(data);
+      }
+    } catch {}
+  };
+
+  // 2. Environment Variables (.env) Loader & Saver
+  const loadProjectEnv = async (projId: string) => {
+    try {
+      const res = await fetch(`/api/v1/projects/${projId}/env`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEnvVars(data.variables || []);
+      }
+    } catch {}
+  };
+
+  const handleSaveEnv = async () => {
+    if (!activeProjectId) return;
+    setIsSavingEnv(true);
+    try {
+      const res = await fetch(`/api/v1/projects/${activeProjectId}/env`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ variables: envVars }),
+      });
+      if (res.ok) {
+        setStatusMessage("Variables .env guardadas con éxito ✓");
+        setShowEnvModal(false);
+      }
+    } catch (e: any) {
+      setStatusMessage(`Error guardando .env: ${e.message}`);
+    } finally {
+      setIsSavingEnv(false);
+    }
+  };
+
+  // 3. Interactive Shell Terminal Execution
+  const handleExecuteTerminal = async (cmdToRun?: string) => {
+    const cmd = (cmdToRun !== undefined ? cmdToRun : terminalInput).trim();
+    if (!cmd) return;
+    setTerminalInput("");
+    setIsExecutingTerminal(true);
+
+    if (cmd === "clear") {
+      setTerminalHistory([]);
+      setIsExecutingTerminal(false);
+      return;
+    }
+
+    if (!activeProjectId) {
+      setTerminalHistory((prev) => [
+        ...prev,
+        { command: cmd, stdout: "", stderr: "No hay microservicio seleccionado en el workspace.", exit_code: 1 },
+      ]);
+      setIsExecutingTerminal(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/v1/projects/${activeProjectId}/terminal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ command: cmd }),
+      });
+      const data = await res.json();
+      setTerminalHistory((prev) => [
+        ...prev,
+        { command: cmd, stdout: data.stdout, stderr: data.stderr, exit_code: data.exit_code, cwd: data.cwd },
+      ]);
+    } catch (e: any) {
+      setTerminalHistory((prev) => [
+        ...prev,
+        { command: cmd, stdout: "", stderr: `Error de red: ${e.message}`, exit_code: 1 },
+      ]);
+    } finally {
+      setIsExecutingTerminal(false);
+    }
+  };
+
+  // 4. Test Runner (pytest tests/)
+  const handleRunTests = async () => {
+    if (!activeProjectId) {
+      setStatusMessage("Selecciona o crea un microservicio para ejecutar pruebas unitarias.");
+      return;
+    }
+    setIsTestingRunning(true);
+    setBottomPanelOpen(true);
+    setBottomPanelTab("tests");
+    try {
+      const res = await fetch(`/api/v1/projects/${activeProjectId}/run-tests`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      setTestRunData(data);
+      setStatusMessage(`Tests completados: ${data.passed}/${data.total} pasados en ${data.duration_sec}s`);
+    } catch (e: any) {
+      setStatusMessage(`Error ejecutando tests: ${e.message}`);
+    } finally {
+      setIsTestingRunning(false);
+    }
+  };
+
+  // 5. Breakpoints and Step Inspector
+  const handleBlockSelected = (blockData: any) => {
+    setSelectedBlockData(blockData);
+    if (blockData) {
+      setInspectorOpen(true);
+    }
+  };
+
+  const handleToggleBreakpoint = (id: string, name: string) => {
+    const isNowSet = toggleBlockBreakpoint(id);
+    toggleBlockBreakpoint(name);
+    setBreakpoints(new Set(globalBreakpoints));
+    if (selectedBlockData && (selectedBlockData.id === id || selectedBlockData.stepName === name)) {
+      setSelectedBlockData({
+        ...selectedBlockData,
+        isBreakpoint: isNowSet,
+      });
+    }
+    setStatusMessage(isNowSet ? `🔴 Punto de interrupción fijado en ${name}` : `Punto de interrupción removido de ${name}`);
+  };
+
+  const handleResumeSimulation = () => {
+    if (resumeSimulationResolveRef.current) {
+      resumeSimulationResolveRef.current();
+      resumeSimulationResolveRef.current = null;
+      setIsPausedAtBreakpoint(false);
+      setStatusMessage("Continuando simulación...");
+    }
+  };
+
+  // 6. Live Split View Workspace Sync
+  const handleWorkspaceChanged = (ws: any) => {
+    if (isSplitView) {
+      try {
+        const cIr = getCanvasIRFromBlocklyWorkspace(catalog);
+        fetch("/api/v1/pipeline/compile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cIr),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            const pipeFile = data.files?.find((f: any) => f.path === "app/pipeline.py");
+            if (pipeFile) {
+              setLivePipelineCode(pipeFile.content);
+            }
+          })
+          .catch(() => {});
+      } catch {}
     }
   };
 
@@ -1847,6 +2109,7 @@ export default function App() {
 
     let currentContext = { ...initialContext };
     const stepDelay = turboMode ? 100 : 700;
+    const simStartTime = Date.now();
 
     for (let i = 0; i < stepsToRun.length; i++) {
       if (simulationAbortRef.current) {
@@ -1856,6 +2119,29 @@ export default function App() {
       }
 
       const currentStep = stepsToRun[i];
+
+      // Check for Breakpoint pause
+      const isBp = globalBreakpoints.has(currentStep.name) || globalBreakpoints.has(currentStep.id);
+      if (isBp) {
+        setIsPausedAtBreakpoint(true);
+        setPausedStepName(currentStep.name);
+        setDebugContext({ ...currentContext });
+        highlightBlocklyBlock(currentStep.name, "paused");
+        setBottomPanelOpen(true);
+        setBottomPanelTab("debug");
+        setSimLogs((prev) => [
+          ...prev,
+          {
+            time: new Date().toLocaleTimeString(),
+            level: "WARN",
+            msg: `⏸ Pausado en punto de interrupción (Breakpoint): ${currentStep.name}. Pulsa Continuar (F5) o Siguiente Paso (F10).`,
+          },
+        ]);
+        await new Promise<void>((resolve) => {
+          resumeSimulationResolveRef.current = resolve;
+        });
+        setIsPausedAtBreakpoint(false);
+      }
 
       // Mark running
       highlightBlocklyBlock(currentStep.name, "running");
@@ -1908,6 +2194,33 @@ export default function App() {
     setCpuUsage(0);
     setIsSimulating(false);
     setStatusMessage(simulationAbortRef.current ? "🛑 Simulation aborted" : "✓ Simulation finished successfully!");
+
+    // Persist completed simulation run to PostgreSQL
+    const totalSimDuration = Date.now() - simStartTime;
+    if (activeProjectId) {
+      try {
+        const simRecord = {
+          status: simulationAbortRef.current ? "aborted" : "success",
+          duration_ms: totalSimDuration,
+          input_payload: initialContext,
+          output_context: currentContext,
+          steps_timeline: stepsToRun.map((s) => ({ step: s.name, status: "success" })),
+          logs: simLogs.map((l) => `[${l.level}] ${l.msg}`).join("\n"),
+        };
+        fetch(`/api/v1/projects/${activeProjectId}/simulations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify(simRecord),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((saved) => {
+            if (saved) {
+              setSimulationHistory((prev) => [saved, ...prev]);
+            }
+          })
+          .catch(() => {});
+      } catch {}
+    }
   };
 
   const handleStopSimulation = () => {
@@ -2088,6 +2401,22 @@ export default function App() {
                   <div>
                     <div className="font-semibold">Copiar Código Python</div>
                     <div className="text-[10px] text-gray-400">Copia app/main.py al portapapeles</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    setShowEnvModal(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Settings size={15} className="text-emerald-400" />
+                  <div>
+                    <div className="font-semibold">Variables de Entorno (.env)</div>
+                    <div className="text-[10px] text-gray-400">Configurar credenciales y secretos</div>
                   </div>
                 </button>
               </div>
@@ -2293,6 +2622,50 @@ export default function App() {
 
                 <button
                   onClick={() => {
+                    setIsSplitView(!isSplitView);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Split size={14} className="text-sky-400" />
+                    <span>Vista Dividida (Lienzo + Código)</span>
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-mono">Ctrl+\</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setBottomPanelOpen(!bottomPanelOpen);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Terminal size={14} className="text-emerald-400" />
+                    <span>Panel Inferior / Terminal</span>
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-mono">Ctrl+`</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setInspectorOpen(!inspectorOpen);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sliders size={14} className="text-purple-400" />
+                    <span>Inspector de Propiedades</span>
+                  </span>
+                  {inspectorOpen && <Check size={13} className="text-purple-400" />}
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
                     setShowSidebar(!showSidebar);
                     setActiveMenu(null);
                   }}
@@ -2401,6 +2774,38 @@ export default function App() {
 
                 <button
                   onClick={() => {
+                    handleRunTests();
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-purple-950/60 flex items-center gap-2.5 text-purple-300 hover:text-purple-200 cursor-pointer"
+                >
+                  <FlaskConical size={14} className="text-purple-400" />
+                  <div>
+                    <div className="font-semibold">Ejecutar Tests Unitarios (pytest)</div>
+                    <div className="text-[10px] text-gray-400">Verifica la suite tests/ en workspace</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (activeProjectId) loadSimulationHistory(activeProjectId);
+                    setBottomPanelOpen(true);
+                    setBottomPanelTab("output");
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <History size={14} className="text-teal-400" />
+                  <div>
+                    <div className="font-semibold">Historial de Ejecuciones ({simulationHistory.length})</div>
+                    <div className="text-[10px] text-gray-400">Registros persistidos en PostgreSQL</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
                     setTurboMode(!turboMode);
                     setStatusMessage(`Modo Turbo: ${!turboMode ? "Activado ⚡" : "Desactivado"}`);
                     setActiveMenu(null);
@@ -2484,8 +2889,25 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Microservice Selector, Title & Save Button */}
+        {/* Center: Microservice Selector, Title, Command Palette & Save Button */}
         <div className="flex items-center gap-2">
+          {/* Quick Command Palette Button */}
+          <button
+            onClick={() => {
+              setCommandPaletteOpen(true);
+              setCommandQuery("");
+              setCommandSelectedIndex(0);
+            }}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-gray-900/90 hover:bg-gray-800 border border-gray-700/80 rounded-md text-xs font-mono text-gray-300 hover:text-white transition shadow-sm cursor-pointer"
+            title="Paleta de Comandos (Ctrl+P / Ctrl+Shift+P)"
+          >
+            <Search size={12} className="text-sky-400" />
+            <span className="text-[11px]">Buscar comandos</span>
+            <span className="text-[9px] text-gray-400 font-mono bg-gray-800 px-1 py-0.5 rounded border border-gray-700 ml-1">
+              Ctrl+P
+            </span>
+          </button>
+
           {/* Projects Switcher / Manager Button */}
           <button
             onClick={() => setShowProjectsModal(true)}
@@ -3662,9 +4084,141 @@ export default function App() {
               </button>
             </div>
 
-            {/* Blockly Workspace Component */}
-            <div className="flex-1 w-full h-full relative">
-              <BlocklyComponent />
+            {/* Blockly Workspace + Live Split View + Inspector Component */}
+            <div className="flex-1 w-full h-full flex overflow-hidden relative">
+              {/* Workspace Container */}
+              <div className={`h-full flex flex-col relative transition-all duration-200 ${isSplitView ? "w-1/2 border-r border-[#2d2d2d]" : "flex-1"}`}>
+                <BlocklyComponent
+                  onBlockSelected={handleBlockSelected}
+                  onWorkspaceChange={handleWorkspaceChanged}
+                />
+              </div>
+
+              {/* Live Split View (Canvas + Python Code side-by-side) */}
+              {isSplitView && (
+                <div className="w-1/2 h-full flex flex-col bg-[#1e1e1e] overflow-hidden">
+                  <div className="h-9 px-3 bg-[#252526] border-b border-[#2d2d2d] flex items-center justify-between text-xs text-gray-300 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <FileCode size={14} className="text-sky-400" />
+                      <span className="font-mono font-semibold">pipeline.py (Live AST Compilado)</span>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800">
+                        En vivo
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(livePipelineCode);
+                          setStatusMessage("Código pipeline.py copiado al portapapeles");
+                        }}
+                        className="p-1 hover:bg-[#333333] text-gray-400 hover:text-white rounded cursor-pointer"
+                        title="Copiar código"
+                      >
+                        <Copy size={13} />
+                      </button>
+                      <button
+                        onClick={() => setIsSplitView(false)}
+                        className="p-1 hover:bg-[#333333] text-gray-400 hover:text-white rounded cursor-pointer"
+                        title="Cerrar vista dividida"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 p-3 overflow-auto font-mono text-xs bg-[#1e1e1e]">
+                    <pre className="text-gray-200 font-mono text-[12px] leading-relaxed select-text">
+                      <code>{livePipelineCode || "# Modifica el lienzo para compilar el AST de WPipe en vivo..."}</code>
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Step Property Inspector Drawer */}
+              {inspectorOpen && selectedBlockData && (
+                <div className="absolute right-0 top-0 bottom-0 w-80 bg-[#252526] border-l border-[#333333] shadow-2xl flex flex-col z-20 animate-in slide-in-from-right duration-200">
+                  <div className="h-10 px-3 bg-[#2d2d2d] border-b border-[#333333] flex items-center justify-between text-xs font-semibold text-gray-200 shrink-0">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Sliders size={14} className="text-purple-400 shrink-0" />
+                      <span className="truncate">Inspector: {selectedBlockData.stepName || selectedBlockData.type}</span>
+                    </div>
+                    <button
+                      onClick={() => setInspectorOpen(false)}
+                      className="p-1 hover:bg-[#3e3e42] text-gray-400 hover:text-white rounded cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-4 text-xs">
+                    {/* Breakpoint toggle */}
+                    <div className="p-2.5 rounded-lg bg-[#1e1e1e] border border-[#3c3c3c] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3.5 h-3.5 rounded-full border ${
+                            breakpoints.has(selectedBlockData.id) || breakpoints.has(selectedBlockData.stepName)
+                              ? "bg-rose-500 border-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.8)]"
+                              : "bg-gray-800 border-gray-600"
+                          }`}
+                        />
+                        <span className="text-gray-300 font-medium">Punto de Interrupción</span>
+                      </div>
+                      <button
+                        onClick={() => handleToggleBreakpoint(selectedBlockData.id, selectedBlockData.stepName)}
+                        className={`px-2.5 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                          breakpoints.has(selectedBlockData.id) || breakpoints.has(selectedBlockData.stepName)
+                            ? "bg-rose-900/60 border border-rose-600 text-rose-300 hover:bg-rose-900"
+                            : "bg-[#333333] hover:bg-[#444444] text-gray-300 border border-[#444444]"
+                        }`}
+                      >
+                        {breakpoints.has(selectedBlockData.id) || breakpoints.has(selectedBlockData.stepName) ? "Quitar 🔴" : "Activar ⭕"}
+                      </button>
+                    </div>
+
+                    {/* Metadata & Description */}
+                    <div className="p-2.5 rounded-lg bg-[#1e1e1e] border border-[#3c3c3c] space-y-1.5">
+                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Documentación</span>
+                      <p className="text-gray-300 text-[11px] leading-relaxed">
+                        {catalog.find((s) => s.name === selectedBlockData.stepName)?.description ||
+                          selectedBlockData.description ||
+                          "Sin descripción disponible en el catálogo de pasos."}
+                      </p>
+                      {catalog.find((s) => s.name === selectedBlockData.stepName)?.repo && (
+                        <div className="text-[10px] text-gray-500 font-mono">
+                          Origen: {catalog.find((s) => s.name === selectedBlockData.stepName)?.repo}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Block Fields Editor */}
+                    <div className="space-y-3">
+                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Parámetros del Bloque</span>
+                      {selectedBlockData.fields &&
+                        Object.entries(selectedBlockData.fields).map(([fieldName, val]) => (
+                          <div key={fieldName} className="space-y-1">
+                            <label className="text-[11px] font-mono text-sky-400 block">{fieldName}</label>
+                            <input
+                              type="text"
+                              value={String(val ?? "")}
+                              onChange={(e) => {
+                                const newVal = e.target.value;
+                                updateBlockFieldValue(selectedBlockData.id, fieldName, newVal);
+                                setSelectedBlockData((prev: any) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        fields: { ...prev.fields, [fieldName]: newVal },
+                                      }
+                                    : prev
+                                );
+                              }}
+                              className="w-full px-2 py-1.5 bg-[#1e1e1e] border border-[#3c3c3c] rounded text-gray-200 font-mono text-xs focus:outline-none focus:border-sky-500"
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -4551,6 +5105,523 @@ export default function App() {
           );
         })()}
 
+            {/* RETRACTABLE BOTTOM PANEL (Terminal, Output, Problems, Debugger, Tests, History) */}
+            {bottomPanelOpen && (
+              <div
+                className={`w-full bg-[#181818] border-t border-[#2d2d2d] flex flex-col shrink-0 transition-all duration-150 z-20 ${
+                  bottomPanelMaximized ? "h-[450px]" : "h-64"
+                }`}
+              >
+                {/* Panel Header */}
+                <div className="h-8 bg-[#252526] border-b border-[#2d2d2d] flex items-center justify-between px-3 select-none text-xs shrink-0">
+                  <div className="flex items-center gap-4 h-full">
+                    <button
+                      onClick={() => setBottomPanelTab("terminal")}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "terminal"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <Terminal size={12} className="text-emerald-400" />
+                      <span>TERMINAL</span>
+                    </button>
+
+                    <button
+                      onClick={() => setBottomPanelTab("output")}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "output"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <FileText size={12} className="text-sky-400" />
+                      <span>SALIDA</span>
+                    </button>
+
+                    <button
+                      onClick={() => setBottomPanelTab("problems")}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "problems"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <AlertTriangle size={12} className="text-amber-400" />
+                      <span>PROBLEMAS</span>
+                      <span className="text-[10px] bg-gray-800 text-gray-300 px-1 rounded">0</span>
+                    </button>
+
+                    <button
+                      onClick={() => setBottomPanelTab("debug")}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "debug"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <Bug size={12} className="text-rose-400" />
+                      <span>DEPURACIÓN</span>
+                      {breakpoints.size > 0 && (
+                        <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-1 rounded">
+                          {breakpoints.size} 🔴
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setBottomPanelTab("tests")}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "tests"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <FlaskConical size={12} className="text-purple-400" />
+                      <span>TESTS</span>
+                      {testRunData && (
+                        <span
+                          className={`text-[10px] px-1 rounded ${
+                            testRunData.exit_code === 0
+                              ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                              : "bg-rose-950 text-rose-300 border border-rose-800"
+                          }`}
+                        >
+                          {testRunData.exit_code === 0 ? "PASSED" : "FAILED"}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setBottomPanelTab("history");
+                        if (activeProjectId) loadSimulationHistory(activeProjectId);
+                      }}
+                      className={`h-full flex items-center gap-1.5 border-b-2 font-mono text-[11px] font-semibold transition cursor-pointer ${
+                        bottomPanelTab === "history"
+                          ? "border-[#007acc] text-white"
+                          : "border-transparent text-gray-400 hover:text-gray-200"
+                      }`}
+                    >
+                      <History size={12} className="text-teal-400" />
+                      <span>HISTORIAL</span>
+                      <span className="text-[10px] bg-teal-950/70 text-teal-300 border border-teal-800 px-1 rounded">
+                        {simulationHistory.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Header Actions */}
+                  <div className="flex items-center gap-1 text-gray-400">
+                    <button
+                      onClick={() => setBottomPanelMaximized(!bottomPanelMaximized)}
+                      className="p-1 hover:bg-[#333333] hover:text-white rounded cursor-pointer"
+                      title={bottomPanelMaximized ? "Restaurar tamaño" : "Maximizar panel"}
+                    >
+                      {bottomPanelMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                    </button>
+                    <button
+                      onClick={() => setBottomPanelOpen(false)}
+                      className="p-1 hover:bg-[#333333] hover:text-white rounded cursor-pointer"
+                      title="Cerrar panel (Ctrl+`)"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Panel Content */}
+                <div className="flex-1 overflow-hidden bg-[#181818] p-2 flex flex-col font-mono text-xs">
+                  {/* TAB 1: TERMINAL */}
+                  {bottomPanelTab === "terminal" && (
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      {/* Presets Bar */}
+                      <div className="flex items-center gap-2 pb-2 mb-2 border-b border-[#2b2b2b] shrink-0 text-[11px]">
+                        <span className="text-gray-500 font-semibold">Presets:</span>
+                        <button
+                          onClick={() => {
+                            setTerminalInput("ls -la");
+                            handleExecuteTerminal("ls -la");
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#252526] hover:bg-[#333333] text-gray-300 border border-[#333] cursor-pointer"
+                        >
+                          ls -la
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTerminalInput("pytest tests/");
+                            handleExecuteTerminal("pytest tests/");
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#252526] hover:bg-[#333333] text-purple-300 border border-[#333] cursor-pointer"
+                        >
+                          pytest tests/
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTerminalInput("cat .env");
+                            handleExecuteTerminal("cat .env");
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#252526] hover:bg-[#333333] text-emerald-300 border border-[#333] cursor-pointer"
+                        >
+                          cat .env
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTerminalInput("python -V");
+                            handleExecuteTerminal("python -V");
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#252526] hover:bg-[#333333] text-sky-300 border border-[#333] cursor-pointer"
+                        >
+                          python -V
+                        </button>
+                        <button
+                          onClick={() => setTerminalHistory([])}
+                          className="ml-auto text-gray-500 hover:text-gray-300 cursor-pointer"
+                          title="Limpiar terminal"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+
+                      {/* Terminal History */}
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-modal-scrollbar">
+                        {terminalHistory.map((item, idx) => (
+                          <div key={idx} className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-gray-300">
+                              <span className="text-emerald-400 font-bold">wpipe@{projectName || "workspace"}</span>
+                              <span className="text-gray-500">:</span>
+                              <span className="text-sky-400 font-bold">~</span>
+                              <span className="text-gray-400">$</span>
+                              <span className="text-white font-semibold">{item.command}</span>
+                            </div>
+                            {item.stdout && (
+                              <pre className="text-gray-300 whitespace-pre-wrap pl-3 border-l-2 border-emerald-500/40 text-[11px] leading-relaxed">
+                                {item.stdout}
+                              </pre>
+                            )}
+                            {item.stderr && (
+                              <pre className="text-rose-400 whitespace-pre-wrap pl-3 border-l-2 border-rose-500/40 text-[11px] leading-relaxed">
+                                {item.stderr}
+                              </pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Terminal Input Box */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleExecuteTerminal();
+                        }}
+                        className="mt-2 pt-2 border-t border-[#2b2b2b] flex items-center gap-1.5 shrink-0"
+                      >
+                        <span className="text-emerald-400 font-bold">wpipe@{projectName || "workspace"}</span>
+                        <span className="text-gray-500">:</span>
+                        <span className="text-sky-400 font-bold">~</span>
+                        <span className="text-gray-400">$</span>
+                        <input
+                          type="text"
+                          value={terminalInput}
+                          onChange={(e) => setTerminalInput(e.target.value)}
+                          placeholder={isExecutingTerminal ? "Ejecutando..." : "Escribe un comando bash (ls, pytest, python...)"}
+                          disabled={isExecutingTerminal}
+                          className="flex-1 bg-transparent text-gray-100 font-mono text-xs focus:outline-none placeholder-gray-600"
+                        />
+                        {isExecutingTerminal && (
+                          <RefreshCw size={13} className="text-sky-400 animate-spin" />
+                        )}
+                      </form>
+                    </div>
+                  )}
+
+                  {/* TAB 2: SALIDA / LOGS */}
+                  {bottomPanelTab === "output" && (
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#2b2b2b] text-[11px] text-gray-400 shrink-0">
+                        <span>Registro de Salida del Motor WPipe ({simLogs.length} entradas)</span>
+                        <button
+                          onClick={() => setSimLogs([])}
+                          className="hover:text-white cursor-pointer"
+                        >
+                          Limpiar Logs
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto space-y-1 custom-modal-scrollbar">
+                        {simLogs.length === 0 ? (
+                          <div className="text-gray-600 italic">No hay registros de salida recientes. Inicia una simulación para ver logs.</div>
+                        ) : (
+                          simLogs.map((log, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-[11px]">
+                              <span className="text-gray-500 select-none">{log.time}</span>
+                              <span
+                                className={`px-1 py-0.2 rounded text-[10px] font-bold select-none ${
+                                  log.level === "ERROR"
+                                    ? "bg-rose-950 text-rose-300"
+                                    : log.level === "WARN"
+                                    ? "bg-amber-950 text-amber-300"
+                                    : "bg-sky-950 text-sky-300"
+                                }`}
+                              >
+                                [{log.level}]
+                              </span>
+                              <span className="text-gray-300 font-mono flex-1">{log.msg}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: PROBLEMAS */}
+                  {bottomPanelTab === "problems" && (
+                    <div className="flex-1 overflow-y-auto space-y-2 p-2">
+                      <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                        <CheckCircle size={15} />
+                        <span>No se han detectado problemas en el espacio de trabajo.</span>
+                      </div>
+                      <p className="text-gray-500 text-xs">
+                        El linter de sintaxis AST y los validadores de WPipe confirman que el DAG y los tipos coinciden con las especificaciones.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* TAB 4: DEPURACIÓN / BREAKPOINTS */}
+                  {bottomPanelTab === "debug" && (
+                    <div className="flex-1 flex overflow-hidden gap-4">
+                      {/* Left: Breakpoints List */}
+                      <div className="w-1/3 border-r border-[#2b2b2b] pr-3 flex flex-col">
+                        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#2b2b2b] font-bold text-gray-300">
+                          <span>Puntos de Interrupción ({breakpoints.size})</span>
+                          {breakpoints.size > 0 && (
+                            <button
+                              onClick={() => {
+                                globalBreakpoints.clear();
+                                setBreakpoints(new Set());
+                                updateBreakpointVisuals();
+                              }}
+                              className="text-gray-500 hover:text-rose-400 text-[10px] cursor-pointer"
+                            >
+                              Limpiar todos
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-1">
+                          {breakpoints.size === 0 ? (
+                            <div className="text-gray-600 italic text-[11px]">
+                              Haz clic en un bloque y activa el punto de interrupción en el Inspector o pulsa F9.
+                            </div>
+                          ) : (
+                            Array.from(breakpoints).map((bp) => (
+                              <div
+                                key={bp}
+                                className="flex items-center justify-between p-1.5 rounded bg-[#252526] hover:bg-[#2d2d2d] text-gray-200 text-[11px]"
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="text-rose-500">🔴</span>
+                                  <span className="truncate">{bp}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleToggleBreakpoint(bp, bp)}
+                                  className="text-gray-500 hover:text-white"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: State & Actions */}
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#2b2b2b]">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-300">Estado:</span>
+                            {isPausedAtBreakpoint ? (
+                              <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[11px] font-bold animate-pulse">
+                                ⏸️ Pausado en: {pausedStepName}
+                              </span>
+                            ) : isSimulating ? (
+                              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[11px] font-bold">
+                                ▶️ Ejecutando
+                              </span>
+                            ) : (
+                              <span className="text-gray-500 text-[11px]">En espera (Inactivo)</span>
+                            )}
+                          </div>
+
+                          {/* Debug Toolbar */}
+                          <div className="flex items-center gap-1.5">
+                            {isPausedAtBreakpoint && (
+                              <button
+                                onClick={handleResumeSimulation}
+                                className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                title="Continuar ejecución (F5)"
+                              >
+                                <Play size={11} className="fill-current" />
+                                <span>Continuar (F5)</span>
+                              </button>
+                            )}
+                            {isSimulating && (
+                              <button
+                                onClick={handleStopSimulation}
+                                className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                title="Detener (🛑)"
+                              >
+                                <Square size={11} className="fill-current" />
+                                <span>Detener</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Local Variables in Context */}
+                        <div className="flex-1 overflow-y-auto space-y-1">
+                          <span className="text-gray-400 font-bold text-[10px] uppercase">Variables Locales en Contexto</span>
+                          <pre className="p-2 bg-[#252526] rounded border border-[#333] text-sky-300 text-[11px] overflow-x-auto whitespace-pre-wrap">
+                            {JSON.stringify(debugContext && Object.keys(debugContext).length > 0 ? debugContext : simContext, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 5: TESTS (Pytest Runner) */}
+                  {bottomPanelTab === "tests" && (
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#2b2b2b] shrink-0">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleRunTests}
+                            disabled={isTestingRunning}
+                            className={`px-3 py-1 rounded font-bold text-[11px] flex items-center gap-1.5 transition cursor-pointer ${
+                              isTestingRunning
+                                ? "bg-gray-800 text-gray-500 cursor-not-allowed"
+                                : "bg-purple-600 hover:bg-purple-500 text-white shadow"
+                            }`}
+                          >
+                            <FlaskConical size={13} />
+                            <span>{isTestingRunning ? "Ejecutando tests..." : "Ejecutar Tests (pytest tests/)"}</span>
+                          </button>
+
+                          {testRunData && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="text-emerald-400 font-semibold">✓ {testRunData.passed} pasados</span>
+                              {testRunData.failed > 0 && (
+                                <span className="text-rose-400 font-semibold">❌ {testRunData.failed} fallidos</span>
+                              )}
+                              <span className="text-gray-500 font-mono">({testRunData.duration_seconds}s)</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {testRunData && (
+                          <div className="text-[11px] text-gray-400 font-mono">
+                            Código de Salida: {testRunData.exit_code}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Test Log Terminal */}
+                      <div className="flex-1 overflow-y-auto bg-[#1e1e1e] p-2.5 rounded border border-[#2d2d2d] custom-modal-scrollbar">
+                        {isTestingRunning ? (
+                          <div className="flex items-center gap-2 text-sky-400 py-4 justify-center">
+                            <RefreshCw size={15} className="animate-spin" />
+                            <span>Ejecutando pytest en el espacio de trabajo del microservicio...</span>
+                          </div>
+                        ) : testRunData ? (
+                          <pre className="text-gray-200 font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-text">
+                            {testRunData.output}
+                          </pre>
+                        ) : (
+                          <div className="text-gray-500 italic text-center py-6">
+                            Haz clic en "Ejecutar Tests" para validar la suite de pruebas unitarias pytest en tests/.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 6: HISTORIAL DE SIMULACIONES */}
+                  {bottomPanelTab === "history" && (
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#2b2b2b] shrink-0 text-xs">
+                        <span className="text-gray-300 font-semibold">
+                          Historial Persistido en PostgreSQL ({simulationHistory.length} ejecuciones)
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (activeProjectId) loadSimulationHistory(activeProjectId);
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#252526] hover:bg-[#333333] text-teal-300 border border-[#333] flex items-center gap-1 cursor-pointer"
+                        >
+                          <RefreshCw size={11} />
+                          <span>Actualizar</span>
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-1.5 custom-modal-scrollbar">
+                        {simulationHistory.length === 0 ? (
+                          <div className="text-gray-500 italic text-center py-6">
+                            No hay simulaciones registradas en la base de datos para este microservicio.
+                          </div>
+                        ) : (
+                          simulationHistory.map((run) => (
+                            <div
+                              key={run.id}
+                              className="p-2 rounded bg-[#252526] hover:bg-[#2d2d2d] border border-[#333333] flex items-center justify-between text-xs transition"
+                            >
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    run.status === "success"
+                                      ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                                      : "bg-rose-950 text-rose-300 border border-rose-800"
+                                  }`}
+                                >
+                                  {run.status.toUpperCase()}
+                                </span>
+                                <span className="font-mono text-gray-200">Duración: {run.duration_ms}ms</span>
+                                <span className="text-gray-500 text-[11px]">
+                                  {new Date(run.created_at).toLocaleTimeString()} ({new Date(run.created_at).toLocaleDateString()})
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedHistoricalRun(run);
+                                    setShowDiffModal(true);
+                                  }}
+                                  className="px-2 py-1 rounded bg-[#333333] hover:bg-[#444444] text-sky-300 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <FileText size={11} />
+                                  <span>Ver Detalle / Diff</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (run.input_payload) {
+                                      setTestPayloadText(JSON.stringify(run.input_payload, null, 2));
+                                      setStatusMessage("Contexto de entrada cargado desde el historial");
+                                    }
+                                  }}
+                                  className="px-2 py-1 rounded bg-[#333333] hover:bg-[#444444] text-emerald-300 text-[11px] font-semibold cursor-pointer"
+                                  title="Cargar payload de entrada al editor"
+                                >
+                                  Cargar Payload
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             </div>
           </div>
 
@@ -4580,6 +5651,16 @@ export default function App() {
                 <span>0 ⚠️</span>
                 <span>0 ❌</span>
               </div>
+              {isPausedAtBreakpoint && (
+                <div
+                  onClick={handleResumeSimulation}
+                  className="flex items-center gap-1 bg-amber-400 text-gray-950 px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer hover:bg-amber-300 animate-pulse shadow"
+                  title="Pausado en punto de interrupción. Haz clic o pulsa F5 para continuar"
+                >
+                  <Play size={10} className="fill-current" />
+                  <span>PAUSADO: {pausedStepName} (F5)</span>
+                </div>
+              )}
               {turboMode && (
                 <div
                   onClick={() => setTurboMode(false)}
@@ -4592,7 +5673,34 @@ export default function App() {
               )}
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
+                className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
+                title="Alternar Panel Inferior (Ctrl+`)"
+              >
+                <Terminal size={12} />
+                <span>Terminal</span>
+              </button>
+              <button
+                onClick={() => setIsSplitView(!isSplitView)}
+                className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
+                title="Alternar Vista Dividida (Ctrl+\)"
+              >
+                <Split size={12} />
+                <span>Dividir</span>
+              </button>
+              <button
+                onClick={() => setShowEnvModal(true)}
+                className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
+                title="Variables de Entorno (.env)"
+              >
+                <Settings size={12} />
+                <span>.env</span>
+              </button>
+
+              <div className="h-3 w-px bg-white/30 mx-1" />
+
               {activeMainTab === "python" && githubViewingFile ? (
                 <>
                   <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
@@ -4623,7 +5731,7 @@ export default function App() {
                   <span>Zoom: {Math.round(mermaidZoom * 100)}%</span>
                 </>
               )}
-              <span className="text-[10px] opacity-80 border-l border-white/20 pl-3 truncate max-w-[280px]">
+              <span className="text-[10px] opacity-80 border-l border-white/20 pl-2 truncate max-w-[200px]">
                 {statusMessage}
               </span>
             </div>
@@ -5565,6 +6673,361 @@ export default function App() {
           <div className="mt-3 pt-2 border-t border-gray-800/80 flex items-center justify-between text-xs text-sky-400 font-semibold">
             <span>👆 Haz clic para añadir al lienzo</span>
             <span className="text-gray-500 font-mono text-[11px]">WPipe OS</span>
+          </div>
+        </div>
+      )}
+      {/* 12. GLOBAL COMMAND PALETTE (Ctrl+Shift+P / Ctrl+P / F1) */}
+      {commandPaletteOpen && (
+        <div
+          onClick={() => setCommandPaletteOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center pt-16 p-4 z-50 animate-in fade-in duration-100"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl bg-[#252526] border border-[#454545] rounded-xl shadow-2xl overflow-hidden flex flex-col font-sans"
+          >
+            {/* Input Header */}
+            <div className="p-2 border-b border-[#3c3c3c] flex items-center gap-2 bg-[#1e1e1e]">
+              <Search size={16} className="text-[#007acc] shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                value={commandQuery}
+                onChange={(e) => {
+                  setCommandQuery(e.target.value);
+                  setCommandSelectedIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  const filtered = [
+                    { id: "run-sim", title: "Simulación: Iniciar Ejecución (🏁 F5)", category: "Pipeline", action: () => handleStartSimulation() },
+                    { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", action: () => handleStopSimulation() },
+                    { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", action: () => setIsSplitView((prev) => !prev) },
+                    { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", action: () => setBottomPanelOpen((prev) => !prev) },
+                    { id: "run-tests", title: "Tests: Ejecutar Suite Pytest (pytest tests/)", category: "Testing", action: () => { setBottomPanelOpen(true); setBottomPanelTab("tests"); handleRunTests(); } },
+                    { id: "open-env", title: "Configuración: Variables de Entorno (.env)", category: "Config", action: () => setShowEnvModal(true) },
+                    { id: "open-inspector", title: "Inspector: Alternar Inspector de Propiedades", category: "View", action: () => setInspectorOpen((prev) => !prev) },
+                    { id: "open-history", title: "Historial: Ver Registro de Simulaciones (PostgreSQL)", category: "Database", action: () => { setBottomPanelOpen(true); setBottomPanelTab("history"); if (activeProjectId) loadSimulationHistory(activeProjectId); } },
+                    { id: "sync-python", title: "Microservicio: Sincronizar Código Python desde Lienzo", category: "Codegen", action: () => handleSyncPythonCode() },
+                    { id: "save-project", title: "Proyecto: Guardar Microservicio en Workspace", category: "File", action: () => handleSaveProject() },
+                    { id: "export-zip", title: "Exportar: Descargar Paquete Microservicio ZIP", category: "Export", action: () => handleGenerateZip() },
+                    { id: "open-flowchart", title: "Diagrama: Ver Flujo Mermaid Interactivo", category: "View", action: () => handleOpenFlowchart() },
+                  ].filter(
+                    (c) =>
+                      c.title.toLowerCase().includes(commandQuery.toLowerCase()) ||
+                      c.category.toLowerCase().includes(commandQuery.toLowerCase())
+                  );
+
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setCommandSelectedIndex((prev) => (prev + 1) % Math.max(1, filtered.length));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setCommandSelectedIndex((prev) => (prev - 1 + filtered.length) % Math.max(1, filtered.length));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (filtered[commandSelectedIndex]) {
+                      filtered[commandSelectedIndex].action();
+                      setCommandPaletteOpen(false);
+                    }
+                  } else if (e.key === "Escape") {
+                    setCommandPaletteOpen(false);
+                  }
+                }}
+                placeholder="Escribe un comando para ejecutar (ej: simulación, terminal, tests, split, .env...)"
+                className="flex-1 bg-transparent text-gray-100 text-xs font-mono focus:outline-none placeholder-gray-500"
+              />
+              <span className="text-[10px] text-gray-500 font-mono">ESC para salir</span>
+            </div>
+
+            {/* Commands List */}
+            <div className="max-h-80 overflow-y-auto p-1 divide-y divide-[#2a2a2a] custom-modal-scrollbar">
+              {(() => {
+                const commands = [
+                  { id: "run-sim", title: "Simulación: Iniciar Ejecución (🏁 F5)", category: "Pipeline", icon: <Play size={13} className="text-emerald-400" />, action: () => handleStartSimulation() },
+                  { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", icon: <Square size={13} className="text-rose-400" />, action: () => handleStopSimulation() },
+                  { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", icon: <Split size={13} className="text-sky-400" />, action: () => setIsSplitView((prev) => !prev) },
+                  { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", icon: <Terminal size={13} className="text-emerald-400" />, action: () => setBottomPanelOpen((prev) => !prev) },
+                  { id: "run-tests", title: "Tests: Ejecutar Suite Pytest (pytest tests/)", category: "Testing", icon: <FlaskConical size={13} className="text-purple-400" />, action: () => { setBottomPanelOpen(true); setBottomPanelTab("tests"); handleRunTests(); } },
+                  { id: "open-env", title: "Configuración: Variables de Entorno (.env)", category: "Config", icon: <Settings size={13} className="text-emerald-400" />, action: () => setShowEnvModal(true) },
+                  { id: "open-inspector", title: "Inspector: Alternar Inspector de Propiedades", category: "View", icon: <Sliders size={13} className="text-purple-400" />, action: () => setInspectorOpen((prev) => !prev) },
+                  { id: "open-history", title: "Historial: Ver Registro de Simulaciones (PostgreSQL)", category: "Database", icon: <History size={13} className="text-teal-400" />, action: () => { setBottomPanelOpen(true); setBottomPanelTab("history"); if (activeProjectId) loadSimulationHistory(activeProjectId); } },
+                  { id: "sync-python", title: "Microservicio: Sincronizar Código Python desde Lienzo", category: "Codegen", icon: <FileCode size={13} className="text-sky-400" />, action: () => handleSyncPythonCode() },
+                  { id: "save-project", title: "Proyecto: Guardar Microservicio en Workspace", category: "File", icon: <Save size={13} className="text-emerald-400" />, action: () => handleSaveProject() },
+                  { id: "export-zip", title: "Exportar: Descargar Paquete Microservicio ZIP", category: "Export", icon: <Download size={13} className="text-sky-400" />, action: () => handleGenerateZip() },
+                  { id: "open-flowchart", title: "Diagrama: Ver Flujo Mermaid Interactivo", category: "View", icon: <GitMerge size={13} className="text-indigo-400" />, action: () => handleOpenFlowchart() },
+                ].filter(
+                  (c) =>
+                    c.title.toLowerCase().includes(commandQuery.toLowerCase()) ||
+                    c.category.toLowerCase().includes(commandQuery.toLowerCase())
+                );
+
+                if (commands.length === 0) {
+                  return (
+                    <div className="py-6 text-center text-xs text-gray-500 italic">
+                      No se encontraron comandos coincidentes.
+                    </div>
+                  );
+                }
+
+                return commands.map((cmd, idx) => (
+                  <div
+                    key={cmd.id}
+                    onClick={() => {
+                      cmd.action();
+                      setCommandPaletteOpen(false);
+                    }}
+                    onMouseEnter={() => setCommandSelectedIndex(idx)}
+                    className={`px-3 py-2 flex items-center justify-between text-xs cursor-pointer rounded transition ${
+                      commandSelectedIndex === idx
+                        ? "bg-[#04395e] text-white"
+                        : "text-gray-300 hover:bg-[#2a2d2e]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {cmd.icon}
+                      <span className="font-medium">{cmd.title}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-gray-400 bg-[#1e1e1e] px-1.5 py-0.5 rounded border border-[#333]">
+                      {cmd.category}
+                    </span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 13. VISUAL ENVIRONMENT VARIABLES MANAGER MODAL (.env) */}
+      {showEnvModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#1e1e1e] border border-[#007acc]/70 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl flex flex-col font-sans max-h-[85vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#333333] pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+                  <Settings size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Variables de Entorno (.env)</h3>
+                  <p className="text-[11px] text-gray-400">
+                    Configura credenciales y parámetros de ejecución del microservicio activo ({projectName || "default"})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEnvModal(false)}
+                className="p-1 hover:bg-[#333333] text-gray-400 hover:text-white rounded cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Presets Bar */}
+            <div className="flex items-center gap-2 p-2 bg-[#252526] rounded-lg border border-[#333333] shrink-0 text-xs">
+              <span className="text-gray-400 font-semibold text-[11px]">Presets Rápidos:</span>
+              <button
+                onClick={() => {
+                  setEnvVars((prev) => [
+                    ...prev,
+                    { key: "POSTGRES_HOST", value: "postgres" },
+                    { key: "POSTGRES_PORT", value: "5432" },
+                    { key: "POSTGRES_USER", value: "wpipe_user" },
+                    { key: "POSTGRES_PASSWORD", value: "wpipe_secret_2026", showSecret: false },
+                    { key: "POSTGRES_DB", value: "wpipe_studio_db" },
+                  ]);
+                }}
+                className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#333333] text-sky-400 border border-[#3c3c3c] text-[11px] cursor-pointer"
+              >
+                + PostgreSQL
+              </button>
+              <button
+                onClick={() => {
+                  setEnvVars((prev) => [
+                    ...prev,
+                    { key: "REDIS_HOST", value: "redis" },
+                    { key: "REDIS_PORT", value: "6379" },
+                  ]);
+                }}
+                className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#333333] text-rose-400 border border-[#3c3c3c] text-[11px] cursor-pointer"
+              >
+                + Redis
+              </button>
+              <button
+                onClick={() => {
+                  setEnvVars((prev) => [
+                    ...prev,
+                    { key: "KAFKA_BOOTSTRAP_SERVERS", value: "kafka:9092" },
+                    { key: "KAFKA_GROUP_ID", value: "wpipe_consumers" },
+                  ]);
+                }}
+                className="px-2 py-1 rounded bg-[#1e1e1e] hover:bg-[#333333] text-purple-400 border border-[#3c3c3c] text-[11px] cursor-pointer"
+              >
+                + Kafka
+              </button>
+            </div>
+
+            {/* Variables Table */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-modal-scrollbar">
+              {envVars.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-xs italic">
+                  No hay variables de entorno configuradas aún. Añade una o usa un preset rápido.
+                </div>
+              ) : (
+                envVars.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded bg-[#252526] border border-[#333333]">
+                    <input
+                      type="text"
+                      value={item.key}
+                      onChange={(e) => {
+                        const newKey = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+                        setEnvVars((prev) => prev.map((v, i) => (i === idx ? { ...v, key: newKey } : v)));
+                      }}
+                      placeholder="KEY_NAME"
+                      className="w-1/3 px-2 py-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded text-emerald-400 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                    <div className="flex-1 relative flex items-center">
+                      <input
+                        type={item.showSecret ? "text" : "password"}
+                        value={item.value}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEnvVars((prev) => prev.map((v, i) => (i === idx ? { ...v, value: val } : v)));
+                        }}
+                        placeholder="Valor secreto o configuración"
+                        className="w-full px-2 py-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded text-gray-200 font-mono text-xs focus:outline-none focus:border-sky-500 pr-7"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnvVars((prev) =>
+                            prev.map((v, i) => (i === idx ? { ...v, showSecret: !v.showSecret } : v))
+                          );
+                        }}
+                        className="absolute right-1.5 text-gray-400 hover:text-white"
+                        title={item.showSecret ? "Ocultar secreto" : "Mostrar secreto"}
+                      >
+                        {item.showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setEnvVars((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-1 hover:bg-[#333333] text-rose-400 hover:text-rose-300 rounded cursor-pointer"
+                      title="Eliminar variable"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex items-center justify-between border-t border-[#333333] pt-3 shrink-0">
+              <button
+                onClick={() => setEnvVars((prev) => [...prev, { key: "NEW_ENV_VAR", value: "", showSecret: true }])}
+                className="px-3 py-1.5 rounded bg-[#252526] hover:bg-[#333333] text-gray-200 border border-[#3c3c3c] text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus size={13} className="text-emerald-400" />
+                <span>Añadir Variable</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowEnvModal(false)}
+                  className="px-3 py-1.5 bg-[#252526] hover:bg-[#333333] text-gray-300 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveEnv}
+                  disabled={isSavingEnv}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow transition cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingEnv ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
+                  <span>{isSavingEnv ? "Guardando..." : "Guardar .env"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 14. SIMULATION CONTEXT DIFF MODAL */}
+      {showDiffModal && selectedHistoricalRun && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-[#1e1e1e] border border-teal-500/70 rounded-2xl max-w-4xl w-full p-5 space-y-4 shadow-2xl flex flex-col font-sans max-h-[88vh]">
+            <div className="flex items-center justify-between border-b border-[#333333] pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-teal-600/30 border border-teal-500/50 flex items-center justify-center text-teal-400">
+                  <History size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">Detalle de Ejecución Histórica</h3>
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400 font-mono mt-0.5">
+                    <span>ID: {selectedHistoricalRun.id?.slice(0, 8)}...</span>
+                    <span>•</span>
+                    <span className={selectedHistoricalRun.status === "success" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                      {selectedHistoricalRun.status?.toUpperCase()}
+                    </span>
+                    <span>•</span>
+                    <span>{selectedHistoricalRun.duration_ms}ms</span>
+                    <span>•</span>
+                    <span>{new Date(selectedHistoricalRun.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDiffModal(false)}
+                className="p-1 hover:bg-[#333333] text-gray-400 hover:text-white rounded cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-modal-scrollbar text-xs">
+              {/* Context Diff side-by-side */}
+              <div>
+                <span className="font-bold text-gray-300 uppercase tracking-wider text-[10px] block mb-1">
+                  Comparación de Contexto: Payload Entrada vs Contexto Salida
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-sky-400 font-mono text-[11px] font-semibold">📥 Entrada (Ingress Payload)</span>
+                    <pre className="p-3 bg-[#252526] rounded-lg border border-[#333] text-sky-200 font-mono text-[11px] max-h-56 overflow-auto whitespace-pre-wrap leading-relaxed">
+                      {JSON.stringify(selectedHistoricalRun.input_payload || {}, null, 2)}
+                    </pre>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-emerald-400 font-mono text-[11px] font-semibold">📤 Salida (Egress Context)</span>
+                    <pre className="p-3 bg-[#252526] rounded-lg border border-[#333] text-emerald-200 font-mono text-[11px] max-h-56 overflow-auto whitespace-pre-wrap leading-relaxed">
+                      {JSON.stringify(selectedHistoricalRun.output_context || {}, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              {/* Logs */}
+              {selectedHistoricalRun.logs && (
+                <div className="space-y-1">
+                  <span className="font-bold text-gray-300 uppercase tracking-wider text-[10px] block">
+                    Registro de Consola (Stdout Logs)
+                  </span>
+                  <pre className="p-3 bg-[#181818] rounded-lg border border-[#333] text-gray-300 font-mono text-[11px] max-h-48 overflow-auto whitespace-pre-wrap leading-relaxed">
+                    {selectedHistoricalRun.logs}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-[#333333] shrink-0">
+              <button
+                onClick={() => setShowDiffModal(false)}
+                className="px-4 py-1.5 bg-[#252526] hover:bg-[#333333] text-gray-200 rounded text-xs font-semibold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

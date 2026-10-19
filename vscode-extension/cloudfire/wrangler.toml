@@ -2,6 +2,10 @@ name = "wpipe-license-server"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 
+routes = [
+  { pattern = "api.wisrovi.dev/*", zone_name = "wisrovi.dev" }
+]
+
 # Environment Variables
 [vars]
 ENVIRONMENT = "production"
@@ -13,14 +17,9 @@ LEASE_DURATION_DAYS = "30"
 [[d1_databases]]
 binding = "DB"
 database_name = "wpipe_licenses"
-database_id = "wpipe-licenses-db-id"
+database_id = "44bf0372-587d-446d-84c3-1153c4183b99"
 
-# R2 Zero-Egress Storage Bucket Binding for Daemon Binaries
-[[r2_buckets]]
-binding = "DOWNLOADS"
-bucket_name = "wpipe-releases"
-
-# Custom Domain Route Configuration (Uncomment when deploying to your Cloudflare zone)
-# [routes]
-# pattern = "api.wisrovi.dev/*"
-# zone_name = "wisrovi.dev"
+# R2 Zero-Egress Storage Bucket Binding for Daemon Binaries (Enable once R2 is activated in dashboard)
+# [[r2_buckets]]
+# binding = "DOWNLOADS"
+# bucket_name = "wpipe-releases"

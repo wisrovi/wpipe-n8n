@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.services.catalog import catalog_service, CatalogEntry
+
+from app.services.catalog import CatalogEntry, catalog_service
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 

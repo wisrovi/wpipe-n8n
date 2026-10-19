@@ -9,6 +9,8 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import * as child_process from "child_process";
+import * as crypto from "crypto";
+import * as https from "https";
 import { EngineIpcClient } from "./ipcClient";
 
 export class DaemonManager {
@@ -99,19 +101,88 @@ export class DaemonManager {
       async (progress) => {
         try {
           fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-          progress.report({ increment: 50, message: "Conectando con downloads.wisrovi.dev..." });
+          progress.report({ increment: 10, message: "Obteniendo manifiesto de versiones..." });
 
+          const manifestUrl = "https://api.wisrovi.dev/v1/downloads/latest";
+          const manifestRes = await fetch(manifestUrl);
+          if (!manifestRes.ok) {
+            throw new Error(`Error HTTP al consultar manifiesto: ${manifestRes.status} ${manifestRes.statusText}`);
+          }
+          const manifest = (await manifestRes.json()) as any;
+
+          const archKey = os.arch() === "arm64" ? "arm64" : "x64";
+          const osKey = os.platform() === "darwin" ? "darwin" : os.platform() === "win32" ? "windows" : "linux";
+          const targetKey = `${osKey}-${archKey}`;
+
+          const entry = manifest.binaries?.[targetKey];
+          if (!entry || !entry.binary_url) {
+            throw new Error(`No se encontró un binario disponible para la arquitectura ${targetKey}`);
+          }
+
+          progress.report({ increment: 30, message: `Descargando binario (${entry.binary_filename || "wpipe-engine"})...` });
+
+          const binaryRes = await fetch(entry.binary_url);
+          if (!binaryRes.ok) {
+            throw new Error(`Error HTTP al descargar binario: ${binaryRes.status} ${binaryRes.statusText}`);
+          }
+
+          const tmpPath = `${targetPath}.tmp`;
+          const fileStream = fs.createWriteStream(tmpPath);
+          const hasher = crypto.createHash("sha256");
+
+          const reader = binaryRes.body?.getReader();
+          if (!reader) {
+            throw new Error("El cuerpo de la respuesta de descarga está vacío");
+          }
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            fileStream.write(value);
+            hasher.update(value);
+          }
+          fileStream.end();
+          await new Promise<void>((resolve, reject) => {
+            fileStream.on("finish", () => resolve());
+            fileStream.on("error", reject);
+          });
+
+          progress.report({ increment: 30, message: "Verificando integridad criptográfica SHA-256..." });
+          const calculatedSha256 = hasher.digest("hex");
+          const expectedSha256 = entry.binary_sha256;
+
+          if (expectedSha256 && calculatedSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
+            if (fs.existsSync(tmpPath)) {
+              fs.unlinkSync(tmpPath);
+            }
+            throw new Error(
+              `Fallo de verificación de integridad SHA-256. Esperado: ${expectedSha256}, Obtenido: ${calculatedSha256}`
+            );
+          }
+
+          if (fs.existsSync(targetPath)) {
+            fs.unlinkSync(targetPath);
+          }
+          fs.renameSync(tmpPath, targetPath);
+          fs.chmodSync(targetPath, 0o755);
+
+          progress.report({ increment: 30, message: "Instalación completada y verificada." });
+          vscode.window.showInformationMessage(
+            `Motor WPipe Engine instalado con éxito (SHA-256 verificado: ${calculatedSha256.slice(0, 8)}...).`
+          );
+          return targetPath;
+        } catch (err: any) {
           // In offline development fallback or mock, create executable shell/python wrapper
           const devPath = path.resolve(__dirname, "../../daemon_os/wpipe_engine/main.py");
           if (fs.existsSync(devPath)) {
             const launcher = `#!/bin/sh\nexec python3 "${devPath}" "$@"\n`;
             fs.writeFileSync(targetPath, launcher, { mode: 0o755 });
+            vscode.window.showWarningMessage(
+              `Descarga fallida (${err.message}). Usando launcher de desarrollo local.`
+            );
             return targetPath;
           }
 
-          progress.report({ increment: 100, message: "Instalación completada." });
-          return targetPath;
-        } catch (err: any) {
           vscode.window.showErrorMessage(`Error al descargar wpipe-engine: ${err.message}`);
           return null;
         }

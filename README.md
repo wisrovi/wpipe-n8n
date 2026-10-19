@@ -25,8 +25,12 @@ Si algo falla, no hay ZIP.
 ## Tecnologías y Librerías Principales
 
 - **FastAPI**: Framework web asíncrono de alto rendimiento para la API backend (`/api/v1`).
-- **SQLite (WAL mode)**: Base de datos embebida ligera con pool de conexiones y foreign keys activadas para persistencia multi-tenant (`backend/data/studio.db`).
-- **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`, `UserProfile`, `ProjectDetail`).
+- **Docker Compose**: Orquestación unificada y declarativa para levantar el backend (`wpipe-studio-backend`) y el frontend (`wpipe-studio-frontend`) con reinicio automático y comprobación de salud (`healthcheck`).
+- **Nginx (Alpine)**: Servidor web de producción ligero y de alto rendimiento que sirve los assets estáticos del frontend SPA y actúa como reverse proxy hacia el backend FastAPI (`/api/`) y volumen estático (`/media/`).
+- **Volumen Persistente de Host (`./media`)**: Mapeo compartido (`./media:/app/media` en backend y `./media:/usr/share/nginx/html/media:ro` en frontend) que garantiza que la base de datos SQLite (`studio.db`) y todos los workspaces aislados (`media/workspaces/{owner_id}/{project_id}/`) persistan en el host del usuario sin pérdida de datos.
+- **Autenticación Criptográfica & Control de Sesiones**: Hash seguro de contraseñas con PBKDF2-HMAC-SHA256 (600.000 iteraciones + salt aleatorio) y sesiones autenticadas por Bearer Tokens para aislamiento estricto multi-tenant.
+- **SQLite (WAL mode)**: Base de datos embebida ligera con pool de conexiones thread-safe y foreign keys activadas para persistencia multi-tenant (`media/studio.db`).
+- **Pydantic v2**: Validación de datos estricta y esquemas del IR (`CanvasIR`, `SemanticIR`, `TargetIR`, `UserProfile`, `ProjectDetail`, `AuthTokenResponse`).
 - **React 18 & TypeScript**: Interfaz visual de usuario para el Canvas de diseño de pipelines, visor de código y etapa de simulación.
 - **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0 con serialización completa de workspace.
 - **Lucide React (`lucide-react`)**: Iconografía para la barra superior, categorías, proyectos, avatares y controles de ejecución.
@@ -35,7 +39,7 @@ Si algo falla, no hay ZIP.
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
 - **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
 - **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>93%).
-- **Docker**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
+- **Docker Sandbox**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
 
 ---
 
@@ -99,12 +103,38 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Previsualización incrustada de `README.md` bajo la tabla de directorio.
      - Panel lateral izquierdo de árbol de archivos (`buildFileTree`) con botón de alternancia.
      - Buscador global instantáneo "Go to file" para localizar cualquier archivo del microservicio al escribir su nombre.
-8. **Gestor Multi-Tenant de Microservicios & Login**:
-   - **Sistema de Identidades**: Login y alternancia rápida entre usuarios del sistema (William R., Developer, Guest) y formulario de registro de nuevos usuarios (`/api/v1/auth/*`).
-   - **Aislamiento Físico de Workspaces**: Cada microservicio se genera y persiste en un directorio dedicado en el backend (`backend/data/workspaces/{owner_id}/{project_id}/`). Los archivos nunca se cruzan ni colisionan con otros proyectos ni con otros usuarios.
-   - **Persistencia Multi-Microservicio**: Los usuarios pueden crear tantos microservicios como necesiten, guardar su estado del lienzo y archivos, recargarlos, duplicarlos/clonarlos o eliminarlos.
+8. **Inicio de Sesión Natural, Sesiones Seguras y Gestor Multi-Tenant de Microservicios**:
+   - **Inicio de Sesión Natural y Cierre de Sesión**: Flujo completo de autenticación con usuario y contraseña, hashing criptográfico PBKDF2-HMAC-SHA256, tokens Bearer de sesión y endpoint `/api/v1/auth/logout`.
+   - **Vista Inmediata de Proyectos al Iniciar Sesión**: Al autenticarse, se despliega automáticamente el panel de microservicios ("Mis Microservicios") permitiendo cambiar inmediatamente entre proyectos o crear nuevos.
+   - **Aislamiento Físico en Volumen Media (`./media`)**: Todo el backend y frontend se ejecutan compartiendo el volumen host `./media`. Cada usuario almacena sus microservicios en `media/workspaces/{owner_id}/{project_id}/`, garantizando aislamiento absoluto entre usuarios y persistencia total entre reinicios de contenedores.
+   - **Persistencia Multi-Microservicio**: Creación, guardado en caliente, duplicación/clonación y eliminación de microservicios con un solo clic.
 9. **Lienzo Inicial Hello World con los 11 Bloques**:
    - Al cargar o recargar el lienzo, se precarga automáticamente un flujo simple "Hello World" que demuestra la integración de los 11 bloques (Trigger Ingress, Step HttpRequest, AI Step, User File Step, IF, Parallel con MySQLQuery, IF-ELSE con For, Background con RedisGet, While con NmapScanStep y Cierre de Pipeline Response Cap Egress).
+
+---
+
+## Despliegue con Docker Compose (Recomendado)
+
+Tanto el backend FastAPI como el frontend SPA Nginx se encuentran orquestados en `docker-compose.yml`, compartiendo el volumen `./media` del host:
+
+```bash
+# Construir y levantar backend y frontend en segundo plano
+docker-compose up -d --build
+
+# Verificar estado y salud de los contenedores
+docker-compose ps
+
+# Ver logs en tiempo real
+docker-compose logs -f
+
+# Detener los servicios
+docker-compose down
+```
+
+Una vez levantado:
+- **Frontend SPA**: `http://localhost:5173`
+- **Backend API & Swagger**: `http://localhost:8000/docs`
+- **Volumen Persistente de Host**: `./media/`
 
 ---
 

@@ -1,0 +1,25 @@
+name: wpipe-engine
+base: core22
+version: '1.0.0'
+summary: Native engine and licensing daemon for WPipe Studio
+description: |
+  wpipe-engine is the local-first execution and AST compilation engine for
+  WPipe Studio visual pipelines, providing Ed25519 lease verification and
+  freemium quota enforcement for VS Code and other editors.
+
+grade: stable
+confinement: strict
+
+apps:
+  wpipe-engine:
+    command: bin/wpipe-engine daemon
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+      - home
+
+parts:
+  wpipe-engine:
+    plugin: python
+    source: .

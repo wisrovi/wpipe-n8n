@@ -18,7 +18,11 @@ export async function handleDownloads(request: Request, env: Env): Promise<Respo
       binaries: {
         "linux-x64": {
           filename: "wpipe-engine-linux-x64.tar.gz",
-          url: "https://downloads.wisrovi.dev/wpipe-engine/latest/wpipe-engine-linux-x64.tar.gz",
+          url: "https://api.wisrovi.dev/v1/downloads/linux-x64/wpipe-engine-linux-x64.tar.gz",
+          sha256: "b857bb8fcfb5dbd9857f2efa7eb8704a10d53d62106fd6495f60368335c1d22d",
+          binary_filename: "wpipe-engine",
+          binary_url: "https://api.wisrovi.dev/v1/downloads/linux-x64/wpipe-engine",
+          binary_sha256: "3c4a305fdc6685b3ae3ca0f360d9646a9a0e79b845933e576b02a3f0f339a2b0",
         },
         "linux-arm64": {
           filename: "wpipe-engine-linux-arm64.tar.gz",

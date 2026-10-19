@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.schemas.ir import (
     CanvasIR,
@@ -560,7 +560,7 @@ dev-local:
 \tpython3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     now_iso = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     current_year = now_utc.year
     step_count = len(all_steps)

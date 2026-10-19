@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -107,7 +108,7 @@ class CatalogService:
         # Load official steps
         if self.catalog_path.exists():
             try:
-                with open(self.catalog_path, "r", encoding="utf-8") as f:
+                with open(self.catalog_path, encoding="utf-8") as f:
                     data = json.load(f)
                 for raw in data:
                     name = raw.get("name", "")
@@ -167,7 +168,7 @@ class CatalogService:
         # Load plugin steps
         if self.plugins_path.exists():
             try:
-                with open(self.plugins_path, "r", encoding="utf-8") as f:
+                with open(self.plugins_path, encoding="utf-8") as f:
                     data = json.load(f)
                 for raw in data:
                     ns = raw.get("namespace", "")

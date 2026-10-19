@@ -217,3 +217,92 @@ def test_generate_from_files():
     assert response.headers["content-type"] == "application/zip"
     assert "custom_edited_svc.zip" in response.headers["content-disposition"]
     assert len(response.content) > 0
+
+
+def test_transform_preserves_blocks_after_cblock():
+    """Verify that blocks following a C-block (e.g.
+
+    Condition/Parallel) are preserved in app/pipelines.py.
+    """
+    ir = {
+        "nodes": [
+            {
+                "id": "node_1",
+                "type": "default",
+                "position": {"x": 0, "y": 0},
+                "data": {"label": "Trigger", "node_type": "trigger", "trigger_type": "api", "trigger_param": "/run"},
+            },
+            {
+                "id": "node_2",
+                "type": "default",
+                "position": {"x": 0, "y": 50},
+                "data": {"label": "HttpRequest", "node_type": "step", "namespace": "wpipe_steps.connectivity", "func_name": "HttpRequest"},
+            },
+            {
+                "id": "node_3",
+                "type": "default",
+                "position": {"x": 0, "y": 100},
+                "data": {"label": "IF", "node_type": "condition", "condition_expression": "status_code == 200"},
+            },
+            {
+                "id": "node_4",
+                "type": "default",
+                "position": {"x": 20, "y": 150},
+                "data": {"label": "StepInIF", "node_type": "step", "parent_id": "node_3", "slot_type": "if_body", "namespace": "wpipe_steps.database", "func_name": "MySQLQuery"},
+            },
+            {
+                "id": "node_5",
+                "type": "default",
+                "position": {"x": 0, "y": 200},
+                "data": {"label": "StepAfterIF", "node_type": "step", "namespace": "wpipe_steps.network", "func_name": "NmapScanStep"},
+            },
+        ],
+        "edges": [
+            {"id": "e1", "source": "node_1", "target": "node_2"},
+            {"id": "e2", "source": "node_2", "target": "node_3"},
+            {"id": "e3", "source": "node_3", "target": "node_4"},
+            {"id": "e4", "source": "node_4", "target": "node_5"},
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    }
+    response = client.post("/api/v1/pipeline/transform", json=ir)
+    assert response.status_code == 200
+    res = response.json()
+    pipe_file = next(f for f in res["files"] if f["path"] == "app/pipelines.py")
+    content = pipe_file["content"]
+    assert "HttpRequest()" in content
+    assert "Condition(" in content
+    assert "MySQLQuery()" in content
+    # Crucial assertion: StepAfterIF must NOT be lost!
+    assert "NmapScanStep()" in content
+
+
+def test_transform_microservice_makefile():
+    """Verify that Makefile includes container and docker-compose lifecycle targets."""
+    ir = {
+        "nodes": [
+            {
+                "id": "node_1",
+                "type": "default",
+                "position": {"x": 0, "y": 0},
+                "data": {"label": "Trigger", "node_type": "trigger", "trigger_type": "api", "trigger_param": "/run"},
+            }
+        ],
+        "edges": [],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    }
+    response = client.post("/api/v1/pipeline/transform", json=ir)
+    assert response.status_code == 200
+    res = response.json()
+    makefile = next(f for f in res["files"] if f["path"] == "Makefile")
+    content = makefile["content"]
+    assert "start:" in content
+    assert "docker-compose up -d --build" in content
+    assert "stop:" in content
+    assert "docker-compose down" in content
+    assert "status:" in content
+    assert "docker-compose ps" in content
+    assert "logs:" in content
+    assert "docker-compose logs -f" in content
+    assert "test:" in content
+    assert "docker-compose run --rm microservice pytest" in content

@@ -306,3 +306,51 @@ def test_transform_microservice_makefile():
     assert "docker-compose logs -f" in content
     assert "test:" in content
     assert "docker-compose run --rm microservice pytest" in content
+
+
+def test_transform_with_pipeline_response():
+    """Verify that a pipeline with an egress Response node customizes main.py correctly."""
+    ir = {
+        "nodes": [
+            {
+                "id": "node_1",
+                "type": "default",
+                "position": {"x": 0, "y": 0},
+                "data": {"label": "Trigger", "node_type": "trigger", "trigger_type": "api", "trigger_param": "/run"},
+            },
+            {
+                "id": "node_2",
+                "type": "default",
+                "position": {"x": 0, "y": 100},
+                "data": {"label": "HttpRequest", "node_type": "step", "namespace": "wpipe_steps.connectivity", "func_name": "HttpRequest"},
+            },
+            {
+                "id": "node_3",
+                "type": "default",
+                "position": {"x": 0, "y": 200},
+                "data": {
+                    "label": "Response Egress",
+                    "node_type": "response",
+                    "response_type": "file_export",
+                    "response_param": "audit_output.json",
+                },
+            },
+        ],
+        "edges": [
+            {"id": "e_1_2", "source": "node_1", "target": "node_2"},
+            {"id": "e_2_3", "source": "node_2", "target": "node_3"},
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    }
+    response = client.post("/api/v1/pipeline/transform", json=ir)
+    assert response.status_code == 200
+    res = response.json()
+
+    main_py = next(f for f in res["files"] if f["path"] == "app/main.py")
+    assert "audit_output.json" in main_py["content"]
+    assert "exported_to" in main_py["content"]
+
+    pipe_py = next(f for f in res["files"] if f["path"] == "app/pipelines.py")
+    assert "HttpRequest()" in pipe_py["content"]
+    assert "Response" not in pipe_py["content"]
+

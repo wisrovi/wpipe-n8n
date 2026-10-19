@@ -221,3 +221,6 @@ __marimo__/
 
 # Superpowers scratch workspaces (SDD ledger, briefs, review packages)
 .superpowers/
+
+# Studio local runtime workspaces and databases
+backend/data/

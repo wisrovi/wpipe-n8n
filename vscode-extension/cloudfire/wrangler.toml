@@ -19,7 +19,7 @@ binding = "DB"
 database_name = "wpipe_licenses"
 database_id = "44bf0372-587d-446d-84c3-1153c4183b99"
 
-# R2 Zero-Egress Storage Bucket Binding for Daemon Binaries (Enable once R2 is activated in dashboard)
-# [[r2_buckets]]
-# binding = "DOWNLOADS"
-# bucket_name = "wpipe-releases"
+# R2 Zero-Egress Storage Bucket Binding for Daemon Binaries
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "wpipe-releases"

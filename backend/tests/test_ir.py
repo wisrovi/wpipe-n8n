@@ -1,17 +1,18 @@
 import pytest
 from pydantic import ValidationError
+
 from app.schemas.ir import (
+    CanvasEdge,
     CanvasIR,
     CanvasNode,
-    CanvasEdge,
+    ContextContract,
     NodeData,
     Position,
-    StepOrigin,
-    ContextContract,
     SemanticIR,
     SemanticStep,
-    TargetIR,
+    StepOrigin,
     TargetFile,
+    TargetIR,
 )
 
 

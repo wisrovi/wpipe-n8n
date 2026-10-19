@@ -30,6 +30,7 @@ Si algo falla, no hay ZIP.
 - **Blockly (`blockly`)**: Motor de programación visual basado en bloques ensamblables, adaptado a la distribución visual de Scratux 3.0.
 - **Lucide React (`lucide-react`)**: Iconografía para la barra superior, categorías y controles de ejecución.
 - **Mermaid & @xyflow/react**: Visualización de grafos dirigidos (DAG) y arquitectura de pipelines.
+- **PrismJS (`prismjs`)**: Motor de resaltado de sintaxis en tiempo real para Python, YAML, Dockerfile, Makefile, Bash y JSON con tema Tomorrow Night.
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
 - **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
 - **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>90%).
@@ -61,9 +62,10 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - ⏳ **Segundo Plano (Background)**: Bloque de ejecución asíncrona no bloqueante en hilo secundario (`Background(step=...)`).
 4. **Área Central de Bloques (Blockly Canvas)**:
    - Espacio de trabajo infinito con permanencia en DOM (no se destruye al alternar pestañas).
+   - **Arrastre panorámico libre del lienzo (`move.drag` & `scrollbars`)**: el usuario puede hacer clic en cualquier área vacía del fondo y arrastrar para encuadrar y explorar el pipeline cómodamente, sin depender únicamente de mover bloques individuales.
    - **Colapsado individual directo en cada bloque (`[-]` / `[+]`)**: cada bloque del lienzo dispone de un botón visible e interactivo en su cabecera para colapsarse sobre sí mismo en una fila compacta informativa, además de soportar doble-clic en el bloque para alternar su estado.
    - **Inserción y auto-conexión inteligente**: al hacer clic sobre cualquier bloque en la paleta lateral, el bloque se posiciona de forma visible en el área de trabajo o se conecta automáticamente al final de la cadena de ejecución o al bloque seleccionado.
-   - Barra de herramientas flotante sobre el lienzo con botones rápidos: Centrar, Colapsar todo, Expandir todo, Deshacer, Limpiar y Guía FAQ.
+   - **Barra de herramientas flotante**: botones rápidos para Centrar lienzo (`scrollCenter()`), Ajustar vista (`zoomToFit()`), Colapsar todo, Expandir todo, Deshacer, Limpiar y Guía FAQ, junto a un indicador interactivo de arrastre.
 5. **Pestaña Dedicada de Simulación & Depuración (Simulation Stage)**:
    - Laboratorio de pruebas a pantalla completa (100% del ancho para máxima legibilidad).
    - Controles de ejecución: **Bandera Verde** (🏁 Run), **Octágono Rojo** (🛑 Stop) y Reinicio.
@@ -80,7 +82,10 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - Banner de commit estilo GitHub con autor, mensaje de commit, hash y badge de verificación.
      - Vista de tabla de directorio con iconos tipados (🐍 Python, 🐳 Docker, ⚙️ Config/TOML, 📝 Markdown, 💻 Shell script), commit message por archivo, tamaños y enlace `..` para subir de carpeta.
      - Visor de archivos (Blob viewer) interactivo con canal izquierdo de números de línea, selector de modo Raw, botones para copiar y descargar el archivo individual.
-     - **Edición en Navegador**: Botón para editar cualquier archivo generado directamente en el navegador con un editor de código oscuro y botón de `Guardar Cambios (💾)` que actualiza el microservicio en memoria.
+     - **Resaltado de Sintaxis en Tiempo Real (PrismJS)**: coloreado de código para Python (imports, clases, decoradores, funciones), Dockerfile, Makefile, YAML, Bash y JSON.
+     - **Edición en Navegador**: Botón para editar cualquier archivo generado directamente en el navegador con soporte para tabulación (4 espacios), números de línea sincronizados e indicador visual de archivos modificados (`Editado`) tanto en la tabla como en el visor y árbol de archivos.
+     - **Makefile Orientado a Microservicio Docker**: Comandos listos para producción (`make start` con `docker-compose up -d --build`, `make stop`, `make restart`, `make status`, `make logs`, `make test`, `make build`, `make shell`, `make clean`).
+     - **Resolución Completa de Pipelines (`pipelines.py`)**: Algoritmo topológico jerárquico con `get_root_ancestor_id` y `order_children_for_slot` que garantiza que los pasos posteriores a bloques de control (C-blocks: Condition, For, While, Parallel, Background) nunca se pierdan en el código generado.
      - **Selector Rápido de Imagen Base Docker**: Barra interactiva sobre `Dockerfile` para alternar entre presets (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) o ingresar tags personalizados con reemplazo reactivo de la directiva `FROM`.
      - **Generación Automática de `docker-compose.yml` y `__init__.py`**: Incluye orquestación Docker con healthcheck HTTP y archivos `__init__.py` estructurados con versiones y exports.
      - **Descarga de Paquete (.zip)**: Endpoint `/api/v1/pipeline/generate-from-files` que preserva las ediciones manuales del usuario en el archivo ZIP descargado.

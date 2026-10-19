@@ -224,3 +224,5 @@ __marimo__/
 
 # Studio local runtime workspaces and databases
 backend/data/
+media/*
+!media/.gitkeep

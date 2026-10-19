@@ -1,0 +1,31 @@
+{
+  "name": "Demo Pipeline",
+  "version": "1.0.0",
+  "description": "Visual pipeline designed with WPipe Studio inside VS Code",
+  "steps": [
+    {
+      "id": "step_1",
+      "type": "ExtractDataStep",
+      "name": "Extract Raw Data",
+      "params": {
+        "source": "api"
+      }
+    },
+    {
+      "id": "step_2",
+      "type": "FilterDataStep",
+      "name": "Filter Clean Records",
+      "params": {
+        "min_score": 0.85
+      }
+    },
+    {
+      "id": "step_3",
+      "type": "SaveDatabaseStep",
+      "name": "Persist to PostgreSQL",
+      "params": {
+        "table": "processed_events"
+      }
+    }
+  ]
+}

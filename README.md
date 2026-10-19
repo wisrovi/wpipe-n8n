@@ -43,18 +43,31 @@ Si algo falla, no hay ZIP.
 
 ---
 
-## Interfaz Visual, Bloques Dinámicos, Modo Simulación y Navegación GitHub
+## Interfaz Visual Unificada con Panel Lateral Único Estilo VS Code
 
-La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada en Scratch 3.0 / Scratux y GitHub.com, optimizada para máxima productividad con bloques configurables:
+La interfaz de `wpipe-studio` ofrece una arquitectura visual unificada de alto rendimiento inspirada en **VS Code**, integrando en una sola estructura coherente el diseño visual de bloques, la simulación interactiva, el diagrama de flujo y la programación de microservicios:
 
 1. **Barra Superior (Top Menu Bar)**: Selector de 4 pestañas modulares (🧩 Canvas de Diseño, 🎮 Simulación & Depuración, 📊 Flujo Mermaid DAG y 💻 Microservicio Python), selector y gestor de microservicios con botón Guardar directo, menús desplegables enriquecidos de Archivo y Edición (Colapsar/Expandir todos los bloques, Deshacer/Rehacer, Zoom to Fit, Modo Turbo, Guardar/Restaurar en localStorage, Exportar Canvas JSON y Descargar ZIP) y píldora de perfil de usuario multi-tenant con cambio rápido de sesión.
-2. **Tira Lateral de Categorías Scratch 3.0 (Far Left Dot Column)**:
-   - Selectores circulares temáticos por categoría: Inicio (Ámbar), Pasos (Azul), Control (Naranja), Bucles (Amarillo) y Paralelo (Esmeralda).
-   - Botón de proyectos `[ 📁 PROY ]` en la parte inferior (reemplazando el antiguo botón `EXT`) para abrir el gestor modal de microservicios aislados del usuario activo.
-3. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
+2. **Barra de Actividad Global Unificada (Global Activity Bar, `w-12`, `#181818`)**:
+   - **Único riel lateral de navegación para toda la aplicación**, eliminando la duplicidad de paneles laterales entre el lienzo y el entorno de código.
+   - Acceso instantáneo a las herramientas primarias:
+     - `🧩 Bloques (Diseño)`: Despliega la paleta de 11 bloques puzzle de Scratch y enfoca el lienzo Blockly.
+     - `📁 Explorador de Archivos`: Despliega el árbol jerárquico de archivos del microservicio y enfoca el editor multi-pestaña.
+     - `🎮 Simulación`: Controles rápidos de ejecución (🏁 / 🛑 / Reset), presets de payload y editor JSON de entrada, enfocando el laboratorio de simulación.
+     - `📊 Diagrama de Flujo`: Despliega acciones rápidas del grafo Mermaid (centrar, zoom, copiar y exportar SVG/MD).
+     - `🔍 Búsqueda`: Filtro y búsqueda universal en todos los archivos del microservicio con conteo de coincidencias.
+     - `🌿 Control de Código Fuente (Git)`: Lista de archivos con modificaciones pendientes (`M`), estado del repo y descarga directa de ZIP.
+     - `⚙️ Configuración & Microservicios`: Acceso rápido al gestor de microservicios y preferencias.
+3. **Barra Lateral Primaria Dinámica y Plegable (Primary Side Bar, `w-72`, `#252526`)**:
+   - **Colapso y Expansión al 100% de Ancho**: Puede ocultarse o mostrarse presionando `Ctrl+B` (o `Cmd+B`), pulsando el icono activo en la Barra de Actividad o mediante el botón `<PanelLeft />` en la barra de pestañas, permitiendo que el lienzo Blockly o el editor se expandan al 100% del espacio visible con auto-redimensionamiento de SVG (`window.resize`).
+   - **Contenido reactivo según la herramienta activa**:
+     - *Modo Bloques*: Paleta de 11 bloques puzzle organizados por categorías (`Todos`, `Inicio/Fin`, `Pasos`, `Control`, `Bucles`, `Paralelo`), buscador en vivo y tarjetas flotantes (hover tooltips) con parámetros y código Python equivalente.
+     - *Modo Explorador*: Árbol jerárquico (`FileTreeItem`) con iconos auténticos por extensión (🐍 Python, 🐳 Docker, 📝 Markdown, ⚙️ Config/TOML/JSON, 💻 Shell script), filtro de nombres y selección independiente de carpetas y archivos.
+     - *Modo Simulación*: Disparador con Bandera Verde (🏁), Parada (🛑), presets rápidos (REST, Kafka, Redis, Cron) y JSON payload.
+     - *Modo Flujo*: Herramientas de visualización del grafo Mermaid.
+4. **Paleta Visual de Bloques Puzzle (Scratch 3.0 / Scratux Toolbox)**:
    - Diseño visual de auténticas piezas de puzzle Scratch con pestañas de ensamble, muescas de encaje y paleta de colores vibrantes sin cajas de texto invasivas.
-   - Buscador rápido en tiempo real para filtrar bloques al instante.
-   - **Tarjeta descriptiva flotante (Hover Tooltip)**: al posar el cursor sobre cualquier bloque, se despliega una tarjeta enriquecida con la descripción del bloque, los parámetros configurables y el código Python WPipe equivalente generado.
+   - Buscador rápido en tiempo real para filtrar bloques al instante y tarjetas descriptivas emergentes (popovers).
    - 🚀 **Lanzador de Pipeline (Trigger Hat Block)**: Bloque sombrero de inicio que configura el punto de entrada al pipeline (FastAPI REST `POST /run`, Kafka Consumer, Redis Queue, Cron / Programador, Webhook, CLI local), reflejado automáticamente en diagramas Mermaid y en wrappers de ejecución en `app/main.py`.
    - 🏁 **Cierre de Pipeline (Response Cap Block)**: Bloque terminal Cap (muesca superior y base plana Scratch) que define la salida o respuesta final del microservicio (Respuesta HTTP 200 JSON, publicación de eventos en tópicos Kafka, colas Redis, guardado de contexto en archivo JSON o retorno directo). Sincronizado en tiempo real con Mermaid (`classDef endResponse`), esquemas IR y generación de rutas en `app/main.py`.
    - 📦 **Paso de Catálogo (Universal)**: Bloque interactivo con selectores internos directos: filtrado por origen (`Oficiales` / `Plugins` con auto-actualización inmediata del paso seleccionado), selector dinámico de categoría, filtro de búsqueda por texto y lista desplegable con los 197 steps del catálogo (incluyendo plugins comunitarios como `ecam_yolo` y `rss_parser`).
@@ -66,13 +79,13 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - 🔢 **Bucle Repetir (For Loop)**: Bloque de repetición determinista N veces (`For(iterations=N, steps=[...])`).
    - ⚡ **Ejecución Paralela (Parallel)**: Bloque de concurrencia con política de fusión de contexto (`accumulate` o `last_wins`).
    - ⏳ **Segundo Plano (Background)**: Bloque de ejecución asíncrona no bloqueante en hilo secundario (`Background(step=...)`).
-4. **Área Central de Bloques (Blockly Canvas)**:
+5. **Área Central de Bloques (Blockly Canvas)**:
    - Espacio de trabajo infinito con permanencia en DOM (no se destruye al alternar pestañas).
    - **Arrastre panorámico libre del lienzo (`move.drag` & `scrollbars`)**: el usuario puede hacer clic en cualquier área vacía del fondo y arrastrar para encuadrar y explorar el pipeline cómodamente, sin depender únicamente de mover bloques individuales.
    - **Colapsado individual directo en cada bloque (`[-]` / `[+]`)**: cada bloque del lienzo dispone de un botón visible e interactivo en su cabecera para colapsarse sobre sí mismo en una fila compacta informativa, además de soportar doble-clic en el bloque para alternar su estado.
    - **Inserción y auto-conexión inteligente**: al hacer clic sobre cualquier bloque en la paleta lateral, el bloque se posiciona de forma visible en el área de trabajo o se conecta automáticamente al final de la cadena de ejecución o al bloque seleccionado.
    - **Barra de herramientas flotante**: botones rápidos para Centrar lienzo (`scrollCenter()`), Ajustar vista (`zoomToFit()`), Colapsar todo, Expandir todo, Deshacer, Limpiar y Guía FAQ, junto a un indicador interactivo de arrastre.
-5. **Pestaña Dedicada de Simulación & Depuración (Simulation Stage)**:
+6. **Pestaña Dedicada de Simulación & Depuración (Simulation Stage)**:
    - Laboratorio de pruebas a pantalla completa (100% del ancho para máxima legibilidad).
    - Controles de ejecución: **Bandera Verde** (🏁 Run), **Octágono Rojo** (🛑 Stop) y Reinicio.
    - Presets de payload listos para usar (API REST, Kafka Event, Redis Queue, Cron Job).
@@ -81,17 +94,12 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
    - Línea temporal de pasos con tiempos de cómputo en ms y estados (`idle`, `running`, `success`, `error`).
    - Monitor de consumo de recursos en tiempo real (CPU % y memoria RAM en MB).
    - Consola terminal de logs enriquecida (`stdout` / `stderr`).
-6. **Flujo Mermaid DAG Interactivo con Pan & Zoom**:
+7. **Flujo Mermaid DAG Interactivo con Pan & Zoom**:
    - Visualización reactiva en tiempo real del pipeline en formato de grafo dirigido.
    - **Arrastre libre (pan)** con ratón desde cualquier punto del área de trabajo para desplazar y explorar diagramas de cualquier dimensión.
    - **Zoom fluido** centrado en el puntero del ratón mediante la rueda y controles flotantes (`+`, `-`, `Reset 100%`, `Centrar`).
    - Brillo hover en nodos y aristas y botón de exportación directa en formato `.svg`.
-7. **Entorno de Programación Estilo VS Code (Microservicio Python)**:
-   - **Activity Bar Lateral (`w-12`, `#181818`)**: Barra de actividad vertical con iconos para Explorador de Archivos, Búsqueda en Archivos, Control de Código Fuente (Git) con badge reactivo de archivos modificados, accesos directos al Lienzo Blockly y Simulador, y Avatar/Menú de Usuario.
-   - **Panel Primario Explorador (`w-64`, `#252526`)**:
-     - Filtro instantáneo de archivos por nombre.
-     - Árbol jerárquico (`FileTreeItem`) con indentación auténtica, iconos por extensión (🐍 Python, 🐳 Docker, 📝 Markdown, ⚙️ Config/TOML/JSON, 💻 Shell script).
-     - Selección de carpetas y archivos independiente: al hacer clic en una carpeta, se abre la vista de carpeta en el editor; al hacer clic en un archivo, se abre en una pestaña.
+8. **Entorno de Programación Estilo VS Code (Microservicio Python)**:
    - **Barra de Pestañas Multi-Archivo (`#252526`, `#1e1e1e`)**:
      - Pestañas con borde superior azul `#007acc`, indicador de modificación (`●`), botón de cierre (`✕`) y soporte de múltiples archivos abiertos simultáneamente (`openTabs`).
      - Botón de alternancia entre Código y Vista Previa para archivos `README.md`.
@@ -102,12 +110,14 @@ La interfaz de `wpipe-studio` ofrece una experiencia visual estilizada inspirada
      - **Al cargar o seleccionar una carpeta**: Si la carpeta contiene un `README.md`, se renderiza inmediatamente de forma enriquecida y estética mediante el motor Markdown (`marked`), con estilos GitHub, cajas de alertas `[!IMPORTANT]`, `[!NOTE]`, `[!WARNING]`, `[!TIP]`, tablas formateadas, bloques de código y banner con botón directo `[ 📝 Ver Archivo en Editor ]`. Si no tiene README, muestra la tabla de archivos de la carpeta.
      - **Al hacer clic directamente en `README.md`**: Se abre en el editor de código tradicional ("de forma natural"), con canal de números de línea, resaltado de sintaxis, banner protegido de autoría de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)) y botón para alternar a vista previa renderizada.
      - **Editor de Código en Vivo**: Soporta sangría con Tab (4 espacios), seguimiento de posición de cursor (`Ln X, Col Y`), sincronización de scroll y coloreado de sintaxis en tiempo real para Python, Dockerfile, YAML, Makefile, Bash y JSON.
-   - **Barra de Estado VS Code (`h-6`, `#007acc`)**:
-     - Indicador de entorno remoto `[><] WPipe Studio`.
-     - Rama Git activa (`main` con asterisco si hay cambios sin guardar).
-     - Contador de diagnósticos (`0 ⚠️ 0 ❌`).
-     - Posición del cursor en tiempo real (`Ln X, Col Y`), sangría `Spaces: 4`, codificación `UTF-8`, terminación de línea `LF` y lenguaje activo (`Python`, `Markdown`, `Dockerfile`, etc.).
-8. **Inicio de Sesión Natural, Sesiones Seguras y Gestor Multi-Tenant de Microservicios**:
+   - **Selector Rápido de Imagen Base Docker**: Barra de presets integrada al visualizar `Dockerfile` (`python:3.11-slim`, `python:3.12-slim`, `python:3.10-slim`, `python:3.11 Full`, `nvidia/cuda:12.1.0-runtime-ubuntu22.04`, `FastAPI Prod`) y campo de texto para tags de imágenes personalizadas con reemplazo reactivo en tiempo real de la directiva `FROM`.
+9. **Barra de Estado Global VS Code (`h-6`, `#007acc`)**:
+   - Situada en el borde inferior de toda la aplicación.
+   - Indicador de entorno remoto `[><] WPipe Studio`.
+   - Rama Git activa (`main` con asterisco si hay cambios sin guardar).
+   - Contador de diagnósticos (`0 ⚠️ 0 ❌`).
+   - Posición del cursor en tiempo real (`Ln X, Col Y`), sangría `Spaces: 4`, codificación `UTF-8`, terminación de línea `LF` y lenguaje activo (`Python`, `Markdown`, `Dockerfile`, etc.).
+10. **Inicio de Sesión Natural, Sesiones Seguras y Gestor Multi-Tenant de Microservicios**:
    - **Inicio de Sesión Natural y Cierre de Sesión**: Flujo completo de autenticación con usuario y contraseña, hashing criptográfico PBKDF2-HMAC-SHA256, tokens Bearer de sesión y endpoint `/api/v1/auth/logout`.
    - **Pantalla de Autenticación Centrada y Aislada**: Capa de login/registro a pantalla completa con fondo opaco oscuro (`#07090e`) y alta prioridad (`z-[9999]`) que centra el formulario al píxel e impide que se filtren elementos del lienzo o la interfaz antes de autenticarse.
    - **Vista Inmediata de Proyectos al Iniciar Sesión**: Al autenticarse, se despliega automáticamente el panel de microservicios ("Mis Microservicios") permitiendo cambiar inmediatamente entre proyectos o crear nuevos.

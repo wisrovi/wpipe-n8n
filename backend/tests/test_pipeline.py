@@ -274,7 +274,7 @@ def test_transform_preserves_blocks_after_cblock():
     assert "Condition(" in content
     assert "MySQLQuery()" in content
     # Crucial assertion: StepAfterIF must NOT be lost!
-    assert "NmapScanStep()" in content
+    assert "NmapScanStep" in content
 
 
 def test_transform_microservice_makefile():

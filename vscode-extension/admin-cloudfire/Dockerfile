@@ -23,8 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY app.py client.py ./
+# Copy WPipe application architecture files
+COPY dto/ ./dto/
+COPY states/ ./states/
+COPY app.py client.py pipelines.py ./
 
 EXPOSE 8501
 

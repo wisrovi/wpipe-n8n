@@ -140,11 +140,12 @@ st.divider()
 # -----------------------------------------------------------------------------
 # Tabs Interface
 # -----------------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "👥 Licencias & Clientes",
     "💻 Máquinas & Leases",
     "📦 Binarios & R2",
     "📜 Logs de Auditoría",
+    "💳 Pasarelas (Lemon / Stripe)",
 ])
 
 # =============================================================================
@@ -348,3 +349,115 @@ with tab4:
         st.dataframe(df_logs, use_container_width=True, height=400)
     else:
         st.info("No hay registros de auditoría para el filtro seleccionado.")
+
+# =============================================================================
+# TAB 5: Pasarelas de Pago (Lemon Squeezy / Stripe)
+# =============================================================================
+with tab5:
+    st.subheader("💳 Integración de Pasarelas de Pago")
+    st.caption("Configuración de webhooks automáticos para emisión de licencias en tiempo real tras la compra.")
+
+    st.markdown("#### 🔗 Endpoint Webhook Global")
+    webhook_url = f"{client.api_base_url}/v1/webhooks/payment"
+    st.code(webhook_url, language="bash")
+    st.info("Pega esta URL en el panel de desarrollador de Lemon Squeezy o Stripe para recibir las compras automáticamente.")
+
+    col_lemon, col_stripe = st.columns(2)
+    with col_lemon:
+        st.markdown("### 🍋 Lemon Squeezy")
+        st.markdown(
+            """
+            1. Entra a tu **Dashboard de Lemon Squeezy** → **Settings** → **Webhooks**.
+            2. Haz clic en **Add Webhook**.
+            3. **Callback URL**: `https://api.wisrovi.dev/v1/webhooks/payment`
+            4. **Eventos a seleccionar**:
+               - `order_created`
+               - `subscription_created`
+               - `subscription_cancelled`
+            5. *(Opcional)* Copia el **Signing Secret** y configúralo en Cloudflare:
+               ```bash
+               npx wrangler secret put LEMONSQUEEZY_WEBHOOK_SECRET
+               ```
+            """
+        )
+
+    with col_stripe:
+        st.markdown("### 💳 Stripe")
+        st.markdown(
+            """
+            1. Entra a tu **Dashboard de Stripe** → **Desarrolladores** → **Webhooks**.
+            2. Haz clic en **Añadir endpoint**.
+            3. **URL del endpoint**: `https://api.wisrovi.dev/v1/webhooks/payment`
+            4. **Eventos a seleccionar**:
+               - `checkout.session.completed`
+               - `customer.subscription.deleted`
+            5. *(Opcional)* Copia el **Secreto para firmar** (`whsec_...`) y configúralo en Cloudflare:
+               ```bash
+               npx wrangler secret put STRIPE_WEBHOOK_SECRET
+               ```
+            """
+        )
+
+    st.divider()
+    st.markdown("#### 🧪 Simulador de Webhooks (Prueba de Compra en Vivo)")
+    st.caption("Dispara un webhook simulado hacia Cloudflare Worker para verificar la emisión de la clave en la base de datos D1.")
+
+    with st.form("simulate_webhook_form"):
+        sim_col1, sim_col2, sim_col3 = st.columns(3)
+        with sim_col1:
+            gateway = st.selectbox("Pasarela a Simular", ["Lemon Squeezy", "Stripe"])
+            sim_plan = st.selectbox("Plan Comprado", ["pro", "team", "enterprise"])
+        with sim_col2:
+            sim_email = st.text_input("Email del Comprador", value="comprador@wisrovi.dev")
+            sim_name = st.text_input("Nombre del Comprador", value="William Rodriguez")
+        with sim_col3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            sim_submit = st.form_submit_button("🚀 Simular Compra y Emitir Licencia", type="primary", use_container_width=True)
+
+        if sim_submit:
+            with st.spinner("Enviando webhook de prueba a Cloudflare..."):
+                try:
+                    if gateway == "Lemon Squeezy":
+                        sim_payload = {
+                            "meta": {
+                                "event_name": "order_created",
+                                "custom_data": {"plan": sim_plan},
+                            },
+                            "data": {
+                                "attributes": {
+                                    "user_email": sim_email,
+                                    "user_name": sim_name,
+                                    "first_order_item": {"variant_name": sim_plan.upper()},
+                                },
+                            },
+                        }
+                    else:
+                        sim_payload = {
+                            "type": "checkout.session.completed",
+                            "data": {
+                                "object": {
+                                    "customer_details": {
+                                        "email": sim_email,
+                                        "name": sim_name,
+                                    },
+                                    "metadata": {"plan": sim_plan},
+                                },
+                            },
+                        }
+
+                    req = urllib.request.Request(
+                        webhook_url,
+                        data=json.dumps(sim_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "WPipe-Simulator/1.0"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        res_data = json.loads(resp.read().decode("utf-8"))
+
+                    st.success(f"🎉 ¡Compra procesada exitosamente por el webhook de {gateway}!")
+                    st.json(res_data)
+                    st.code(res_data.get("license_key", ""), language="text")
+                    st.info("La licencia ya está guardada en Cloudflare D1. El usuario puede activarla en VS Code.")
+                except Exception as e:
+                    st.error(f"Error al enviar webhook simulado: {e}")
+

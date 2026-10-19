@@ -32,6 +32,7 @@ import "prismjs/components/prism-makefile";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-json";
 import "prismjs/themes/prism-tomorrow.css";
+import { renderMarkdown } from "./lib/markdown";
 import {
   GitBranch,
   GitCommit,
@@ -75,6 +76,14 @@ import {
   LogOut,
   Clock,
   FolderPlus,
+  X,
+  Eye,
+  Code,
+  File,
+  Settings,
+  MoreHorizontal,
+  FilePlus,
+  Split,
 } from "lucide-react";
 
 export interface UserProfile {
@@ -160,6 +169,7 @@ interface FileTreeNode {
   isFolder: boolean;
   children: FileTreeNode[];
   fileIdx?: number;
+  file?: { path: string; content: string };
 }
 
 function buildFileTree(files: { path: string; content: string }[]): FileTreeNode {
@@ -181,6 +191,7 @@ function buildFileTree(files: { path: string; content: string }[]): FileTreeNode
           isFolder: false,
           children: [],
           fileIdx: idx,
+          file,
         });
       } else {
         let folder = current.children.find((c) => c.isFolder && c.name === part);
@@ -203,33 +214,56 @@ function buildFileTree(files: { path: string; content: string }[]): FileTreeNode
 
 const FileTreeItem: React.FC<{
   node: FileTreeNode;
-  selectedFileIdx: number;
-  onSelectFile: (idx: number) => void;
+  selectedPath: string | null;
+  onSelectFile: (file: { path: string; content: string }) => void;
+  onSelectFolder: (path: string) => void;
   expandedFolders: Record<string, boolean>;
   onToggleFolder: (path: string) => void;
   level?: number;
   modifiedFiles?: Set<string>;
-}> = ({ node, selectedFileIdx, onSelectFile, expandedFolders, onToggleFolder, level = 0, modifiedFiles }) => {
+}> = ({
+  node,
+  selectedPath,
+  onSelectFile,
+  onSelectFolder,
+  expandedFolders,
+  onToggleFolder,
+  level = 0,
+  modifiedFiles,
+}) => {
   const isExpanded = expandedFolders[node.path] !== false; // default expanded
 
   if (node.isFolder) {
+    const isSelected = selectedPath === node.path;
     return (
-      <div className="select-none">
+      <div className="select-none text-xs">
         <div
-          onClick={() => onToggleFolder(node.path)}
-          style={{ paddingLeft: `${level * 10 + 6}px` }}
-          className="flex items-center gap-1.5 py-1 px-2 hover:bg-gray-800/60 rounded cursor-pointer text-xs font-semibold text-gray-300 transition"
+          onClick={() => onSelectFolder(node.path)}
+          style={{ paddingLeft: `${level * 12 + 6}px` }}
+          className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer font-medium transition ${
+            isSelected
+              ? "bg-[#37373d] text-white font-semibold"
+              : "text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white"
+          }`}
         >
-          <ChevronRight
-            size={12}
-            className={`text-gray-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
-          />
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFolder(node.path);
+            }}
+            className="p-0.5 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition"
+          >
+            <ChevronRight
+              size={12}
+              className={`transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+            />
+          </span>
           {isExpanded ? (
-            <FolderOpen size={14} className="text-amber-400 shrink-0" />
+            <FolderOpen size={14} className="text-[#dcb67a] shrink-0" />
           ) : (
-            <Folder size={14} className="text-amber-500 shrink-0" />
+            <Folder size={14} className="text-[#dcb67a] shrink-0" />
           )}
-          <span className="truncate">{node.name}</span>
+          <span className="truncate flex-1">{node.name}</span>
         </div>
         {isExpanded && (
           <div className="flex flex-col">
@@ -237,8 +271,9 @@ const FileTreeItem: React.FC<{
               <FileTreeItem
                 key={child.path || child.name}
                 node={child}
-                selectedFileIdx={selectedFileIdx}
+                selectedPath={selectedPath}
                 onSelectFile={onSelectFile}
+                onSelectFolder={onSelectFolder}
                 expandedFolders={expandedFolders}
                 onToggleFolder={onToggleFolder}
                 level={level + 1}
@@ -251,39 +286,31 @@ const FileTreeItem: React.FC<{
     );
   }
 
-  const isSelected = node.fileIdx === selectedFileIdx;
-  const isPython = node.name.endsWith(".py");
-  const isJson = node.name.endsWith(".json") || node.name.endsWith(".toml");
-  const isDocker = node.name.includes("Dockerfile");
+  const isSelected = selectedPath === node.path;
   const isModified = modifiedFiles && modifiedFiles.has(node.path);
 
   return (
     <div
-      onClick={() => node.fileIdx !== undefined && onSelectFile(node.fileIdx)}
-      style={{ paddingLeft: `${level * 10 + 18}px` }}
-      className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer text-xs font-mono transition ${
+      onClick={() => {
+        if (node.file) {
+          onSelectFile(node.file);
+        }
+      }}
+      style={{ paddingLeft: `${level * 12 + 20}px` }}
+      className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer text-xs font-mono transition select-none ${
         isSelected
-          ? "bg-sky-950 text-sky-300 font-bold border border-sky-800/80 shadow-sm"
-          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+          ? "bg-[#094771] text-white font-semibold"
+          : "text-[#cccccc] hover:text-white hover:bg-[#2a2d2e]"
       }`}
     >
-      {isPython ? (
-        <span className="text-amber-400 font-bold text-[11px]">🐍</span>
-      ) : isDocker ? (
-        <span className="text-sky-400 font-bold text-[11px]">🐳</span>
-      ) : isJson ? (
-        <span className="text-emerald-400 font-bold text-[11px]">⚙️</span>
-      ) : (
-        <FileCode size={13} className="text-sky-400 shrink-0" />
-      )}
+      {getGitHubFileIcon(node.name)}
       <span className="truncate flex-1">{node.name}</span>
       {isModified && (
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Archivo editado" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[#e2c08d] shrink-0" title="Archivo editado" />
       )}
     </div>
   );
 };
-
 
 function getGitHubFileDescription(filePath: string): string {
   if (filePath.endsWith("main.py")) return "FastAPI application entrypoint & pipeline runner";
@@ -308,12 +335,24 @@ function getGitHubFolderDescription(folderName: string): string {
 }
 
 function getGitHubFileIcon(name: string) {
-  if (name.endsWith(".py")) return <span className="text-amber-400 font-bold text-xs select-none">🐍</span>;
-  if (name.includes("Dockerfile")) return <span className="text-sky-400 font-bold text-xs select-none">🐳</span>;
-  if (name.endsWith(".toml") || name.endsWith(".json") || name.endsWith(".yaml")) return <span className="text-emerald-400 font-bold text-xs select-none">⚙️</span>;
-  if (name.endsWith(".md")) return <span className="text-blue-400 font-bold text-xs select-none">📝</span>;
-  if (name.endsWith(".sh")) return <span className="text-green-400 font-bold text-xs select-none">💻</span>;
-  return <FileCode size={14} className="text-gray-400 shrink-0" />;
+  if (name.endsWith(".py")) return <span className="text-[#4B8BBE] font-bold text-xs select-none">🐍</span>;
+  if (name.includes("Dockerfile")) return <span className="text-[#2496ED] font-bold text-xs select-none">🐳</span>;
+  if (name.endsWith(".toml") || name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml")) return <span className="text-[#cbcb41] font-bold text-xs select-none">⚙️</span>;
+  if (name.endsWith(".md")) return <span className="text-[#519aba] font-bold text-xs select-none">📝</span>;
+  if (name.endsWith(".sh")) return <span className="text-[#4d9375] font-bold text-xs select-none">💻</span>;
+  return <FileCode size={14} className="text-[#8a99a8] shrink-0" />;
+}
+
+function getLanguageFromPath(filePath: string): string {
+  if (filePath.endsWith(".py")) return "Python";
+  if (filePath.endsWith(".md")) return "Markdown";
+  if (filePath.includes("Dockerfile")) return "Dockerfile";
+  if (filePath.endsWith(".json")) return "JSON";
+  if (filePath.endsWith(".toml")) return "TOML";
+  if (filePath.endsWith(".yaml") || filePath.endsWith(".yml")) return "YAML";
+  if (filePath.endsWith(".sh")) return "Shell Script";
+  if (filePath.endsWith(".txt")) return "Plain Text";
+  return "Plain Text";
 }
 
 function highlightCode(code: string, filePath: string): string {
@@ -418,7 +457,7 @@ export default function App() {
   const [turboMode, setTurboMode] = useState<boolean>(false);
 
   // Main Tabs: 'code' (Blockly) | 'simulation' (Dedicated Stage) | 'flowchart' (Mermaid) | 'python' (TargetIR Preview)
-  // GitHub Repository Navigation State (Microservicio Python)
+  // GitHub / VS Code Repository Navigation State (Microservicio Python)
   const [githubCurrentDir, setGithubCurrentDir] = useState<string>("");
   const [githubViewingFile, setGithubViewingFile] = useState<{ path: string; content: string } | null>(null);
   const [githubFileSearch, setGithubFileSearch] = useState<string>("");
@@ -432,6 +471,49 @@ export default function App() {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const toggleFolder = (path: string) =>
     setExpandedFolders((prev) => ({ ...prev, [path]: prev[path] === false ? true : false }));
+
+  // VS Code Experience State (Microservicio Python)
+  const [openTabs, setOpenTabs] = useState<{ path: string; content: string }[]>([]);
+  const [activeActivityTab, setActiveActivityTab] = useState<"explorer" | "search" | "git" | "settings">("explorer");
+  const [cursorPos, setCursorPos] = useState<{ line: number; col: number }>({ line: 1, col: 1 });
+  const [readmePreviewMode, setReadmePreviewMode] = useState<boolean>(false);
+
+  const openFileInTab = (file: { path: string; content: string }) => {
+    setIsEditingFile(false);
+    setReadmePreviewMode(false);
+    setGithubViewingFile(file);
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.path === file.path)) return prev;
+      return [...prev, file];
+    });
+    setGithubCurrentDir(file.path.split("/").slice(0, -1).join("/"));
+  };
+
+  const closeTab = (path: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOpenTabs((prev) => {
+      const nextTabs = prev.filter((t) => t.path !== path);
+      if (githubViewingFile?.path === path) {
+        if (nextTabs.length > 0) {
+          const fallback = nextTabs[nextTabs.length - 1];
+          setGithubViewingFile(fallback);
+          setGithubCurrentDir(fallback.path.split("/").slice(0, -1).join("/"));
+        } else {
+          setGithubViewingFile(null);
+        }
+      }
+      return nextTabs;
+    });
+  };
+
+  const updateCursorPosition = (textarea: HTMLTextAreaElement) => {
+    const selStart = textarea.selectionStart;
+    const textBefore = textarea.value.substring(0, selStart);
+    const lines = textBefore.split("\n");
+    const currentLine = lines.length;
+    const currentCol = lines[lines.length - 1].length + 1;
+    setCursorPos({ line: currentLine, col: currentCol });
+  };
 
   // Scratch Category Selector (all, trigger, steps, control, loops, parallel, custom)
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -755,6 +837,9 @@ export default function App() {
     );
     setGeneratedFiles(updatedFiles);
     setGithubViewingFile({ ...githubViewingFile, content: editingFileContent });
+    setOpenTabs((prev) =>
+      prev.map((t) => (t.path === githubViewingFile.path ? { ...t, content: editingFileContent } : t))
+    );
     setModifiedFiles((prev) => new Set(prev).add(githubViewingFile.path));
     setIsEditingFile(false);
     setStatusMessage(`Cambios guardados en ${githubViewingFile.path} ✓ (Preservado para exportación ZIP)`);
@@ -3095,7 +3180,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: GITHUB.COM STYLE PYTHON MICROSERVICE REPOSITORY NAVIGATOR */}
+        {/* TAB 4: VS CODE STYLE PYTHON MICROSERVICE ENVIRONMENT */}
         {activeMainTab === "python" && (() => {
           const directoryItems = getGitHubDirectoryItems(generatedFiles, githubCurrentDir);
           const currentReadme = generatedFiles.find(
@@ -3120,353 +3205,479 @@ export default function App() {
           ];
 
           return (
-            <div className="flex-1 flex bg-[#0d1117] overflow-hidden text-gray-200">
-              {/* Optional Collapsible Left Tree Sidebar (like GitHub's Code Tree sidebar) */}
-              {githubShowTreeSidebar && (
-                <div className="w-64 border-r border-[#30363d] bg-[#010409] flex flex-col overflow-hidden shrink-0 z-10">
-                  <div className="p-3 border-b border-[#30363d] flex items-center justify-between bg-[#161b22]">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
-                        <Folder size={14} className="text-sky-400" />
-                        <span>Archivos</span>
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono text-gray-400 bg-[#21262d] px-1.5 py-0.5 rounded border border-[#30363d]">
-                      {generatedFiles.length}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-2 custom-modal-scrollbar">
-                    {previewLoading ? (
-                      <p className="text-xs text-gray-500 italic p-3">Sincronizando...</p>
-                    ) : generatedFiles.length === 0 ? (
-                      <p className="text-xs text-gray-500 italic p-3">No hay archivos.</p>
-                    ) : (
-                      <FileTreeItem
-                        node={buildFileTree(generatedFiles)}
-                        selectedFileIdx={githubViewingFile ? generatedFiles.findIndex((f) => f.path === githubViewingFile.path) : -1}
-                        onSelectFile={(idx) => {
-                          const file = generatedFiles[idx];
-                          if (file) {
-                            setIsEditingFile(false);
-                            setGithubViewingFile(file);
-                            setGithubCurrentDir(file.path.split("/").slice(0, -1).join("/"));
-                          }
-                        }}
-                        expandedFolders={expandedFolders}
-                        onToggleFolder={toggleFolder}
-                        modifiedFiles={modifiedFiles}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Main GitHub Repository View */}
-              <div className="flex-1 flex flex-col overflow-hidden bg-[#0d1117]">
-                {/* 1. GitHub Top Repo Controls & Breadcrumbs Bar */}
-                <div className="border-b border-[#30363d] bg-[#161b22] px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center space-x-2">
-                    {/* Toggle Tree Sidebar */}
+            <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden text-[#cccccc] font-sans">
+              {/* Upper area: Activity Bar + Explorer + Editor */}
+              <div className="flex-1 flex overflow-hidden">
+                {/* 1. VS CODE ACTIVITY BAR (Left narrow bar) */}
+                <div className="w-12 bg-[#181818] border-r border-[#2b2b2b] flex flex-col justify-between items-center py-2 shrink-0 z-20 select-none">
+                  {/* Top Activity Icons */}
+                  <div className="flex flex-col items-center w-full space-y-2">
                     <button
-                      onClick={() => setGithubShowTreeSidebar(!githubShowTreeSidebar)}
-                      title="Alternar panel de árbol"
-                      className={`p-1.5 rounded-md border text-xs font-mono transition cursor-pointer ${
-                        githubShowTreeSidebar
-                          ? "bg-[#21262d] border-[#30363d] text-sky-400"
-                          : "bg-[#0d1117] border-[#30363d] text-gray-400 hover:text-white"
+                      onClick={() => {
+                        setActiveActivityTab("explorer");
+                        setGithubShowTreeSidebar(activeActivityTab === "explorer" ? !githubShowTreeSidebar : true);
+                      }}
+                      title="Explorador de Archivos (Ctrl+Shift+E)"
+                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                        activeActivityTab === "explorer" && githubShowTreeSidebar
+                          ? "text-white"
+                          : "text-[#858585] hover:text-white"
                       }`}
                     >
-                      <Layers size={13} />
+                      {activeActivityTab === "explorer" && githubShowTreeSidebar && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                      )}
+                      <Folder size={20} />
                     </button>
 
-                    {/* Git Branch Badge */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#21262d] border border-[#30363d] text-xs font-semibold text-gray-200">
-                      <GitBranch size={13} className="text-gray-400" />
-                      <span className="font-mono">main</span>
-                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveActivityTab("search");
+                        setGithubShowTreeSidebar(true);
+                      }}
+                      title="Buscar en Archivos (Ctrl+Shift+F)"
+                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                        activeActivityTab === "search" && githubShowTreeSidebar
+                          ? "text-white"
+                          : "text-[#858585] hover:text-white"
+                      }`}
+                    >
+                      {activeActivityTab === "search" && githubShowTreeSidebar && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                      )}
+                      <Search size={20} />
+                    </button>
 
-                    {/* Breadcrumbs Navigation (Clickable path segments) */}
-                    <div className="flex items-center gap-1 text-sm font-semibold ml-2">
-                      {breadcrumbs.map((b, i) => (
-                        <React.Fragment key={b.path + i}>
-                          {i > 0 && <span className="text-gray-500 font-normal">/</span>}
-                          {b.isFolder ? (
-                            <button
-                              onClick={() => {
-                                setGithubCurrentDir(b.path);
-                                setGithubViewingFile(null);
-                              }}
-                              className="text-sky-400 hover:underline hover:text-sky-300 font-mono transition cursor-pointer"
-                            >
-                              {b.label}
-                            </button>
-                          ) : (
-                            <span className="text-gray-200 font-mono font-bold">{b.label}</span>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveActivityTab("git");
+                        setGithubShowTreeSidebar(true);
+                      }}
+                      title="Control de Código Fuente (Git)"
+                      className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
+                        activeActivityTab === "git" && githubShowTreeSidebar
+                          ? "text-white"
+                          : "text-[#858585] hover:text-white"
+                      }`}
+                    >
+                      {activeActivityTab === "git" && githubShowTreeSidebar && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+                      )}
+                      <GitBranch size={20} />
+                      {modifiedFiles.size > 0 && (
+                        <span className="absolute top-2 right-2 w-4 h-4 bg-[#007acc] text-white rounded-full text-[9px] font-bold flex items-center justify-center">
+                          {modifiedFiles.size}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Quick Switch to Blockly / Stage */}
+                    <div className="w-6 h-[1px] bg-[#2b2b2b] my-1" />
+
+                    <button
+                      onClick={() => setActiveMainTab("code")}
+                      title="Volver al Lienzo de Bloques (Blockly)"
+                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
+                    >
+                      <Layers size={18} />
+                    </button>
+
+                    <button
+                      onClick={() => setActiveMainTab("simulation")}
+                      title="Abrir Simulador Interactivo"
+                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
+                    >
+                      <Play size={18} />
+                    </button>
                   </div>
 
-                  {/* Actions & File Filter */}
-                  <div className="flex items-center space-x-2">
-                    {/* "Go to file" filter input */}
-                    <div className="relative">
-                      <Search size={13} className="absolute left-2.5 top-2 text-gray-500" />
-                      <input
-                        type="text"
-                        placeholder="Go to file (buscar archivo)..."
-                        value={githubFileSearch}
-                        onChange={(e) => setGithubFileSearch(e.target.value)}
-                        className="bg-[#010409] border border-[#30363d] rounded-md py-1 pl-8 pr-2.5 text-xs text-gray-200 focus:outline-none focus:border-sky-500 w-52 transition font-mono"
-                      />
-                      {githubFileSearch && (
-                        <button
-                          onClick={() => setGithubFileSearch("")}
-                          className="absolute right-2 top-1.5 text-xs text-gray-500 hover:text-white"
+                  {/* Bottom Activity Icons */}
+                  <div className="flex flex-col items-center w-full space-y-2">
+                    <button
+                      onClick={() => setShowProjectsModal(true)}
+                      title={currentUser ? `Usuario: ${currentUser.name} (${currentUser.role})` : "Iniciar Sesión"}
+                      className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition relative"
+                    >
+                      {currentUser ? (
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm"
+                          style={{ backgroundColor: getUserColor(currentUser) }}
                         >
-                          ✕
-                        </button>
+                          {currentUser.name.charAt(0).toUpperCase()}
+                        </div>
+                      ) : (
+                        <User size={19} />
                       )}
-                    </div>
-
-                    <button
-                      onClick={handleSyncPythonCode}
-                      disabled={previewLoading}
-                      title="Sincronizar microservicio con los bloques del lienzo"
-                      className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-sky-400 rounded-md text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <RefreshCw size={12} className={previewLoading ? "animate-spin" : ""} />
-                      <span>Sync</span>
-                    </button>
-
-                    <button
-                      onClick={handleGenerateZip}
-                      disabled={zipLoading}
-                      title="Descargar paquete completo del microservicio (.zip)"
-                      className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-md text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow"
-                    >
-                      <Download size={13} />
-                      <span>Code (.zip)</span>
                     </button>
                   </div>
                 </div>
 
-                {/* 2. File Search Overlay Results (if searching) */}
-                {githubFileSearch.trim() ? (
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-modal-scrollbar">
-                    <div className="text-xs text-gray-400 font-mono mb-2">
-                      Resultados para "{githubFileSearch}":
-                    </div>
-                    {generatedFiles
-                      .filter((f) => f.path.toLowerCase().includes(githubFileSearch.toLowerCase()))
-                      .map((f) => (
-                        <div
-                          key={f.path}
-                          onClick={() => {
-                            setGithubViewingFile(f);
-                            setGithubCurrentDir(f.path.split("/").slice(0, -1).join("/"));
-                            setGithubFileSearch("");
-                          }}
-                          className="p-3 bg-[#161b22] hover:bg-[#21262d] border border-[#30363d] hover:border-sky-500 rounded-lg flex items-center justify-between cursor-pointer transition group"
+                {/* 2. VS CODE PRIMARY SIDEBAR (Explorer / Search / Git) */}
+                {githubShowTreeSidebar && (
+                  <div className="w-64 bg-[#252526] border-r border-[#2b2b2b] flex flex-col overflow-hidden shrink-0 z-10 select-none">
+                    {/* Explorer Title Bar */}
+                    <div className="px-4 py-2 flex items-center justify-between text-[11px] font-bold text-[#bbbbbb] tracking-wider uppercase">
+                      <span>{activeActivityTab === "search" ? "BUSCAR" : activeActivityTab === "git" ? "CONTROL DE CÓDIGO" : "EXPLORADOR"}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={handleSyncPythonCode}
+                          disabled={previewLoading}
+                          title="Sincronizar microservicio con los bloques del lienzo"
+                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
                         >
-                          <div className="flex items-center gap-2 font-mono text-xs text-sky-400 group-hover:underline">
-                            {getGitHubFileIcon(f.path)}
-                            <span>{f.path}</span>
-                          </div>
-                          <span className="text-[11px] font-mono text-gray-500">
-                            {f.content.split("\n").length} líneas
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                ) : githubViewingFile ? (
-                  /* 3. GitHub File Blob Viewer */
-                  <div className="flex-1 overflow-y-auto p-4 flex flex-col custom-modal-scrollbar">
-                    <div className="border border-[#30363d] rounded-lg overflow-hidden bg-[#0d1117] flex flex-col flex-1 shadow-md">
-                      {/* Blob Header Bar */}
-                      <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-2.5 flex items-center justify-between text-xs flex-wrap gap-2">
-                        <div className="flex items-center gap-2.5">
+                          <RefreshCw size={12} className={previewLoading ? "animate-spin" : ""} />
+                        </button>
+                        <button
+                          onClick={handleGenerateZip}
+                          disabled={zipLoading}
+                          title="Descargar paquete completo (.zip)"
+                          className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
+                        >
+                          <Download size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick File Filter */}
+                    <div className="px-3 pb-2">
+                      <div className="relative">
+                        <Search size={13} className="absolute left-2.5 top-2 text-[#858585]" />
+                        <input
+                          type="text"
+                          placeholder="Buscar archivo (filtro)..."
+                          value={githubFileSearch}
+                          onChange={(e) => setGithubFileSearch(e.target.value)}
+                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded py-1 pl-8 pr-6 text-xs text-gray-200 focus:outline-none font-mono"
+                        />
+                        {githubFileSearch && (
                           <button
-                            onClick={() => setGithubViewingFile(null)}
-                            title="Volver a la carpeta"
-                            className="px-2 py-1 rounded bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-gray-300 hover:text-white transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                            onClick={() => setGithubFileSearch("")}
+                            className="absolute right-2 top-1.5 text-xs text-[#858585] hover:text-white cursor-pointer"
                           >
-                            <ArrowLeft size={13} />
-                            <span>Carpeta</span>
+                            ✕
                           </button>
-                          <div className="w-[1px] h-4 bg-gray-700 mx-0.5" />
-                          <div className="flex items-center gap-2 font-mono font-bold text-gray-100">
-                            {getGitHubFileIcon(githubViewingFile.path)}
-                            <span>{githubViewingFile.path.split("/").pop()}</span>
-                            {modifiedFiles.has(githubViewingFile.path) && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/80 text-amber-400 border border-amber-800/80 font-bold ml-1">
-                                Editado
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-gray-400 text-[11px] font-mono">
-                            {githubViewingFile.content.split("\n").length} líneas ({new Blob([githubViewingFile.content]).size} bytes)
-                          </span>
-                        </div>
+                        )}
+                      </div>
+                    </div>
 
-                        {/* File Action Buttons */}
-                        <div className="flex items-center space-x-1.5">
-                          {isEditingFile ? (
-                            <>
-                              <button
-                                onClick={handleSaveFileChanges}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
-                                title="Guardar cambios en el archivo"
-                              >
-                                <Save size={13} />
-                                <span>Guardar Cambios</span>
-                              </button>
-                              <button
-                                onClick={handleCancelFileEditing}
-                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-                                title="Descartar cambios"
-                              >
-                                <span>✕ Cancelar</span>
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              {githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md") ? (
-                                <span
-                                  className="px-2.5 py-1 bg-amber-950/60 text-amber-300 border border-amber-700/60 rounded text-xs font-mono font-semibold flex items-center gap-1.5 cursor-not-allowed select-none shadow-sm"
-                                  title="El archivo README.md está protegido contra edición manual: contiene los derechos de propiedad intelectual, autoría de wisrovi y metadatos oficiales de WPipe Studio."
-                                >
-                                  <span>🔒 Protegido (Derechos & Autoría)</span>
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={handleStartEditingFile}
-                                  className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95"
-                                  title="Editar el código de este archivo directamente"
-                                >
-                                  <Edit3 size={13} />
-                                  <span>Editar</span>
-                                </button>
-                              )}
+                    {/* Project Folder Header */}
+                    <div
+                      onClick={() => {
+                        setGithubCurrentDir("");
+                        setGithubViewingFile(null);
+                      }}
+                      className="px-3 py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] flex items-center justify-between text-xs font-bold text-gray-200 cursor-pointer transition border-t border-b border-[#2b2b2b]"
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <ChevronDown size={14} className="text-[#858585]" />
+                        <span className="truncate">{projectName ? projectName.toUpperCase() : "WPIPE_MICROSERVICE"}</span>
+                      </div>
+                      <span className="text-[10px] text-[#858585] font-mono bg-[#1e1e1e] px-1.5 py-0.2 rounded border border-[#3c3c3c]">
+                        {generatedFiles.length}
+                      </span>
+                    </div>
 
-                              <button
-                                onClick={() => setGithubRawMode(!githubRawMode)}
-                                className={`px-2.5 py-1 rounded text-xs font-mono font-semibold transition cursor-pointer border ${
-                                  githubRawMode
-                                    ? "bg-sky-950 text-sky-300 border-sky-700"
-                                    : "bg-[#21262d] text-gray-300 border-[#30363d] hover:bg-[#30363d]"
+                    {/* Explorer Tree Body */}
+                    <div className="flex-1 overflow-y-auto py-1 px-1 custom-modal-scrollbar">
+                      {previewLoading ? (
+                        <p className="text-xs text-[#858585] italic p-3">Sincronizando archivos...</p>
+                      ) : generatedFiles.length === 0 ? (
+                        <p className="text-xs text-[#858585] italic p-3">No hay archivos generados.</p>
+                      ) : githubFileSearch.trim() ? (
+                        <div className="space-y-0.5">
+                          {generatedFiles
+                            .filter((f) => f.path.toLowerCase().includes(githubFileSearch.toLowerCase()))
+                            .map((f) => (
+                              <div
+                                key={f.path}
+                                onClick={() => openFileInTab(f)}
+                                className={`px-3 py-1 rounded flex items-center justify-between text-xs font-mono cursor-pointer transition ${
+                                  githubViewingFile?.path === f.path
+                                    ? "bg-[#094771] text-white font-bold"
+                                    : "text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white"
                                 }`}
                               >
-                                {githubRawMode ? "Formato Código" : "Raw"}
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(githubViewingFile.content);
-                                  setStatusMessage(`Copiado ${githubViewingFile.path} al portapapeles`);
-                                }}
-                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
-                              >
-                                <Copy size={12} />
-                                <span>Copiar</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  const blob = new Blob([githubViewingFile.content], { type: "text/plain;charset=utf-8" });
-                                  const url = URL.createObjectURL(blob);
-                                  const a = document.createElement("a");
-                                  a.href = url;
-                                  a.download = githubViewingFile.path.split("/").pop() || "file.txt";
-                                  a.click();
-                                  setStatusMessage(`Descargado ${githubViewingFile.path}`);
-                                }}
-                                className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-gray-300 border border-[#30363d] rounded text-xs flex items-center gap-1 transition cursor-pointer"
-                              >
-                                <Download size={12} />
-                                <span>Descargar</span>
-                              </button>
-                            </>
-                          )}
+                                <div className="flex items-center gap-2 truncate">
+                                  {getGitHubFileIcon(f.path)}
+                                  <span className="truncate">{f.path}</span>
+                                </div>
+                                <span className="text-[10px] text-[#858585] shrink-0 font-mono">
+                                  {f.content.split("\n").length}L
+                                </span>
+                              </div>
+                            ))}
                         </div>
-                      </div>
+                      ) : (
+                        <FileTreeItem
+                          node={buildFileTree(generatedFiles)}
+                          selectedPath={githubViewingFile ? githubViewingFile.path : githubCurrentDir}
+                          onSelectFile={(file) => openFileInTab(file)}
+                          onSelectFolder={(folderPath) => {
+                            setGithubCurrentDir(folderPath);
+                            setGithubViewingFile(null);
+                          }}
+                          expandedFolders={expandedFolders}
+                          onToggleFolder={toggleFolder}
+                          modifiedFiles={modifiedFiles}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                      {/* Docker Base Image Quick Selector */}
-                      {githubViewingFile.path.endsWith("Dockerfile") && (
-                        <div className="bg-[#121824] border-b border-[#30363d] px-4 py-2 flex items-center justify-between flex-wrap gap-2 text-xs">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-amber-400 font-bold font-mono flex items-center gap-1.5">
-                              🐳 Imagen Base:
-                            </span>
-                            {[
-                              { label: "Python 3.11-slim (Predeterminada)", tag: "python:3.11-slim" },
-                              { label: "Python 3.12-slim", tag: "python:3.12-slim" },
-                              { label: "Python 3.10-slim", tag: "python:3.10-slim" },
-                              { label: "Python 3.11 Full", tag: "python:3.11" },
-                              { label: "NVIDIA CUDA 12.1", tag: "nvidia/cuda:12.1.0-runtime-ubuntu22.04" },
-                              { label: "FastAPI Prod", tag: "tiangolo/uvicorn-gunicorn-fastapi:python3.11-slim" },
-                            ].map((preset) => {
-                              const active = (isEditingFile ? editingFileContent : githubViewingFile.content).includes(preset.tag);
-                              return (
-                                <button
-                                  key={preset.tag}
-                                  onClick={() => handleSelectDockerBaseImage(preset.tag)}
-                                  className={`px-2 py-0.5 rounded text-[11px] font-mono transition cursor-pointer border ${
-                                    active
-                                      ? "bg-amber-500/20 text-amber-300 border-amber-500/60 font-bold"
-                                      : "bg-[#21262d] text-gray-300 border-[#30363d] hover:bg-[#30363d] hover:text-white"
-                                  }`}
-                                >
-                                  {preset.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              placeholder="Personalizada (ej: my-repo:tag)..."
-                              value={customDockerImage}
-                              onChange={(e) => setCustomDockerImage(e.target.value)}
-                              className="bg-[#010409] border border-[#30363d] rounded px-2 py-0.5 text-[11px] font-mono text-gray-200 focus:outline-none focus:border-amber-400 w-52"
-                            />
-                            <button
-                              onClick={() => {
-                                if (customDockerImage.trim()) {
-                                  handleSelectDockerBaseImage(customDockerImage.trim());
-                                  setCustomDockerImage("");
-                                }
-                              }}
-                              disabled={!customDockerImage.trim()}
-                              className="px-2 py-0.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-black font-bold rounded text-[11px] transition cursor-pointer"
-                            >
-                              Aplicar
-                            </button>
-                          </div>
+                {/* 3. VS CODE EDITOR AREA (Tabs + Breadcrumbs + Viewport) */}
+                <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden">
+                  {/* 3.1 VS Code Tabs Bar */}
+                  <div className="bg-[#252526] border-b border-[#1e1e1e] flex items-center justify-between overflow-x-auto select-none no-scrollbar shrink-0 h-9">
+                    {/* Tabs List */}
+                    <div className="flex items-center h-full overflow-x-auto no-scrollbar">
+                      {/* Folder tab if no files open */}
+                      {openTabs.length === 0 && (
+                        <div
+                          onClick={() => setGithubViewingFile(null)}
+                          className="h-full px-4 flex items-center gap-2 text-xs font-mono border-r border-[#1e1e1e] bg-[#1e1e1e] text-white border-t-2 border-t-[#007acc] cursor-pointer"
+                        >
+                          <Folder size={14} className="text-[#dcb67a]" />
+                          <span>{githubCurrentDir.split("/").pop() || projectName || "workspace"} (Carpeta)</span>
                         </div>
                       )}
 
-                      {/* Code Content or Editor */}
-                      {isEditingFile ? (
-                        <div className="flex-1 flex flex-col bg-[#090d13] overflow-hidden relative">
-                          <div className="bg-[#111620] px-4 py-2 border-b border-[#30363d] text-[11px] text-gray-300 font-mono flex items-center justify-between shrink-0">
-                            <span className="flex items-center gap-2 text-sky-400 font-semibold">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Modo Edición: coloreado de sintaxis activo en tiempo real.
-                            </span>
-                            <div className="flex items-center gap-3 text-gray-400">
-                              <span>💡 Tab sangra 4 espacios</span>
-                              <span className="font-bold text-gray-200">{editingFileContent.split("\n").length} líneas</span>
+                      {openTabs.map((tab) => {
+                        const isActive = githubViewingFile?.path === tab.path;
+                        const isModified = modifiedFiles.has(tab.path);
+                        return (
+                          <div
+                            key={tab.path}
+                            onClick={() => {
+                              setIsEditingFile(false);
+                              setReadmePreviewMode(false);
+                              setGithubViewingFile(tab);
+                              setGithubCurrentDir(tab.path.split("/").slice(0, -1).join("/"));
+                            }}
+                            className={`h-full px-3 flex items-center gap-2 text-xs font-mono border-r border-[#1e1e1e] cursor-pointer transition shrink-0 group ${
+                              isActive
+                                ? "bg-[#1e1e1e] text-white border-t-2 border-t-[#007acc]"
+                                : "bg-[#2d2d2d] text-[#969696] hover:bg-[#1e1e1e] hover:text-gray-200 border-t-2 border-t-transparent"
+                            }`}
+                          >
+                            {getGitHubFileIcon(tab.path)}
+                            <span className="truncate max-w-[130px]">{tab.path.split("/").pop()}</span>
+                            {isModified && (
+                              <span
+                                onClick={(e) => closeTab(tab.path, e)}
+                                className="w-2 h-2 rounded-full bg-[#e2c08d] group-hover:hidden"
+                                title="Modificado"
+                              />
+                            )}
+                            <button
+                              onClick={(e) => closeTab(tab.path, e)}
+                              className={`p-0.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition ${
+                                isModified ? "hidden group-hover:block" : ""
+                              }`}
+                              title="Cerrar archivo"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Tab Bar Action Buttons on the Right */}
+                    <div className="flex items-center space-x-1.5 px-3 shrink-0">
+                      {githubViewingFile && (githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) && (
+                        <button
+                          onClick={() => setReadmePreviewMode(!readmePreviewMode)}
+                          className="px-2 py-0.5 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
+                          title="Alternar entre editor de código y vista previa renderizada"
+                        >
+                          {readmePreviewMode ? <Code size={12} /> : <Eye size={12} />}
+                          <span>{readmePreviewMode ? "Código" : "Vista Previa"}</span>
+                        </button>
+                      )}
+
+                      {githubViewingFile && !isEditingFile && !(githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) && (
+                        <button
+                          onClick={handleStartEditingFile}
+                          className="px-2.5 py-0.5 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                          title="Editar este archivo"
+                        >
+                          <Edit3 size={12} />
+                          <span>Editar</span>
+                        </button>
+                      )}
+
+                      {isEditingFile && (
+                        <>
+                          <button
+                            onClick={handleSaveFileChanges}
+                            className="px-2.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                            title="Guardar cambios"
+                          >
+                            <Save size={12} />
+                            <span>Guardar</span>
+                          </button>
+                          <button
+                            onClick={handleCancelFileEditing}
+                            className="px-2 py-0.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-gray-300 rounded text-xs transition cursor-pointer"
+                            title="Cancelar edición"
+                          >
+                            <span>Cancelar</span>
+                          </button>
+                        </>
+                      )}
+
+                      {githubViewingFile && (
+                        <>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(githubViewingFile.content);
+                              setStatusMessage(`Copiado ${githubViewingFile.path} al portapapeles`);
+                            }}
+                            className="p-1 hover:bg-[#3c3c3c] text-gray-300 hover:text-white rounded transition cursor-pointer"
+                            title="Copiar código"
+                          >
+                            <Copy size={13} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const blob = new Blob([githubViewingFile.content], { type: "text/plain;charset=utf-8" });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = githubViewingFile.path.split("/").pop() || "file.txt";
+                              a.click();
+                              setStatusMessage(`Descargado ${githubViewingFile.path}`);
+                            }}
+                            className="p-1 hover:bg-[#3c3c3c] text-gray-300 hover:text-white rounded transition cursor-pointer"
+                            title="Descargar archivo"
+                          >
+                            <Download size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3.2 VS Code Breadcrumbs Bar */}
+                  <div className="bg-[#1e1e1e] border-b border-[#2b2b2b] px-4 py-1 flex items-center gap-1.5 text-xs text-[#969696] font-mono shrink-0 select-none">
+                    {breadcrumbs.map((b, i) => (
+                      <React.Fragment key={b.path + i}>
+                        {i > 0 && <span className="text-[#5a5a5a]">›</span>}
+                        {b.isFolder ? (
+                          <button
+                            onClick={() => {
+                              setGithubCurrentDir(b.path);
+                              setGithubViewingFile(null);
+                            }}
+                            className="hover:text-white flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Folder size={12} className="text-[#dcb67a]" />
+                            <span>{b.label}</span>
+                          </button>
+                        ) : (
+                          <span className="text-white flex items-center gap-1 font-semibold">
+                            {getGitHubFileIcon(b.label)}
+                            <span>{b.label}</span>
+                          </span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+
+                  {/* Docker Image Quick Selector Banner if Dockerfile is open */}
+                  {githubViewingFile && githubViewingFile.path.endsWith("Dockerfile") && (
+                    <div className="bg-[#182332] border-b border-[#2b2b2b] px-4 py-1.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sky-400 font-bold font-mono flex items-center gap-1.5">
+                          🐳 Imagen Base:
+                        </span>
+                        {[
+                          { label: "Python 3.11-slim", tag: "python:3.11-slim" },
+                          { label: "Python 3.12-slim", tag: "python:3.12-slim" },
+                          { label: "Python 3.10-slim", tag: "python:3.10-slim" },
+                          { label: "Python 3.11 Full", tag: "python:3.11" },
+                          { label: "CUDA 12.1", tag: "nvidia/cuda:12.1.0-runtime-ubuntu22.04" },
+                          { label: "FastAPI Prod", tag: "tiangolo/uvicorn-gunicorn-fastapi:python3.11-slim" },
+                        ].map((preset) => {
+                          const active = (isEditingFile ? editingFileContent : githubViewingFile.content).includes(preset.tag);
+                          return (
+                            <button
+                              key={preset.tag}
+                              onClick={() => handleSelectDockerBaseImage(preset.tag)}
+                              className={`px-2 py-0.5 rounded text-[11px] font-mono transition cursor-pointer border ${
+                                active
+                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/60 font-bold"
+                                  : "bg-[#252526] text-gray-300 border-[#3c3c3c] hover:bg-[#3c3c3c] hover:text-white"
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="Personalizada (ej: repo:tag)..."
+                          value={customDockerImage}
+                          onChange={(e) => setCustomDockerImage(e.target.value)}
+                          className="bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-0.5 text-[11px] font-mono text-gray-200 focus:outline-none focus:border-sky-400 w-44"
+                        />
+                        <button
+                          onClick={() => {
+                            if (customDockerImage.trim()) {
+                              handleSelectDockerBaseImage(customDockerImage.trim());
+                              setCustomDockerImage("");
+                            }
+                          }}
+                          disabled={!customDockerImage.trim()}
+                          className="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-bold rounded text-[11px] transition cursor-pointer"
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3.3 Main Editor Content Viewport */}
+                  <div className="flex-1 flex overflow-hidden relative">
+                    {githubViewingFile ? (
+                      /* --- A: FILE VIEW (De forma natural en editor de código) --- */
+                      readmePreviewMode && (githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) ? (
+                        /* Markdown Preview inside file tab */
+                        <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
+                          <div className="max-w-4xl mx-auto">
+                            <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl px-4 py-2.5 flex items-center justify-between text-xs">
+                              <span className="font-bold text-sky-400 flex items-center gap-2">
+                                <BookOpen size={14} />
+                                <span>Vista Previa de {githubViewingFile.path}</span>
+                              </span>
+                              <button
+                                onClick={() => setReadmePreviewMode(false)}
+                                className="text-xs text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
+                              >
+                                <Code size={12} />
+                                <span>Volver al editor de código</span>
+                              </button>
+                            </div>
+                            <div className="bg-[#1e1e1e] border border-[#3c3c3c] border-t-0 rounded-b-xl p-8 shadow-2xl text-gray-200">
+                              <div
+                                className="markdown-body"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(githubViewingFile.content) }}
+                              />
                             </div>
                           </div>
-                          <div className="flex-1 flex overflow-hidden bg-[#090d13] relative">
-                            {/* Line Numbers for Editor */}
+                        </div>
+                      ) : isEditingFile ? (
+                        /* Live Interactive Code Editor with Prism highlighting */
+                        <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden relative">
+                          <div className="flex-1 flex overflow-hidden relative">
+                            {/* Line numbers gutter */}
                             <div
                               ref={editorLineNumbersRef}
-                              className="editor-line-numbers border-r border-[#30363d] py-4 px-3 text-right select-none font-mono text-xs overflow-hidden shrink-0"
-                              style={{ backgroundColor: "#0b0f17", color: "#6b7280" }}
+                              className="editor-line-numbers border-r border-[#2b2b2b] py-4 px-3 text-right select-none font-mono text-xs overflow-hidden shrink-0"
+                              style={{ backgroundColor: "#1e1e1e", color: "#858585" }}
                             >
                               {editingFileContent.split("\n").map((_, i) => (
                                 <div key={i} style={{ height: "20px", lineHeight: "20px" }}>
@@ -3475,9 +3686,8 @@ export default function App() {
                               ))}
                             </div>
 
-                            {/* Live Syntax-Highlighted Editor Viewport */}
+                            {/* Live syntax-highlighted editor viewport */}
                             <div className="relative flex-1 h-full overflow-hidden live-editor-viewport">
-                              {/* Syntax Highlighted Layer (Rendered with Prism) */}
                               <pre
                                 ref={editorPreRef}
                                 aria-hidden="true"
@@ -3489,12 +3699,16 @@ export default function App() {
                                   ),
                                 }}
                               />
-
-                              {/* Transparent Interactive Textarea with visible caret & selection */}
                               <textarea
                                 ref={editorTextareaRef}
                                 value={editingFileContent}
-                                onChange={(e) => setEditingFileContent(e.target.value)}
+                                onChange={(e) => {
+                                  setEditingFileContent(e.target.value);
+                                  updateCursorPosition(e.target);
+                                }}
+                                onSelect={(e) => updateCursorPosition(e.currentTarget)}
+                                onKeyUp={(e) => updateCursorPosition(e.currentTarget)}
+                                onClick={(e) => updateCursorPosition(e.currentTarget)}
                                 onKeyDown={handleEditorKeyDown}
                                 onScroll={handleEditorScroll}
                                 spellCheck={false}
@@ -3506,181 +3720,228 @@ export default function App() {
                           </div>
                         </div>
                       ) : (
-                        <div
-                          onDoubleClick={
-                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
-                              ? undefined
-                              : handleStartEditingFile
-                          }
-                          title={
-                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
-                              ? "El archivo README.md está protegido contra edición manual (Derechos de autor & Autoría wisrovi)"
-                              : "Doble clic para editar este archivo directamente"
-                          }
-                          className={`flex-1 overflow-auto font-mono text-xs flex custom-modal-scrollbar select-text bg-[#0d1117] ${
-                            githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
-                              ? "cursor-default"
-                              : "cursor-text"
-                          }`}
-                        >
-                          {!githubRawMode ? (
-                            <>
-                              {/* Line Numbers Column */}
-                              <div className="bg-[#0d1117] border-r border-[#30363d] py-4 px-3 text-right text-gray-600 select-none font-mono text-xs shrink-0">
-                                {githubViewingFile.content.split("\n").map((_, i) => (
-                                  <div key={i} style={{ height: "20px", lineHeight: "20px" }}>
-                                    {i + 1}
+                        /* Natural Code Viewer (Read mode with line numbers gutter) */
+                        <div className="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden">
+                          {/* Banner for protected README.md */}
+                          {(githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) && (
+                            <div className="bg-[#2a1c0d] border-b border-amber-800/60 px-4 py-2 text-xs flex items-center justify-between text-amber-300">
+                              <div className="flex items-center gap-2">
+                                <span>🔒</span>
+                                <span className="font-semibold">
+                                  Archivo protegido: Derechos reservados a favor de wisrovi (wisrovi.dev) y WPipe Studio.
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => setReadmePreviewMode(true)}
+                                className="px-2.5 py-0.5 bg-amber-600 hover:bg-amber-500 text-black font-bold rounded text-xs transition cursor-pointer flex items-center gap-1"
+                              >
+                                <Eye size={12} />
+                                <span>Ver Renderizado Bonito</span>
+                              </button>
+                            </div>
+                          )}
+
+                          <div
+                            onDoubleClick={
+                              githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
+                                ? undefined
+                                : handleStartEditingFile
+                            }
+                            title={
+                              githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")
+                                ? "Archivo protegido (Derechos de autor & Autoría wisrovi)"
+                                : "Doble clic para editar este archivo en el editor de código"
+                            }
+                            className="flex-1 flex overflow-auto font-mono text-xs custom-modal-scrollbar select-text bg-[#1e1e1e]"
+                          >
+                            {/* Line numbers gutter */}
+                            <div className="bg-[#1e1e1e] border-r border-[#2b2b2b] py-4 px-3 text-right text-[#858585] select-none font-mono text-xs shrink-0">
+                              {githubViewingFile.content.split("\n").map((_, i) => (
+                                <div key={i} style={{ height: "20px", lineHeight: "20px" }}>
+                                  {i + 1}
+                                </div>
+                              ))}
+                            </div>
+                            {/* Highlighted code */}
+                            <pre
+                              className="p-4 text-gray-200 whitespace-pre flex-1 overflow-visible font-mono text-xs"
+                              style={{
+                                fontFamily:
+                                  'Consolas, "Fira Code", Menlo, Monaco, "Courier New", monospace',
+                                lineHeight: "20px",
+                                margin: 0,
+                              }}
+                              dangerouslySetInnerHTML={{
+                                __html: highlightCode(githubViewingFile.content, githubViewingFile.path),
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      /* --- B: FOLDER VIEW (Al cargar la carpeta o seleccionarla) --- */
+                      currentReadme ? (
+                        /* Folder with README.md: RENDERIZA DE FORMA BONITA */
+                        <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
+                          <div className="max-w-4xl mx-auto">
+                            {/* Banner header above rendered README */}
+                            <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl px-4 py-3 flex items-center justify-between flex-wrap gap-2 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sky-400 font-bold flex items-center gap-1.5 font-mono">
+                                  <BookOpen size={15} />
+                                  <span>README.md</span>
+                                </span>
+                                <span className="text-gray-400 text-[11px]">
+                                  — Vista Previa Renderizada Oficial (Directorio: {githubCurrentDir || "/"})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openFileInTab(currentReadme)}
+                                  className="px-3 py-1 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow"
+                                  title="Abrir este README.md en el editor de código tradicional"
+                                >
+                                  <Edit3 size={13} />
+                                  <span>Ver Archivo en Editor</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Rendered HTML Container via marked and styled GitHub-alert callouts */}
+                            <div className="bg-[#1e1e1e] border border-[#3c3c3c] border-t-0 rounded-b-xl p-8 shadow-2xl text-gray-200">
+                              <div
+                                className="markdown-body"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(currentReadme.content) }}
+                              />
+                            </div>
+
+                            {/* Files in this directory */}
+                            <div className="mt-8 border border-[#3c3c3c] rounded-xl overflow-hidden bg-[#252526]">
+                              <div className="px-4 py-2.5 bg-[#2d2d2d] border-b border-[#3c3c3c] text-xs font-semibold text-gray-300 flex items-center justify-between">
+                                <span>Archivos en esta carpeta ({directoryItems.length})</span>
+                                <span className="text-[11px] text-gray-400 font-mono">Haz clic para abrir en el editor</span>
+                              </div>
+                              <div className="divide-y divide-[#3c3c3c]">
+                                {directoryItems.map((item) => (
+                                  <div
+                                    key={item.fullPath}
+                                    onClick={() => {
+                                      if (item.isFolder) {
+                                        setGithubCurrentDir(item.fullPath);
+                                        setGithubViewingFile(null);
+                                      } else if (item.file) {
+                                        openFileInTab(item.file);
+                                      }
+                                    }}
+                                    className="px-4 py-2 hover:bg-[#2a2d2e] flex items-center justify-between text-xs cursor-pointer transition group"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {item.isFolder ? <Folder size={15} className="text-[#dcb67a]" /> : getGitHubFileIcon(item.name)}
+                                      <span className="font-mono text-gray-200 group-hover:text-sky-400">{item.name}</span>
+                                    </div>
+                                    <span className="text-gray-500 font-mono text-[11px]">{item.description}</span>
                                   </div>
                                 ))}
                               </div>
-                              {/* Highlighted Code Text via Prism */}
-                              <pre
-                                className="p-4 text-gray-200 whitespace-pre flex-1 overflow-visible font-mono text-xs"
-                                style={{
-                                  fontFamily:
-                                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                                  lineHeight: "20px",
-                                  margin: 0,
-                                }}
-                                dangerouslySetInnerHTML={{
-                                  __html: highlightCode(githubViewingFile.content, githubViewingFile.path),
-                                }}
-                              />
-                            </>
-                          ) : (
-                            <pre className="p-4 text-gray-200 whitespace-pre leading-relaxed flex-1 overflow-visible font-mono" style={{ lineHeight: "20px", margin: 0 }}>
-                              {githubViewingFile.content}
-                            </pre>
-                          )}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  /* 4. GitHub Directory Table View */
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-modal-scrollbar">
-                    {/* Commit Box Banner */}
-                    <div className="bg-[#161b22] border border-[#30363d] rounded-t-lg p-3 flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-2.5">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                          W
-                        </div>
-                        <span className="font-bold text-gray-200">wpipe-scaffold</span>
-                        <span className="text-gray-400 truncate max-w-md">
-                          feat(codegen): verified Dialect A microservice architecture
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-3 text-gray-400 font-mono text-[11px]">
-                        <span className="flex items-center gap-1 text-sky-400 font-semibold">
-                          <GitCommit size={13} /> {projectName || "main"}
-                        </span>
-                        <span className="text-gray-500">·</span>
-                        <span>{generatedFiles.length} files</span>
-                        <span className="text-gray-500">·</span>
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 font-bold">
-                          READY ✓
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Directory Files and Folders Table */}
-                    <div className="border border-[#30363d] border-t-0 rounded-b-lg divide-y divide-[#30363d] bg-[#0d1117] overflow-hidden shadow-md">
-                      {/* Parent Directory Link (..) */}
-                      {githubCurrentDir !== "" && (
-                        <div
-                          onClick={() => {
-                            const parts = githubCurrentDir.split("/");
-                            parts.pop();
-                            setGithubCurrentDir(parts.join("/"));
-                          }}
-                          className="px-4 py-2 hover:bg-[#161b22] flex items-center gap-2 text-xs font-mono text-sky-400 font-bold cursor-pointer transition select-none"
-                        >
-                          <ArrowLeft size={13} />
-                          <span>..</span>
-                          <span className="text-gray-500 font-normal text-[11px]">
-                            (Volver a {githubCurrentDir.split("/").slice(0, -1).pop() || "raíz"})
-                          </span>
-                        </div>
-                      )}
-
-                      {directoryItems.map((item) => (
-                        <div
-                          key={item.fullPath}
-                          onClick={() => {
-                            if (item.isFolder) {
-                              setGithubCurrentDir(item.fullPath);
-                            } else if (item.file) {
-                              setIsEditingFile(false);
-                              setGithubViewingFile(item.file);
-                            }
-                          }}
-                          className="px-4 py-2 hover:bg-[#161b22] flex items-center justify-between text-xs transition cursor-pointer group"
-                        >
-                          {/* File / Folder Name & Icon */}
-                          <div className="w-[34%] flex items-center gap-2 truncate pr-2">
-                            {item.isFolder ? (
-                              <Folder size={15} className="text-sky-400 shrink-0" />
-                            ) : (
-                              getGitHubFileIcon(item.name)
-                            )}
-                            <span
-                              className={`truncate font-mono ${
-                                item.isFolder
-                                  ? "text-gray-100 font-bold group-hover:text-sky-400 group-hover:underline"
-                                  : "text-gray-300 group-hover:text-sky-300 group-hover:underline"
-                              }`}
-                            >
-                              {item.name}
-                            </span>
-                            {!item.isFolder && item.file && modifiedFiles.has(item.file.path) && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-950/80 text-amber-400 border border-amber-800/80 font-bold shrink-0">
-                                Editado
+                      ) : (
+                        /* Folder WITHOUT README.md: Show Directory Table */
+                        <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
+                          <div className="max-w-4xl mx-auto space-y-4">
+                            <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl p-4 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <FolderOpen size={18} className="text-[#dcb67a]" />
+                                <span className="font-bold text-gray-100 font-mono text-sm">
+                                  {githubCurrentDir || projectName || "workspace"}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-400 font-mono">
+                                {directoryItems.length} elementos
                               </span>
-                            )}
-                          </div>
+                            </div>
 
-                          {/* Commit Description */}
-                          <div className="flex-1 text-gray-400 truncate pr-4 text-[11px]">
-                            {item.description}
-                          </div>
+                            <div className="border border-[#3c3c3c] border-t-0 rounded-b-xl divide-y divide-[#3c3c3c] bg-[#1e1e1e] overflow-hidden">
+                              {githubCurrentDir !== "" && (
+                                <div
+                                  onClick={() => {
+                                    const parts = githubCurrentDir.split("/");
+                                    parts.pop();
+                                    setGithubCurrentDir(parts.join("/"));
+                                  }}
+                                  className="px-4 py-2 hover:bg-[#2a2d2e] flex items-center gap-2 text-xs font-mono text-sky-400 font-bold cursor-pointer transition select-none"
+                                >
+                                  <ArrowLeft size={13} />
+                                  <span>.. (Volver a la carpeta superior)</span>
+                                </div>
+                              )}
 
-                          {/* Stats */}
-                          <div className="w-[18%] text-right font-mono text-[11px] text-gray-500 shrink-0">
-                            {item.isFolder ? (
-                              <span className="text-gray-500">carpeta</span>
-                            ) : (
-                              <span>{item.lineCount} líneas · {item.sizeStr}</span>
-                            )}
+                              {directoryItems.map((item) => (
+                                <div
+                                  key={item.fullPath}
+                                  onClick={() => {
+                                    if (item.isFolder) {
+                                      setGithubCurrentDir(item.fullPath);
+                                    } else if (item.file) {
+                                      openFileInTab(item.file);
+                                    }
+                                  }}
+                                  className="px-4 py-2 hover:bg-[#2a2d2e] flex items-center justify-between text-xs transition cursor-pointer group"
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    {item.isFolder ? <Folder size={15} className="text-[#dcb67a]" /> : getGitHubFileIcon(item.name)}
+                                    <span className="font-mono text-gray-200 group-hover:text-sky-300">{item.name}</span>
+                                  </div>
+                                  <span className="text-gray-500 font-mono text-[11px]">{item.description}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Rendered README.md Container below directory table (like GitHub) */}
-                    {currentReadme && (
-                      <div className="border border-[#30363d] rounded-lg overflow-hidden bg-[#0d1117] shadow-md mt-6">
-                        <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-2 flex items-center justify-between text-xs font-semibold text-gray-300">
-                          <span className="flex items-center gap-2 font-mono">
-                            <FileText size={14} className="text-sky-400" />
-                            <span>README.md</span>
-                          </span>
-                          <button
-                            onClick={() => {
-                              setIsEditingFile(false);
-                              setGithubViewingFile(currentReadme);
-                            }}
-                            className="text-xs text-sky-400 hover:underline cursor-pointer"
-                          >
-                            Ver archivo
-                          </button>
-                        </div>
-                        <div className="p-6 text-xs text-gray-200 leading-relaxed font-mono whitespace-pre-wrap select-text">
-                          {currentReadme.content}
-                        </div>
-                      </div>
+                      )
                     )}
                   </div>
-                )}
+                </div>
+              </div>
+
+              {/* 4. VS CODE STATUS BAR (Bottom bar) */}
+              <div className="h-6 bg-[#007acc] text-white flex items-center justify-between px-3 text-[11px] font-mono select-none shrink-0 z-20">
+                <div className="flex items-center gap-3">
+                  <div
+                    onClick={() => setShowProjectsModal(true)}
+                    className="bg-[#005999] px-2 h-full flex items-center gap-1.5 font-bold cursor-pointer hover:bg-[#004d80]"
+                    title="Entorno Remoto WPipe Studio (Espacio de trabajo)"
+                  >
+                    <span>{"><"}</span>
+                    <span>WPipe Studio</span>
+                  </div>
+                  <div className="flex items-center gap-1 cursor-pointer hover:opacity-80">
+                    <GitBranch size={12} />
+                    <span>main{modifiedFiles.size > 0 ? "*" : ""}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] opacity-90">
+                    <span>0 ⚠️</span>
+                    <span>0 ❌</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {githubViewingFile ? (
+                    <>
+                      <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+                      <span>Spaces: 4</span>
+                      <span>UTF-8</span>
+                      <span>LF</span>
+                      <span className="font-semibold">{getLanguageFromPath(githubViewingFile.path)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{directoryItems.length} elementos</span>
+                      <span>Espacio de Trabajo Activo</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );

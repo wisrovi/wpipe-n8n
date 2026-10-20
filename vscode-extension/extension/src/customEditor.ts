@@ -1,5 +1,8 @@
 /**
  * Custom Text Editor Provider for Visual WPipe Canvas (.wpipe files)
+ * Embeds the full-fidelity WPipe Studio interactive IDE with visual Blockly blocks,
+ * zoom, pan, floating toolbar, palette, inspector, split view, and microservice generator.
+ * 
  * Author: William Rodriguez (wisrovi.dev)
  */
 
@@ -50,10 +53,13 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 
     // Synchronize initial document content
     const sendInitialData = () => {
-      let docContent = {};
+      let docContent: any = {};
       try {
-        docContent = document.getText() ? JSON.parse(document.getText()) : {};
-      } catch {}
+        const text = document.getText();
+        docContent = text ? JSON.parse(text) : {};
+      } catch {
+        docContent = {};
+      }
 
       webviewPanel.webview.postMessage({
         type: "init",
@@ -78,7 +84,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       }
     });
 
-    // Listen to messages from the Webview
+    // Listen to messages from Webview
     webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "saveCanvas": {
@@ -105,12 +111,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             if (action === "Actualizar a WPipe Pro") {
               vscode.env.openExternal(vscode.Uri.parse(res.details?.upgrade_url || "https://wisrovi.dev"));
             }
-            webviewPanel.webview.postMessage({
-              type: "compileError",
-              error: res,
-            });
           } else if (res.status === "success" && res.files) {
-            // Write generated files into workspace directory
             const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
             if (wsFolder) {
               for (const [relPath, content] of Object.entries(res.files)) {
@@ -120,10 +121,6 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
               }
               vscode.window.showInformationMessage(`✅ Pipeline compilado exitosamente (${projectName})`);
             }
-            webviewPanel.webview.postMessage({
-              type: "compileSuccess",
-              files: res.files,
-            });
           }
           break;
         }
@@ -158,304 +155,123 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     });
   }
 
-  private getHtmlForWebview(
-    webview: vscode.Webview,
-    document: vscode.TextDocument,
-    license: any
+  public getHtmlForWebview(
+    _webview: vscode.Webview,
+    _document?: vscode.TextDocument,
+    _license?: any
   ): string {
-    const isPro = Boolean(license?.is_pro);
-    const tier = license?.tier || "free";
-    const maxBlocks = license?.max_blocks ?? 5;
-
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * http://localhost:* http://127.0.0.1:*;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WPipe Studio Canvas</title>
   <style>
-    body {
+    * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      background-color: #1e1e1e;
-      color: #cccccc;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
+    }
+    html, body {
+      width: 100vw;
       height: 100vh;
       overflow: hidden;
-    }
-    .toolbar {
-      height: 40px;
-      background: #252526;
-      border-bottom: 1px solid #3c3c3c;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 12px;
-      font-size: 12px;
-    }
-    .toolbar-left, .toolbar-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .badge {
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-weight: 600;
-      font-size: 11px;
-    }
-    .badge-free {
-      background: #3a2e12;
-      color: #f59e0b;
-      border: 1px solid #78350f;
-    }
-    .badge-pro {
-      background: #064e3b;
-      color: #10b981;
-      border: 1px solid #047857;
-    }
-    button {
-      background: #0e639c;
-      color: white;
-      border: none;
-      padding: 4px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    button:hover {
-      background: #1177bb;
-    }
-    .btn-secondary {
-      background: #3c3c3c;
-    }
-    .btn-secondary:hover {
-      background: #4a4a4a;
-    }
-    .canvas-container {
-      flex: 1;
-      display: flex;
-      position: relative;
-    }
-    .palette {
-      width: 200px;
-      background: #252526;
-      border-right: 1px solid #3c3c3c;
-      padding: 12px;
+      background-color: #0f172a;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    .palette-item {
-      background: #2d2d2d;
-      border: 1px solid #454545;
-      padding: 8px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .palette-item:hover {
-      background: #37373d;
-      border-color: #0e639c;
-    }
-    .palette-item.pro-only {
-      opacity: 0.7;
-      border-style: dashed;
-    }
-    .workspace-area {
+    #studioFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
       flex: 1;
-      padding: 20px;
-      overflow: auto;
-      background: radial-gradient(circle, #2d2d2d 10%, transparent 11%);
-      background-size: 20px 20px;
+      display: block;
+      background: #0f172a;
     }
-    .block-card {
-      background: #2d2d2d;
-      border: 1px solid #0e639c;
-      border-left: 5px solid #0e639c;
-      border-radius: 4px;
-      padding: 10px;
-      margin-bottom: 8px;
-      width: 280px;
-      display: flex;
+    #fallback {
+      display: none;
+      flex: 1;
+      width: 100%;
+      height: 100%;
       align-items: center;
-      justify-content: space-between;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      justify-content: center;
+      flex-direction: column;
+      color: #94a3b8;
+      text-align: center;
+      padding: 24px;
+      gap: 16px;
     }
-    .modal-overlay {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.8);
+    .logo-badge {
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 100;
+      font-size: 26px;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 8px 24px rgba(2, 132, 199, 0.35);
     }
-    .modal-box {
-      background: #252526;
-      border: 1px solid #f59e0b;
-      padding: 24px;
-      border-radius: 8px;
-      max-width: 440px;
-      text-align: center;
+    .btn-retry {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
     }
-    .modal-box h3 {
-      color: #f59e0b;
-      margin-top: 0;
+    .btn-retry:hover {
+      background: #0369a1;
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <strong>🧩 WPipe Studio</strong>
-      <span class="badge ${isPro ? "badge-pro" : "badge-free"}">
-        ${isPro ? "PRO ILIMITADO" : "FREE (Máx " + maxBlocks + " bloques)"}
-      </span>
-      <span id="blockCounter" style="color: #888;"></span>
-    </div>
-    <div class="toolbar-right">
-      ${!isPro ? '<button onclick="upgrade()" style="background: #b45309;">✨ Desbloquear Pro</button>' : ''}
-      <button class="btn-secondary" onclick="simulate()">▶ Simular</button>
-      <button onclick="compile()">⚙️ Compilar a Python</button>
-    </div>
-  </div>
+  <iframe
+    id="studioFrame"
+    src="http://localhost:5173"
+    allow="clipboard-read; clipboard-write; microphone; camera"
+  ></iframe>
 
-  <div class="canvas-container">
-    <div class="palette">
-      <div style="font-weight: 600; font-size: 11px; text-transform: uppercase; color: #888;">Bloques Estándar</div>
-      <div class="palette-item" onclick="addBlock('trigger', 'API Ingress (/run)')">🚀 Trigger REST</div>
-      <div class="palette-item" onclick="addBlock('step', 'HttpRequest')">🌐 HttpRequest</div>
-      <div class="palette-item" onclick="addBlock('step', 'MySQLQuery')">🗄️ MySQLQuery</div>
-      <div class="palette-item" onclick="addBlock('condition', 'Condition IF')">🔀 Condición IF</div>
-      <div class="palette-item" onclick="addBlock('for', 'Loop For (5x)')">🔁 Bucle For</div>
-
-      <div style="font-weight: 600; font-size: 11px; text-transform: uppercase; color: #f59e0b; margin-top: 8px;">
-        Bloques Pro ${!isPro ? "🔒" : "⚡"}
-      </div>
-      <div class="palette-item ${!isPro ? "pro-only" : ""}" onclick="addBlock('wpipe_parallel', 'Parallel')">
-        ⚡ Parallel Concurrency ${!isPro ? '<span style="font-size:10px; color:#f59e0b;">PRO</span>' : ''}
-      </div>
-      <div class="palette-item ${!isPro ? "pro-only" : ""}" onclick="addBlock('wpipe_background', 'Background')">
-        ⏳ Background Worker ${!isPro ? '<span style="font-size:10px; color:#f59e0b;">PRO</span>' : ''}
-      </div>
-      <div class="palette-item ${!isPro ? "pro-only" : ""}" onclick="addBlock('wpipe_ai_step', 'AI Transform')">
-        ✨ AI Natural Step ${!isPro ? '<span style="font-size:10px; color:#f59e0b;">PRO</span>' : ''}
-      </div>
-    </div>
-
-    <div class="workspace-area" id="workspace">
-      <!-- Blocks rendered dynamically -->
-    </div>
-  </div>
-
-  <div id="upgradeModal" class="modal-overlay" style="display: none;">
-    <div class="modal-box">
-      <h3>🚀 Límite del Plan Free Alcanzado</h3>
-      <p id="upgradeMessage">El plan gratuito permite hasta 5 bloques por pipeline.</p>
-      <p style="font-size: 12px; color: #aaa;">Actualiza a WPipe Pro en wisrovi.dev para desbloquear bloques ilimitados, ejecución concurrente y tareas en segundo plano.</p>
-      <div style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;">
-        <button class="btn-secondary" onclick="closeModal()">Cerrar</button>
-        <button onclick="upgrade()" style="background: #10b981;">Obtener Licencia Pro en wisrovi.dev</button>
-      </div>
-    </div>
+  <div id="fallback">
+    <div class="logo-badge">W</div>
+    <h2 style="color: #f8fafc; font-size: 20px; font-weight: 700;">WPipe Studio</h2>
+    <p style="max-width: 440px; font-size: 13px; line-height: 1.6;">
+      Iniciando el lienzo visual de bloques y entorno de desarrollo en <code>http://localhost:5173</code>.
+    </p>
+    <button class="btn-retry" onclick="reloadFrame()">Reconectar Lienzo</button>
   </div>
 
   <script>
     const vscode = acquireVsCodeApi();
-    let isPro = ${isPro ? "true" : "false"};
-    let maxFreeBlocks = ${maxBlocks};
-    let canvasData = { nodes: [] };
+    const frame = document.getElementById('studioFrame');
+    const fallback = document.getElementById('fallback');
 
-    window.addEventListener('message', event => {
-      const msg = event.data;
-      if (msg.type === 'init' || msg.type === 'update') {
-        if (msg.data && msg.data.nodes) {
-          canvasData = msg.data;
-        } else {
-          // Default initial pipeline
-          canvasData = {
-            nodes: [
-              { id: 'node_1', data: { node_type: 'trigger', label: 'Trigger REST (/run)' } },
-              { id: 'node_2', data: { node_type: 'step', label: 'HttpRequest' } },
-            ]
-          };
-        }
-        renderBlocks();
-      } else if (msg.type === 'compileError') {
-        if (msg.error && msg.error.error === 'LIMIT_EXCEEDED') {
-          showUpgradeModal(msg.error.message);
-        }
+    function reloadFrame() {
+      fallback.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = 'http://localhost:5173?' + Date.now();
+    }
+
+    // Bridge message communication between iframe and VS Code extension
+    window.addEventListener('message', (event) => {
+      if (event.source === frame.contentWindow) {
+        vscode.postMessage(event.data);
+      } else if (event.data && frame.contentWindow) {
+        frame.contentWindow.postMessage(event.data, '*');
       }
     });
 
-    function renderBlocks() {
-      const ws = document.getElementById('workspace');
-      ws.innerHTML = '';
-      canvasData.nodes.forEach((node, idx) => {
-        const div = document.createElement('div');
-        div.className = 'block-card';
-        div.innerHTML = '<span>' + (idx + 1) + '. ' + node.data.label + '</span>' +
-          '<button class="btn-secondary" style="padding:2px 6px;" onclick="removeBlock(\\'' + node.id + '\\')">✕</button>';
-        ws.appendChild(div);
-      });
-
-      document.getElementById('blockCounter').innerText = '(' + canvasData.nodes.length + (isPro ? ' bloques)' : '/' + maxFreeBlocks + ' bloques)');
-    }
-
-    function addBlock(nodeType, label) {
-      if (!isPro && (nodeType === 'wpipe_parallel' || nodeType === 'wpipe_background' || nodeType === 'wpipe_ai_step')) {
-        showUpgradeModal("El bloque '" + label + "' requiere suscripción WPipe Pro activa.");
-        return;
-      }
-
-      if (!isPro && canvasData.nodes.length >= maxFreeBlocks) {
-        showUpgradeModal("Has alcanzado el límite de " + maxFreeBlocks + " bloques del plan Free.");
-        return;
-      }
-
-      const id = 'node_' + Math.random().toString(36).substr(2, 9);
-      canvasData.nodes.push({ id, data: { node_type: nodeType, label } });
-      renderBlocks();
-      save();
-    }
-
-    function removeBlock(id) {
-      canvasData.nodes = canvasData.nodes.filter(n => n.id !== id);
-      renderBlocks();
-      save();
-    }
-
-    function save() {
-      vscode.postMessage({ type: 'saveCanvas', canvasIr: canvasData });
-    }
-
-    function compile() {
-      vscode.postMessage({ type: 'compile', canvasIr: canvasData });
-    }
-
-    function simulate() {
-      vscode.postMessage({ type: 'simulate', canvasIr: canvasData });
-    }
-
-    function upgrade() {
-      vscode.postMessage({ type: 'requestUpgrade' });
-    }
-
-    function showUpgradeModal(msg) {
-      document.getElementById('upgradeMessage').innerText = msg;
-      document.getElementById('upgradeModal').style.display = 'flex';
-    }
-
-    function closeModal() {
-      document.getElementById('upgradeModal').style.display = 'none';
-    }
+    frame.onerror = () => {
+      fallback.style.display = 'flex';
+      frame.style.display = 'none';
+    };
   </script>
 </body>
 </html>`;

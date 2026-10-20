@@ -12,7 +12,8 @@ Diseña pipelines de datos visuales mediante bloques ensamblables al estilo Scra
 
 | Tecnología | Rol en la Extensión |
 |---|---|
-| **VS Code Extensibility API** | Registro de Custom Text Editors (`*.wpipe`), comandos y Status Bar Items. |
+| **VS Code Extensibility API** | Registro de Custom Text Editors (`*.wpipe`), vistas en la Activity Bar, comandos y Status Bar Items. |
+| **Google Blockly & SVG Engine** | Motor gráfico interactivo de bloques con conectores puzzle, zoom, paneo y herramientas visuales. |
 | **TypeScript 5** | Tipado estricto y comunicación IPC asíncrona no bloqueante. |
 | **VS Code Webview API** | Renderizado del lienzo interactivo con aislamiento y seguridad CSP. |
 | **Unix Domain Sockets & HTTP** | Canal IPC de ultra-baja latencia para comunicarse con el daemon `wpipe-engine`. |

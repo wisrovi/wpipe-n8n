@@ -18,9 +18,28 @@
     "onCustomEditor:wpipe.canvasEditor",
     "onCommand:wpipe.openCanvas",
     "onCommand:wpipe.newPipeline",
-    "onCommand:wpipe.activateLicense"
+    "onCommand:wpipe.activateLicense",
+    "onView:wpipe.sidebarView"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wpipe-studio-container",
+          "title": "WPipe Studio",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "wpipe-studio-container": [
+        {
+          "type": "webview",
+          "id": "wpipe.sidebarView",
+          "name": "WPipe Studio"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "wpipe.openCanvas",

@@ -12,6 +12,7 @@ from states import (
     FetchStatsStep,
     ManageLicensesStep,
     ManageActivationsStep,
+    ManageLeasesStep,
     ManageAuditStep,
 )
 
@@ -22,7 +23,7 @@ def create_admin_pipeline(client: CloudflareAdminClient | None = None) -> Pipeli
 
     pipeline = Pipeline(
         pipeline_name="admin_cloudfire_pipeline",
-        pipeline_version="1.0.0",
+        pipeline_version="1.1.0",
         tracking_db="output/admin_tracking.db",
         collect_system_metrics=False,
         show_progress=False,
@@ -36,6 +37,7 @@ def create_admin_pipeline(client: CloudflareAdminClient | None = None) -> Pipeli
         FetchStatsStep(client=admin_client),
         ManageLicensesStep(client=admin_client),
         ManageActivationsStep(client=admin_client),
+        ManageLeasesStep(client=admin_client),
         ManageAuditStep(client=admin_client),
     ])
 

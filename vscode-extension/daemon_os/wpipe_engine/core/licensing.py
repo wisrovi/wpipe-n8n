@@ -17,9 +17,12 @@ from typing import Any, Optional
 
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+import threading
+
 # Embedded Ed25519 Public Key (32-byte raw hex) paired with Cloudflare Worker
 DEFAULT_PUBLIC_KEY_HEX = "470531dc5170a830ff8028efa9e400b3717965404a28626ffa9cdbe3404e9ed1"
 DEFAULT_LICENSE_SERVER_URL = "https://api.wisrovi.dev"
+HEARTBEAT_INTERVAL_SECONDS = 1800  # 30 minutes
 
 
 def _base64url_decode(input_str: str) -> bytes:
@@ -151,6 +154,97 @@ class LicenseManager:
         self.public_key_hex = public_key_hex
         self.api_url = api_url.rstrip("/")
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        self._heartbeat_thread: Optional[threading.Thread] = None
+        self._stop_heartbeat = threading.Event()
+        self._start_heartbeat_loop_if_needed()
+
+    def _start_heartbeat_loop_if_needed(self) -> None:
+        """Start a daemon thread that sends periodic heartbeats every 30m to renew the 2h floating lease."""
+        if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():
+            return
+        if not self.license_file.exists():
+            return
+        try:
+            data = json.loads(self.license_file.read_text(encoding="utf-8"))
+            if not data.get("lease_id"):
+                return
+        except Exception:
+            return
+
+        def _worker():
+            while not self._stop_heartbeat.wait(HEARTBEAT_INTERVAL_SECONDS):
+                try:
+                    self.send_heartbeat()
+                except Exception:
+                    pass
+
+        self._heartbeat_thread = threading.Thread(target=_worker, name="wpipe-lease-heartbeat", daemon=True)
+        self._heartbeat_thread.start()
+
+    def send_heartbeat(self) -> bool:
+        """Ping Cloudflare Worker to renew the 2-hour floating seat lease TTL."""
+        if not self.license_file.exists():
+            return False
+        try:
+            data = json.loads(self.license_file.read_text(encoding="utf-8"))
+            lease_id = data.get("lease_id")
+            license_key = data.get("license_key")
+            if not lease_id or not license_key:
+                return False
+
+            import urllib.request
+            mfp = compute_machine_fingerprint()
+            req = urllib.request.Request(
+                f"{self.api_url}/v1/license/heartbeat",
+                data=json.dumps({
+                    "lease_id": lease_id,
+                    "license_key": license_key,
+                    "machine_fingerprint": mfp,
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+                if res.get("status") == "renewed":
+                    data["expires_at"] = res.get("expires_at")
+                    self.license_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def release_lease(self) -> bool:
+        """Voluntarily release the active floating seat so another workstation can use it."""
+        if not self.license_file.exists():
+            return False
+        try:
+            data = json.loads(self.license_file.read_text(encoding="utf-8"))
+            lease_id = data.get("lease_id")
+            license_key = data.get("license_key")
+            if not lease_id:
+                return False
+
+            import urllib.request
+            mfp = compute_machine_fingerprint()
+            req = urllib.request.Request(
+                f"{self.api_url}/v1/license/release",
+                data=json.dumps({
+                    "lease_id": lease_id,
+                    "license_key": license_key,
+                    "machine_fingerprint": mfp,
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data.pop("lease_id", None)
+                data.pop("lease_token", None)
+                self.license_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                return True
+        except Exception:
+            pass
+        return False
 
     def get_status(self) -> dict[str, Any]:
         """Return current licensing status (Free vs Pro)."""
@@ -175,6 +269,24 @@ class LicenseManager:
 
         try:
             data = json.loads(self.license_file.read_text(encoding="utf-8"))
+            if data.get("status") == "seats_exceeded":
+                return {
+                    "tier": "free",
+                    "is_pro": False,
+                    "max_blocks": 5,
+                    "license_key": data.get("license_key", ""),
+                    "features": {
+                        "unlimited_blocks": False,
+                        "parallel_blocks": False,
+                        "background_tasks": False,
+                        "ai_steps": False,
+                        "live_debugging": False,
+                    },
+                    "machine_fingerprint": mfp,
+                    "message": f"Capa Free Activa: Todos los asientos Pro de tu equipo ({data.get('active_seats', '?')}/{data.get('max_seats', '?')}) están en uso. Libera un puesto en https://portal.wisrovi.dev.",
+                    "upgrade_url": "https://portal.wisrovi.dev",
+                }
+
             lease_token = data.get("lease_token", "")
             is_valid, payload, msg = verify_lease_token(
                 lease_token, self.public_key_hex, expected_fingerprint=mfp
@@ -240,6 +352,55 @@ class LicenseManager:
             "os": platform.system().lower(),
         }
 
+        # 1. First attempt Floating Lease API (/v1/license/lease)
+        try:
+            req = urllib.request.Request(
+                f"{self.api_url}/v1/license/lease",
+                data=json.dumps(payload_data).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                lease_token = result.get("lease_token")
+                if lease_token:
+                    is_valid, payload, msg = verify_lease_token(
+                        lease_token, self.public_key_hex, expected_fingerprint=mfp
+                    )
+                    if is_valid:
+                        save_data = {
+                            "license_key": clean_key,
+                            "lease_id": result.get("lease_id"),
+                            "customer_name": result.get("customer_name", "Developer"),
+                            "plan": result.get("plan", "pro"),
+                            "lease_token": lease_token,
+                            "activated_at": datetime.now(timezone.utc).isoformat(),
+                            "expires_at": result.get("expires_at"),
+                            "is_floating": True,
+                        }
+                        self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
+                        self._start_heartbeat_loop_if_needed()
+                        return True, f"¡Asiento Pro Flotante activado exitosamente! ({result.get('plan', 'Pro').upper()})"
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                err_data = json.loads(e.read().decode("utf-8", errors="ignore"))
+                # Save graceful fallback so engine continues in Free tier (≤ 5 blocks)
+                save_data = {
+                    "license_key": clean_key,
+                    "status": "seats_exceeded",
+                    "plan": "free",
+                    "max_seats": err_data.get("max_seats"),
+                    "active_seats": err_data.get("active_seats"),
+                    "message": err_data.get("message"),
+                }
+                self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
+                return False, f"Cupo lleno ({err_data.get('active_seats')}/{err_data.get('max_seats')} en uso). WPipe Studio funcionará en Capa Free (≤ 5 bloques). Libera un asiento en https://portal.wisrovi.dev."
+            elif e.code == 404:
+                return False, "Clave de licencia no encontrada o inválida."
+        except Exception:
+            pass
+
+        # 2. Fallback to legacy activate endpoint
         req = urllib.request.Request(
             f"{self.api_url}/v1/license/activate",
             data=json.dumps(payload_data).encode("utf-8"),

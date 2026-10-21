@@ -8,6 +8,9 @@ import { Env, handleActivate } from "./routes/activate";
 import { handleVerify } from "./routes/verify";
 import { handleWebhooks } from "./routes/webhooks";
 import { handleDownloads } from "./routes/downloads";
+import { handleLease, handleHeartbeat, handleRelease } from "./routes/lease";
+import { handlePortal } from "./routes/portal";
+import { handleAdmin } from "./routes/admin";
 
 function corsHeaders(): HeadersInit {
   return {
@@ -39,12 +42,23 @@ export default {
             service: "WPipe Studio Licensing Authority",
             vendor: "wisrovi.dev",
             author: "William Rodriguez",
-            version: "1.0.0",
+            version: "1.1.0",
             status: "healthy",
+            features: ["floating_leases", "hardware_fingerprint", "enterprise_portal", "admin_sql"],
             timestamp: new Date().toISOString(),
           }, null, 2),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
+      } else if (url.pathname === "/v1/license/lease" && request.method === "POST") {
+        response = await handleLease(request, env);
+      } else if (url.pathname === "/v1/license/heartbeat" && request.method === "POST") {
+        response = await handleHeartbeat(request, env);
+      } else if (url.pathname === "/v1/license/release" && request.method === "POST") {
+        response = await handleRelease(request, env);
+      } else if (url.pathname.startsWith("/v1/portal")) {
+        response = await handlePortal(request, env, url);
+      } else if (url.pathname.startsWith("/v1/admin")) {
+        response = await handleAdmin(request, env, url);
       } else if (url.pathname === "/v1/license/activate" && request.method === "POST") {
         response = await handleActivate(request, env);
       } else if (url.pathname === "/v1/license/verify" && request.method === "POST") {

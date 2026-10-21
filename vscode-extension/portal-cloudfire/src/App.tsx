@@ -25,6 +25,10 @@ import {
   ArrowLeft,
   Send,
   Lock,
+  Download,
+  Search,
+  Tag,
+  Terminal,
 } from "lucide-react";
 
 interface Device {
@@ -82,6 +86,41 @@ export default function App() {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showAdminKeys, setShowAdminKeys] = useState<boolean>(false);
+  const [deviceSearch, setDeviceSearch] = useState<string>("");
+  const [editingNickId, setEditingNickId] = useState<string | null>(null);
+  const [nickInput, setNickInput] = useState<string>("");
+  const [nicknames, setNicknames] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("wpipe_station_nicknames") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const handleSaveNickname = (deviceId: string) => {
+    const updated = { ...nicknames, [deviceId]: nickInput.trim() };
+    setNicknames(updated);
+    localStorage.setItem("wpipe_station_nicknames", JSON.stringify(updated));
+    setEditingNickId(null);
+  };
+
+  const exportDevicesToCsv = (devicesToExport: Device[]) => {
+    if (!devicesToExport || devicesToExport.length === 0) return;
+    const csvRows = [
+      "ID,Hostname,Apodo,Sistema Operativo,Huella SHA-256,Ultimo Heartbeat,Expira",
+      ...devicesToExport.map((d) =>
+        `"${d.id}","${d.hostname || ""}","${nicknames[d.id] || ""}","${d.os_name || ""}","${d.machine_fingerprint}","${d.last_heartbeat_at}","${d.lease_expires_at}"`
+      ),
+    ];
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `wpipe_dispositivos_${data?.license_key || "export"}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Load overview for authorized session
   const fetchOverview = async (authToken: string, targetKey?: string) => {
@@ -604,11 +643,55 @@ export default function App() {
           </div>
         )}
 
-        {/* Seat Speedometer & Stats Overview for Active License */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg">
-            <span className="text-xs text-gray-400 font-medium">Plan de esta Licencia</span>
-            <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-300 mt-1 uppercase">
+        {/* Seat Gauge, Developer Quick Snippet & Stats Overview */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Radial Circular Seat Gauge Card */}
+          <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+            <div className="relative w-20 h-20 shrink-0">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-gray-800"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className={`transition-all duration-700 ${
+                    percentUsed >= 100
+                      ? "text-red-500"
+                      : percentUsed >= 80
+                      ? "text-amber-400"
+                      : "text-sky-400"
+                  }`}
+                  strokeDasharray={`${percentUsed}, 100`}
+                  strokeLinecap="round"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span className="text-sm font-black text-white">{percentUsed}%</span>
+                <span className="text-[9px] text-gray-400 font-mono">ocupado</span>
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs text-gray-400 font-medium block">Puestos Flotantes</span>
+              <div className="text-lg font-black text-white mt-0.5">
+                {data.active_seats} <span className="text-gray-500 text-xs font-normal">/ {data.max_seats}</span>
+              </div>
+              <span className="text-[11px] text-sky-400 font-mono block mt-0.5">
+                {data.available_seats} libres para el equipo
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-5 shadow-xl">
+            <span className="text-xs text-gray-400 font-medium">Plan Contratado</span>
+            <div className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-300 mt-1 uppercase">
               {data.plan}
             </div>
             <span className="text-[11px] text-gray-500 font-mono mt-1 block">
@@ -616,72 +699,93 @@ export default function App() {
             </span>
           </div>
 
-          <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg">
-            <span className="text-xs text-gray-400 font-medium">Asientos Contratados</span>
-            <div className="text-2xl font-black text-white mt-1">
-              {data.max_seats}
+          <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-5 shadow-xl">
+            <span className="text-xs text-gray-400 font-medium">Capacidad de Puestos</span>
+            <div className="text-xl font-black text-white mt-1">
+              {data.max_seats} Simultáneos
             </div>
             <span className="text-[11px] text-gray-500 mt-1 block">
-              Puestos simultáneos Pro
+              Concurrencia flotante por heartbeat
             </span>
           </div>
 
-          <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg">
-            <span className="text-xs text-gray-400 font-medium">Asientos en Uso Activo</span>
-            <div className="text-2xl font-black text-amber-400 mt-1">
-              {data.active_seats}
+          <div className="bg-[#0f172a] border border-emerald-900/50 bg-emerald-950/20 rounded-2xl p-5 shadow-xl">
+            <span className="text-xs text-emerald-400 font-medium">Estado del Servicio</span>
+            <div className="text-xl font-black text-emerald-300 mt-1 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>100% Operativo</span>
             </div>
-            <span className="text-[11px] text-gray-500 mt-1 block">
-              {percentUsed}% de capacidad ocupada
-            </span>
-          </div>
-
-          <div className="bg-[#0f172a] border border-emerald-900/50 bg-emerald-950/20 rounded-xl p-5 shadow-lg">
-            <span className="text-xs text-emerald-400 font-medium">Asientos Disponibles</span>
-            <div className="text-2xl font-black text-emerald-300 mt-1">
-              {data.available_seats}
-            </div>
-            <span className="text-[11px] text-emerald-500/80 mt-1 block">
-              Listos para nuevos equipos
+            <span className="text-[11px] text-emerald-500/80 mt-1 block font-mono">
+              Cloudflare Edge Validated
             </span>
           </div>
         </div>
 
-        {/* Progress bar of seat utilization */}
-        <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-4 shadow-lg">
-          <div className="flex justify-between text-xs text-gray-400 mb-1.5 font-medium">
-            <span>Uso de Asientos Flotantes: {data.active_seats} de {data.max_seats}</span>
-            <span>{percentUsed}%</span>
+        {/* Developer Quick Snippet Box */}
+        <div className="bg-gradient-to-r from-gray-900 via-sky-950/20 to-gray-900 border border-gray-800 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-sky-500/10 border border-sky-500/20 rounded-xl text-sky-400">
+              <Terminal size={18} />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-white block">
+                Comando de Activación para Desarrolladores
+              </span>
+              <p className="text-[11px] text-gray-400">
+                Pásale este comando a tus ingenieros para activar WPipe Studio en su terminal en 1 segundo:
+              </p>
+            </div>
           </div>
-          <div className="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden">
-            <div
-              className={`h-2.5 rounded-full transition-all duration-500 ${
-                percentUsed >= 100
-                  ? "bg-red-500"
-                  : percentUsed >= 80
-                  ? "bg-amber-400"
-                  : "bg-emerald-400"
-              }`}
-              style={{ width: `${percentUsed}%` }}
-            />
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <code className="text-xs font-mono text-sky-300 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex-1 md:flex-none">
+              wpipe-engine activate --key {data.license_key}
+            </code>
+            <button
+              onClick={() => handleCopyKey(`wpipe-engine activate --key ${data.license_key}`)}
+              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0"
+            >
+              <Copy size={12} />
+              <span>{copiedKey?.includes("activate") ? "¡Copiado!" : "Copiar"}</span>
+            </button>
           </div>
         </div>
 
-        {/* Connected Workstations Table */}
-        <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-6 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
+        {/* Connected Workstations Table with Search, Nicknames & Export */}
+        <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Laptop size={18} className="text-sky-400" />
-                <span>Equipos Conectados en Tiempo Real</span>
+                <span>Equipos Conectados en Tiempo Real ({data.devices.length})</span>
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Cada ordenador activo envía un pulso (heartbeat) cada 30 min. Si un equipo se rompe o se formatea, libéralo aquí.
+                Heartbeat automático cada 30 min. Asigna apodos para reconocer fácilmente cada estación.
               </p>
             </div>
-            <span className="text-xs text-gray-400 font-mono">
-              {data.devices.length} equipo{data.devices.length === 1 ? "" : "s"} registrado{data.devices.length === 1 ? "" : "s"}
-            </span>
+
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search size={13} className="absolute left-3 top-2.5 text-gray-500" />
+                <input
+                  type="text"
+                  value={deviceSearch}
+                  onChange={(e) => setDeviceSearch(e.target.value)}
+                  placeholder="Buscar por hostname o apodo..."
+                  className="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white"
+                />
+              </div>
+
+              {data.devices.length > 0 && (
+                <button
+                  onClick={() => exportDevicesToCsv(data.devices)}
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Download size={13} />
+                  <span>Exportar CSV</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {data.devices.length > 0 ? (
@@ -689,7 +793,7 @@ export default function App() {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400">
-                    <th className="pb-3 font-semibold">Nombre del Equipo</th>
+                    <th className="pb-3 font-semibold">Equipo / Apodo</th>
                     <th className="pb-3 font-semibold">Sistema Operativo</th>
                     <th className="pb-3 font-semibold">Último Heartbeat</th>
                     <th className="pb-3 font-semibold">Estado</th>
@@ -697,35 +801,90 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60 font-mono">
-                  {data.devices.map((dev) => (
-                    <tr key={dev.id} className="hover:bg-gray-800/30 transition">
-                      <td className="py-3.5 font-bold text-white">
-                        {dev.hostname || "Estación de Trabajo"}
-                      </td>
-                      <td className="py-3.5 text-gray-300">
-                        {dev.os_name || "Desconocido"}
-                      </td>
-                      <td className="py-3.5 text-gray-400 flex items-center gap-1.5">
-                        <Clock size={12} className="text-gray-500" />
-                        <span>{dev.last_heartbeat_at}</span>
-                      </td>
-                      <td className="py-3.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          En Línea (Pro)
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-right font-sans">
-                        <button
-                          onClick={() => handleLiberateSeat(dev.id, dev.hostname)}
-                          disabled={loading}
-                          className="px-3 py-1 bg-red-950/70 hover:bg-red-900 border border-red-700/80 rounded-lg text-xs font-semibold text-red-200 transition cursor-pointer disabled:opacity-50"
-                        >
-                          🔓 Liberar Asiento
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {data.devices
+                    .filter((dev) => {
+                      if (!deviceSearch.trim()) return true;
+                      const term = deviceSearch.toLowerCase();
+                      const nick = (nicknames[dev.id] || "").toLowerCase();
+                      const host = (dev.hostname || "").toLowerCase();
+                      const os = (dev.os_name || "").toLowerCase();
+                      return nick.includes(term) || host.includes(term) || os.includes(term);
+                    })
+                    .map((dev) => (
+                      <tr key={dev.id} className="hover:bg-gray-800/30 transition">
+                        <td className="py-3.5 text-white">
+                          <div className="space-y-0.5">
+                            <div className="font-bold flex items-center gap-1.5">
+                              <span>{dev.hostname || "Estación de Trabajo"}</span>
+                              {nicknames[dev.id] && (
+                                <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-normal">
+                                  {nicknames[dev.id]}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Inline Nickname Editor */}
+                            {editingNickId === dev.id ? (
+                              <div className="flex items-center gap-1 pt-1 font-sans">
+                                <input
+                                  type="text"
+                                  value={nickInput}
+                                  onChange={(e) => setNickInput(e.target.value)}
+                                  placeholder="Ej. Portátil de Juan..."
+                                  className="px-2 py-0.5 bg-gray-900 border border-sky-600 rounded text-xs text-white"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSaveNickname(dev.id)}
+                                  className="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-bold cursor-pointer"
+                                >
+                                  Guardar
+                                </button>
+                                <button
+                                  onClick={() => setEditingNickId(null)}
+                                  className="text-gray-400 hover:text-white text-[10px] px-1"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingNickId(dev.id);
+                                  setNickInput(nicknames[dev.id] || "");
+                                }}
+                                className="text-[10px] text-gray-500 hover:text-sky-300 flex items-center gap-1 font-sans cursor-pointer"
+                              >
+                                <Tag size={10} />
+                                <span>{nicknames[dev.id] ? "Editar apodo" : "+ Añadir apodo"}</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 text-gray-300">
+                          {dev.os_name || "Linux"}
+                        </td>
+                        <td className="py-3.5 text-gray-400 flex items-center gap-1.5">
+                          <Clock size={12} className="text-gray-500" />
+                          <span>{dev.last_heartbeat_at}</span>
+                        </td>
+                        <td className="py-3.5">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 w-fit">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            En Línea (Pro)
+                          </span>
+                        </td>
+                        <td className="py-3.5 text-right font-sans">
+                          <button
+                            onClick={() => handleLiberateSeat(dev.id, dev.hostname)}
+                            disabled={loading}
+                            className="px-3 py-1 bg-red-950/70 hover:bg-red-900 border border-red-700/80 rounded-lg text-xs font-semibold text-red-200 transition cursor-pointer disabled:opacity-50"
+                          >
+                            🔓 Liberar Asiento
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

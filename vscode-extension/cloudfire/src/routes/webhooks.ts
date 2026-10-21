@@ -15,6 +15,15 @@ function generateLicenseKey(prefix = "WPIPE-PRO"): string {
   return `${prefix}-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
 }
 
+function generateAdminKey(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0").toUpperCase())
+    .join("");
+  return `WPIPE-ADM-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+}
+
 async function verifyLemonSignature(rawBody: string, signatureHex: string, secret: string): Promise<boolean> {
   try {
     const enc = new TextEncoder();
@@ -161,13 +170,14 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
   ) {
     const licenseId = `lic_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const newLicenseKey = generateLicenseKey(keyPrefix);
+    const adminKey = generateAdminKey();
     const expiresAt = new Date(Date.now() + 365 * 86400 * 1000).toISOString(); // 1 year default
 
     await env.DB.prepare(
       `INSERT INTO licenses (
-        id, license_key, customer_email, customer_name, plan, status, max_machines, expires_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'), datetime('now'))`
-    ).bind(licenseId, newLicenseKey, customerEmail.toLowerCase(), customerName, plan, maxMachines, expiresAt).run();
+        id, license_key, admin_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(licenseId, newLicenseKey, adminKey, customerEmail.toLowerCase(), customerName, plan, maxMachines, maxMachines, expiresAt).run();
 
     await env.DB.prepare(
       "INSERT INTO audit_logs (event_type, license_key, ip_address, details_json, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
@@ -175,7 +185,7 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
       "payment_new_license",
       newLicenseKey,
       clientIp,
-      JSON.stringify({ email: customerEmail, event: eventName, plan, max_machines: maxMachines })
+      JSON.stringify({ email: customerEmail, event: eventName, plan, max_machines: maxMachines, max_seats: maxMachines })
     ).run();
 
     return new Response(
@@ -183,10 +193,11 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
         status: "success",
         message: `Licencia ${plan.toUpperCase()} generada exitosamente`,
         license_key: newLicenseKey,
+        admin_key: adminKey,
         customer_email: customerEmail,
         customer_name: customerName,
         plan: plan,
-        max_machines: maxMachines,
+        max_seats: maxMachines,
         expires_at: expiresAt,
       }),
       { status: 201, headers: { "Content-Type": "application/json" } }

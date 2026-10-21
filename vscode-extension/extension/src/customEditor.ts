@@ -160,11 +160,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     _document?: vscode.TextDocument,
     _license?: any
   ): string {
+    const config = vscode.workspace.getConfiguration("wpipe");
+    const rawUrl = config.get<string>("canvasUrl") || "http://localhost:5173";
+    const canvasUrl = rawUrl.replace(/\/+$/, "");
+
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * http://localhost:* http://127.0.0.1:*;">
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * http://localhost:* http://127.0.0.1:* ${canvasUrl} https://*.wisrovi.dev https://*.pages.dev;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WPipe Studio Canvas</title>
   <style>
@@ -235,7 +239,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 <body>
   <iframe
     id="studioFrame"
-    src="http://localhost:5173/?mode=vscode"
+    src="${canvasUrl}/?mode=vscode"
     allow="clipboard-read; clipboard-write; microphone; camera"
   ></iframe>
 
@@ -243,7 +247,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     <div class="logo-badge">W</div>
     <h2 style="color: #f8fafc; font-size: 20px; font-weight: 700;">WPipe Studio</h2>
     <p style="max-width: 440px; font-size: 13px; line-height: 1.6;">
-      Iniciando el lienzo visual de bloques y entorno de desarrollo en <code>http://localhost:5173</code>.
+      Iniciando el lienzo visual de bloques y entorno de desarrollo en <code>${canvasUrl}</code>.
     </p>
     <button class="btn-retry" onclick="reloadFrame()">Reconectar Lienzo</button>
   </div>
@@ -252,11 +256,12 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     const vscode = acquireVsCodeApi();
     const frame = document.getElementById('studioFrame');
     const fallback = document.getElementById('fallback');
+    const baseUrl = ${JSON.stringify(canvasUrl)};
 
     function reloadFrame() {
       fallback.style.display = 'none';
       frame.style.display = 'block';
-      frame.src = 'http://localhost:5173/?mode=vscode&t=' + Date.now();
+      frame.src = baseUrl + '/?mode=vscode&t=' + Date.now();
     }
 
     // Bridge message communication between iframe and VS Code extension

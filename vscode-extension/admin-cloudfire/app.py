@@ -226,7 +226,7 @@ with tab1:
     if filtered_licenses:
         df_licenses = pd.DataFrame(filtered_licenses)
         cols_order = [
-            "license_key", "plan", "status", "customer_name", "customer_email",
+            "license_key", "admin_key", "plan", "status", "customer_name", "customer_email",
             "max_seats", "max_machines", "expires_at", "created_at"
         ]
         display_cols = [c for c in cols_order if c in df_licenses.columns]
@@ -344,7 +344,7 @@ with tab3:
     preset_query = None
     with pcol1:
         if st.button("📋 Ver Todas las Licencias"):
-            preset_query = "SELECT id, license_key, plan, max_seats, status, customer_email FROM licenses ORDER BY created_at DESC;"
+            preset_query = "SELECT id, license_key, admin_key, plan, max_seats, status, customer_email FROM licenses ORDER BY created_at DESC;"
     with pcol2:
         if st.button("🟢 Ver Leases Activos"):
             preset_query = "SELECT * FROM leases WHERE lease_expires_at > datetime('now');"

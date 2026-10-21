@@ -161,7 +161,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     _license?: any
   ): string {
     const config = vscode.workspace.getConfiguration("wpipe");
-    const rawUrl = config.get<string>("canvasUrl") || "http://localhost:5173";
+    const rawUrl = config.get<string>("canvasUrl") || "http://127.0.0.1:49152";
     const canvasUrl = rawUrl.replace(/\/+$/, "");
 
     return `<!DOCTYPE html>

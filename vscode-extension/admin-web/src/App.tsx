@@ -371,7 +371,7 @@ export default function App() {
                 type="password"
                 value={masterKey}
                 onChange={(e) => setMasterKey(e.target.value)}
-                placeholder="Introduce ADMIN_MASTER_KEY..."
+                placeholder="Introduce tu clave de Super-Admin..."
                 className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
                 required
                 autoFocus

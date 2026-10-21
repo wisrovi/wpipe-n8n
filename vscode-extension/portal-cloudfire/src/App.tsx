@@ -1,6 +1,7 @@
 /**
  * WPipe Studio - Enterprise Customer Self-Service Portal
  * Deployed at: portal.wisrovi.dev (Cloudflare Pages at 0 €/month)
+ * Multi-License Organization Management (Switch between departmental keys)
  * Author: William Rodriguez (wisrovi.dev)
  */
 
@@ -15,6 +16,9 @@ import {
   PlusCircle,
   HelpCircle,
   AlertTriangle,
+  Building2,
+  Copy,
+  Layers,
 } from "lucide-react";
 
 interface Device {
@@ -27,6 +31,18 @@ interface Device {
   created_at: string;
 }
 
+interface OrganizationLicense {
+  id: string;
+  license_key: string;
+  plan: string;
+  status: string;
+  max_seats: number;
+  active_seats: number;
+  customer_name: string;
+  customer_email: string;
+  expires_at: string | null;
+}
+
 interface LicenseOverview {
   license_key: string;
   customer_name: string;
@@ -37,26 +53,33 @@ interface LicenseOverview {
   available_seats: number;
   expires_at: string | null;
   devices: Device[];
+  organization_licenses?: OrganizationLicense[];
 }
 
 const API_BASE = "https://api.wisrovi.dev";
 
 export default function App() {
-  const [licenseKeyInput, setLicenseKeyInput] = useState<string>("");
+  const [identifierInput, setIdentifierInput] = useState<string>("");
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("wpipe_portal_key"));
+  const [currentKey, setCurrentKey] = useState<string | null>(() => localStorage.getItem("wpipe_active_key"));
   const [data, setData] = useState<LicenseOverview | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Load overview if token exists
-  const fetchOverview = async (activeKey: string) => {
+  // Load overview for an active license
+  const fetchOverview = async (authToken: string, targetKey?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/portal/overview`, {
+      const url = targetKey
+        ? `${API_BASE}/v1/portal/overview?key=${encodeURIComponent(targetKey)}`
+        : `${API_BASE}/v1/portal/overview`;
+
+      const res = await fetch(url, {
         headers: {
-          Authorization: `Bearer ${activeKey}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
       if (!res.ok) {
@@ -65,6 +88,8 @@ export default function App() {
       }
       const json: LicenseOverview = await res.json();
       setData(json);
+      setCurrentKey(json.license_key);
+      localStorage.setItem("wpipe_active_key", json.license_key);
     } catch (err: any) {
       setError(err.message || "Error al conectar con el servidor.");
       if (err.message.includes("UNAUTHORIZED")) {
@@ -77,13 +102,13 @@ export default function App() {
 
   useEffect(() => {
     if (token) {
-      fetchOverview(token);
+      fetchOverview(token, currentKey || undefined);
     }
   }, [token]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = licenseKeyInput.trim().toUpperCase();
+    const clean = identifierInput.trim();
     if (!clean) return;
 
     setLoading(true);
@@ -92,18 +117,20 @@ export default function App() {
       const res = await fetch(`${API_BASE}/v1/portal/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ license_key: clean }),
+        body: JSON.stringify({ identifier: clean }),
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || "Clave de licencia incorrecta o inactiva.");
+        throw new Error(errJson.message || "Identificador no encontrado o licencia inactiva.");
       }
       const json = await res.json();
       localStorage.setItem("wpipe_portal_key", json.token);
+      localStorage.setItem("wpipe_active_key", json.token);
       setToken(json.token);
+      setCurrentKey(json.token);
       fetchOverview(json.token);
     } catch (err: any) {
-      setError(err.message || "Error al autenticar clave.");
+      setError(err.message || "Error al autenticar acceso.");
     } finally {
       setLoading(false);
     }
@@ -111,11 +138,24 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem("wpipe_portal_key");
+    localStorage.removeItem("wpipe_active_key");
     setToken(null);
+    setCurrentKey(null);
     setData(null);
-    setLicenseKeyInput("");
+    setIdentifierInput("");
     setError(null);
     setActionNotice(null);
+  };
+
+  const handleSwitchLicense = (newKey: string) => {
+    if (!token || newKey === currentKey) return;
+    fetchOverview(token, newKey);
+  };
+
+  const handleCopyKey = (key: string) => {
+    navigator.clipboard.writeText(key);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2500);
   };
 
   const handleLiberateSeat = async (leaseId: string, hostname: string | null) => {
@@ -137,7 +177,7 @@ export default function App() {
         throw new Error("No se pudo liberar el asiento.");
       }
       setActionNotice(`✅ Asiento del equipo "${hostname || 'PC'}" liberado exitosamente.`);
-      await fetchOverview(token);
+      await fetchOverview(token, currentKey || undefined);
     } catch (err: any) {
       setError(err.message || "Error al liberar el asiento.");
     } finally {
@@ -163,7 +203,7 @@ export default function App() {
               Portal de Autoservicio Enterprise
             </p>
             <p className="text-xs text-gray-400 mt-2">
-              Gestiona los puestos de tu empresa, visualiza equipos activos y libera asientos en 1 clic.
+              Gestiona todas las licencias de tu organización, audita equipos en tiempo real y libera asientos en 1 clic.
             </p>
           </div>
 
@@ -177,18 +217,18 @@ export default function App() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                Clave de Licencia (License Key)
+                Clave de Licencia o Correo Corporativo
               </label>
               <input
                 type="text"
-                value={licenseKeyInput}
-                onChange={(e) => setLicenseKeyInput(e.target.value)}
-                placeholder="WPIPE-PRO-XXXX-XXXX-XXXX"
-                className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm font-mono text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent uppercase"
+                value={identifierInput}
+                onChange={(e) => setIdentifierInput(e.target.value)}
+                placeholder="WPIPE-PRO-... o it-admin@empresa.com"
+                className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-mono"
                 required
               />
               <p className="text-[11px] text-gray-500 mt-1">
-                La encontrarás en tu correo de compra o factura de Lemon Squeezy.
+                Ingresa tu clave de licencia o el correo corporativo con el que compraste en Lemon Squeezy para ver todas tus licencias agrupadas.
               </p>
             </div>
 
@@ -203,21 +243,21 @@ export default function App() {
 
           {/* Quick Demo Keys Helper */}
           <div className="mt-6 pt-4 border-t border-gray-800 text-center">
-            <span className="text-[11px] text-gray-500">¿Probando en demo? Usa una de estas claves:</span>
+            <span className="text-[11px] text-gray-500">¿Probando en demo? Usa una de estas opciones:</span>
             <div className="flex flex-wrap gap-1.5 justify-center mt-2">
               <button
                 type="button"
-                onClick={() => setLicenseKeyInput("WPIPE-PRO-DEMO-TEST-KEY-2026")}
-                className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-sky-300 rounded border border-gray-700 cursor-pointer"
+                onClick={() => setIdentifierInput("wisrovi@wisrovi.dev")}
+                className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-emerald-300 rounded border border-gray-700 cursor-pointer"
               >
-                WPIPE-PRO-DEMO (5 asientos)
+                📧 wisrovi@wisrovi.dev (Ver todas)
               </button>
               <button
                 type="button"
-                onClick={() => setLicenseKeyInput("WPIPE-ENT-C0E4-E966-A3FA")}
+                onClick={() => setIdentifierInput("WPIPE-ENT-C0E4-E966-A3FA")}
                 className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-purple-300 rounded border border-gray-700 cursor-pointer"
               >
-                WPIPE-ENT (20 asientos)
+                🔑 WPIPE-ENT (20 asientos)
               </button>
             </div>
           </div>
@@ -227,9 +267,15 @@ export default function App() {
   }
 
   // ---------------------------------------------------------------------------
-  // VIEW 2: Enterprise Dashboard
+  // VIEW 2: Enterprise Dashboard (Multi-License Capable)
   // ---------------------------------------------------------------------------
+  const orgLicenses = data.organization_licenses || [];
   const percentUsed = Math.min(100, Math.round((data.active_seats / data.max_seats) * 100));
+
+  // Compute organization-wide aggregate metrics
+  const orgTotalSeats = orgLicenses.reduce((acc, l) => acc + l.max_seats, 0) || data.max_seats;
+  const orgTotalActive = orgLicenses.reduce((acc, l) => acc + l.active_seats, 0) || data.active_seats;
+  const orgTotalAvailable = Math.max(0, orgTotalSeats - orgTotalActive);
 
   return (
     <div className="min-h-screen bg-[#07090e] text-gray-100 flex flex-col">
@@ -254,14 +300,37 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Multi-License Selector Dropdown (When company has 2+ licenses) */}
+        <div className="flex items-center gap-3">
+          {orgLicenses.length > 1 && (
+            <div className="flex items-center gap-2 bg-gray-900 border border-sky-800/60 rounded-lg px-2.5 py-1">
+              <Building2 size={14} className="text-sky-400 shrink-0" />
+              <label htmlFor="license-select" className="text-[11px] text-gray-400 font-medium whitespace-nowrap">
+                Licencia:
+              </label>
+              <select
+                id="license-select"
+                value={data.license_key}
+                onChange={(e) => handleSwitchLicense(e.target.value)}
+                className="bg-transparent text-xs text-white font-mono focus:outline-none cursor-pointer"
+              >
+                {orgLicenses.map((lic) => (
+                  <option key={lic.id} value={lic.license_key} className="bg-gray-900 text-white">
+                    {lic.license_key.slice(0, 16)}... ({lic.active_seats}/{lic.max_seats} en uso) [{lic.plan.toUpperCase()}]
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
-            onClick={() => fetchOverview(token)}
+            onClick={() => fetchOverview(token, currentKey || undefined)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 transition cursor-pointer"
+            title="Refrescar estado en vivo"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            <span>Actualizar</span>
+            <span className="hidden sm:inline">Actualizar</span>
           </button>
           <button
             onClick={handleLogout}
@@ -291,10 +360,50 @@ export default function App() {
           </div>
         )}
 
-        {/* Seat Speedometer & Stats Overview */}
+        {/* Organization-Wide Summary (When multiple licenses exist) */}
+        {orgLicenses.length > 1 && (
+          <div className="p-4 bg-gradient-to-r from-sky-950/40 via-indigo-950/30 to-purple-950/30 border border-sky-800/50 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-sky-500/20 border border-sky-400/30 rounded-xl text-sky-400">
+                <Layers size={22} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Organización: {data.customer_name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-900/80 text-sky-300 border border-sky-700 font-mono">
+                    {orgLicenses.length} licencias contratadas
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-300 mt-0.5">
+                  Consolidado global de la empresa: <strong>{orgTotalActive}</strong> de <strong>{orgTotalSeats}</strong> asientos en uso ({orgTotalAvailable} disponibles para nuevos empleados).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-gray-400">Licencia activa actual:</span>
+              <code className="text-xs font-mono font-bold text-sky-300 bg-sky-950/80 px-2.5 py-1 rounded border border-sky-700/80 flex items-center gap-1.5">
+                <span>{data.license_key}</span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyKey(data.license_key)}
+                  className="hover:text-white cursor-pointer"
+                  title="Copiar clave"
+                >
+                  <Copy size={12} />
+                </button>
+              </code>
+              {copiedKey === data.license_key && (
+                <span className="text-[11px] text-emerald-400 font-semibold animate-in fade-in">¡Copiada!</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Seat Speedometer & Stats Overview for Active License */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg">
-            <span className="text-xs text-gray-400 font-medium">Plan Contratado</span>
+            <span className="text-xs text-gray-400 font-medium">Plan de esta Licencia</span>
             <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-300 mt-1 uppercase">
               {data.plan}
             </div>
@@ -419,13 +528,89 @@ export default function App() {
           ) : (
             <div className="text-center py-10 bg-gray-900/40 rounded-lg border border-dashed border-gray-800">
               <CheckCircle2 size={32} className="mx-auto text-emerald-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white">Todos los Asientos están Libres</h4>
+              <h4 className="text-sm font-semibold text-white">Todos los Asientos de esta Licencia están Libres</h4>
               <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-                No hay equipos usando la licencia en este momento. Abre VS Code en cualquier ordenador para activar el primer puesto.
+                No hay equipos usando esta clave en este momento. Abre VS Code en cualquier ordenador para activar el primer puesto.
               </p>
             </div>
           )}
         </div>
+
+        {/* All Organization Licenses Cards (When company has 2+ licenses) */}
+        {orgLicenses.length > 1 && (
+          <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-6 shadow-xl space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Building2 size={18} className="text-indigo-400" />
+                <span>Todas las Licencias de tu Empresa ({orgLicenses.length})</span>
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Haz clic en "Gestionar" para alternar entre las claves asignadas a distintos departamentos o proyectos.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {orgLicenses.map((lic) => {
+                const isSelected = lic.license_key === data.license_key;
+                return (
+                  <div
+                    key={lic.id}
+                    className={`p-4 rounded-xl border transition ${
+                      isSelected
+                        ? "bg-sky-950/40 border-sky-500 shadow-md shadow-sky-500/10"
+                        : "bg-gray-900/70 border-gray-800 hover:border-gray-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase bg-gray-800 text-gray-300">
+                        {lic.plan}
+                      </span>
+                      <span className="text-[11px] text-gray-400 font-mono">
+                        {lic.active_seats} / {lic.max_seats} en uso
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5">
+                      <div className="flex items-center justify-between">
+                        <code className="text-xs font-mono font-bold text-white">
+                          {lic.license_key}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyKey(lic.license_key)}
+                          className="text-gray-400 hover:text-white cursor-pointer ml-1"
+                          title="Copiar clave"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-gray-500 mt-1 block">
+                        {lic.expires_at ? `Expira: ${lic.expires_at.slice(0, 10)}` : "Vitalicia (Lifetime)"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-gray-800/80 flex items-center justify-between">
+                      {isSelected ? (
+                        <span className="text-xs font-semibold text-sky-400 flex items-center gap-1">
+                          <CheckCircle2 size={13} />
+                          <span>Activa ahora</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchLicense(lic.license_key)}
+                          className="text-xs text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+                        >
+                          Gestionar esta clave →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Quick Advice & Expansion Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -444,7 +629,7 @@ export default function App() {
             <div>
               <h4 className="text-sm font-bold text-white">¿Necesitas más asientos para tu equipo?</h4>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                Puedes añadir asientos adicionales a esta misma clave sin cambiar de licencia.
+                Puedes añadir asientos adicionales a esta misma clave sin cambiar de licencia. Lemon Squeezy prorratea automáticamente los días restantes del mes.
               </p>
               <a
                 href="https://wisrovi.dev"

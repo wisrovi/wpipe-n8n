@@ -48,7 +48,13 @@ npm run deploy
    - **Clave de Administración (`admin_key`, ej. `WPIPE-ADM-...`):** Clave maestra privada que solo se envía al comprador o director IT. Permite autenticación directa al portal sin esperar al código por correo.
 3. **Detección Automática de Organización & Selector Departamental**:
    - Tras autenticarse, Cloudflare D1 localiza todas las licencias de la empresa y ofrece un selector reactivo en la barra superior para alternar departamentos en caliente.
-4. **Tacómetro de Puestos y Auditoría de Equipos**:
-   - Visualiza en vivo los puestos contratados, activos y libres, junto a la tabla de máquinas conectadas con su último *heartbeat*.
+4. **Tacómetro Radial y Auditoría de Equipos**:
+   - Visualiza en vivo los puestos contratados, activos y libres mediante un medidor circular SVG con umbrales de color dinámicos (Verde, Ámbar, Rojo).
 5. **Liberación Instantánea de Asientos**:
    - El botón **Liberar Asiento** ejecuta `DELETE /v1/portal/seats/:id`, liberando el puesto en D1 en menos de 50 ms para que un nuevo ordenador tome el relevo de inmediato.
+6. **Apodos de Equipos Personalizados (Station Nicknames)**:
+   - Permite al director IT asignar nombres reconocibles a cada estación (ej. "Portátil de Juan", "Build Server CI") que se persisten localmente en su sesión.
+7. **Comando de Activación para Desarrolladores**:
+   - Snippet de código con 1 clic para copiar el comando de terminal oficial (`wpipe-engine activate --key <KEY>`) para distribución inmediata a los ingenieros.
+8. **Exportación de Inventario de Equipos (CSV)**:
+   - Descarga directa en un clic del inventario de máquinas activas de la organización para auditoría interna IT.

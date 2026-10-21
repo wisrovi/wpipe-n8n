@@ -152,11 +152,14 @@ class CloudflareAdminClient:
             total_licenses = self.execute_query("SELECT COUNT(*) as count FROM licenses")[0]["count"]
             active_licenses = self.execute_query("SELECT COUNT(*) as count FROM licenses WHERE status = 'active'")[0]["count"]
             total_activations = self.execute_query("SELECT COUNT(*) as count FROM activations")[0]["count"]
+            active_leases_rows = self.execute_query("SELECT COUNT(*) as count FROM leases WHERE lease_expires_at > datetime('now')")
+            active_leases = active_leases_rows[0]["count"] if active_leases_rows else 0
             recent_logs = self.execute_query("SELECT COUNT(*) as count FROM audit_logs WHERE created_at >= datetime('now', '-7 days')")[0]["count"]
             return {
                 "total_licenses": total_licenses,
                 "active_licenses": active_licenses,
                 "total_activations": total_activations,
+                "active_floating_leases": active_leases,
                 "recent_logs_7d": recent_logs,
             }
         except Exception as e:
@@ -165,8 +168,32 @@ class CloudflareAdminClient:
                 "total_licenses": 0,
                 "active_licenses": 0,
                 "total_activations": 0,
+                "active_floating_leases": 0,
                 "recent_logs_7d": 0,
             }
+
+    def list_leases(self) -> list[dict[str, Any]]:
+        """List all active floating leases joined with license key and customer info."""
+        sql = """
+            SELECT le.id, le.license_id, l.license_key, l.customer_name, l.customer_email, l.plan,
+                   le.machine_fingerprint, le.hostname, le.os_name,
+                   le.last_heartbeat_at, le.lease_expires_at, le.created_at,
+                   CASE WHEN le.lease_expires_at > datetime('now') THEN 1 ELSE 0 END as is_active
+            FROM leases le
+            JOIN licenses l ON le.license_id = l.id
+            ORDER BY le.last_heartbeat_at DESC
+        """
+        try:
+            return self.execute_query(sql)
+        except Exception as e:
+            logger.error("Failed to list leases: %s", e)
+            return []
+
+    def delete_lease(self, lease_id: str) -> bool:
+        """Kick or release an active floating seat lease immediately."""
+        sql = "DELETE FROM leases WHERE id = ?"
+        self.execute_query(sql, [lease_id])
+        return True
 
     def list_licenses(self, search: Optional[str] = None, status_filter: Optional[str] = None) -> list[dict[str, Any]]:
         """List licenses with optional search filtering."""
@@ -207,10 +234,10 @@ class CloudflareAdminClient:
         license_id = f"lic_{secrets.token_hex(8)}"
 
         sql = """
-            INSERT INTO licenses (id, license_key, customer_email, customer_name, plan, status, max_machines, expires_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO licenses (id, license_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))
         """
-        params = [license_id, license_key, clean_email, clean_name, clean_plan, max_machines, expires_at]
+        params = [license_id, license_key, clean_email, clean_name, clean_plan, max_machines, max_machines, expires_at]
         self.execute_query(sql, params)
 
         return {

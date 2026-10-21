@@ -28,8 +28,10 @@ npm install
 # 2. Compilar aplicación
 npm run build
 
-# 3. Desplegar en Cloudflare Pages
-npx wrangler pages deploy dist --project-name=wpipe-portal
+# 3. Desplegar a Producción (portal.wisrovi.dev)
+npm run deploy
+# o directamente:
+# npx wrangler pages deploy dist --project-name=wpipe-portal --branch=main --commit-dirty=true
 ```
 
 ---

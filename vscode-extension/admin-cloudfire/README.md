@@ -14,8 +14,9 @@ graph TD
     CONTEXT --> S1[FetchStatsStep<br/>@step v1.0<br/>Queries KPIs & Counts]
     S1 --> S2[ManageLicensesStep<br/>@step v1.0<br/>List / Create / Update / Delete]
     S2 --> S3[ManageActivationsStep<br/>@step v1.0<br/>List / Unlink Hardware Fingerprints]
-    S3 --> S4[ManageAuditStep<br/>@step v1.0<br/>Security Logs & Forensics]
-    S4 --> OUT([AdminPipelineContext Result])
+    S3 --> S4[ManageLeasesStep<br/>@step v1.0<br/>List / Kick Active Floating Leases]
+    S4 --> S5[ManageAuditStep<br/>@step v1.0<br/>Security Logs & Forensics]
+    S5 --> OUT([AdminPipelineContext Result])
     OUT --> UI[Streamlit Real-Time Visualizer]
 ```
 

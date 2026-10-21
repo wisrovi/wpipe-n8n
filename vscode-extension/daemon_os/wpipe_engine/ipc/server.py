@@ -8,6 +8,7 @@ import os
 import platform
 import socket
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -21,6 +22,24 @@ from wpipe_engine.core.runner import LocalRunner
 DEFAULT_SOCKET_PATH = "/tmp/wpipe.sock"
 DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 49152
+
+if hasattr(sys, "_MEIPASS"):
+    _base = Path(sys._MEIPASS) / "wpipe_engine"
+else:
+    _base = Path(__file__).resolve().parent.parent
+
+CANVAS_STATIC_DIR = _base / "canvas_static"
+STEPS_CATALOG_FILE = _base / "steps_catalog.json"
+
+if not CANVAS_STATIC_DIR.exists():
+    fallback_static = Path.home() / ".wpipe" / "canvas_static"
+    if fallback_static.exists():
+        CANVAS_STATIC_DIR = fallback_static
+
+if not STEPS_CATALOG_FILE.exists():
+    fallback_cat = Path.home() / ".wpipe" / "steps_catalog.json"
+    if fallback_cat.exists():
+        STEPS_CATALOG_FILE = fallback_cat
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -86,6 +105,51 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
+    def _serve_static(self, rel_path: str) -> bool:
+        """Serve bundled static frontend canvas assets."""
+        clean_rel = rel_path.lstrip("/").split("?")[0]
+        if not clean_rel or clean_rel == "index.html":
+            target = CANVAS_STATIC_DIR / "index.html"
+        else:
+            target = CANVAS_STATIC_DIR / clean_rel
+
+        if not target.is_file():
+            return False
+
+        ext = target.suffix.lower()
+        content_type = "application/octet-stream"
+        if ext == ".html":
+            content_type = "text/html; charset=utf-8"
+        elif ext == ".js":
+            content_type = "application/javascript; charset=utf-8"
+        elif ext == ".css":
+            content_type = "text/css; charset=utf-8"
+        elif ext == ".json":
+            content_type = "application/json"
+        elif ext == ".png":
+            content_type = "image/png"
+        elif ext == ".svg":
+            content_type = "image/svg+xml"
+        elif ext in (".jpg", ".jpeg"):
+            content_type = "image/jpeg"
+        elif ext in (".woff", ".woff2"):
+            content_type = f"font/{ext[1:]}"
+
+        try:
+            data = target.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(data)
+            return True
+        except Exception:
+            return False
+
+    def do_HEAD(self) -> None:
+        self.do_GET()
+
     def do_GET(self) -> None:
         if not self._is_allowed_origin():
             self._send_json(403, {"error": "FORBIDDEN_ORIGIN", "message": "Cross-origin request rejected."})
@@ -93,7 +157,13 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
 
         license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
 
+        # 1. Base Health & Status
         if self.path in ("/", "/v1/health", "/health"):
+            # If path is "/" and canvas static files exist, serve index.html
+            if self.path == "/" and (CANVAS_STATIC_DIR / "index.html").exists():
+                if self._serve_static("index.html"):
+                    return
+
             self._send_json(200, {
                 "service": "wpipe-engine",
                 "version": "1.0.0",
@@ -102,6 +172,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
                 "pid": os.getpid(),
                 "status": "healthy",
             })
+            return
+
         elif self.path in ("/v1/license/status", "/license/status"):
             status = license_mgr.get_status()
             status["engine"] = {
@@ -113,8 +185,49 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
                 "transport": "unix_socket" if hasattr(self.server, "socket_path") else "http",
             }
             self._send_json(200, status)
-        else:
-            self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
+            return
+
+        # 2. Step Catalog Endpoints (for the Canvas palette)
+        elif self.path.startswith("/api/v1/catalog/steps") or self.path.startswith("/v1/catalog/steps"):
+            if STEPS_CATALOG_FILE.exists():
+                try:
+                    catalog_data = json.loads(STEPS_CATALOG_FILE.read_text(encoding="utf-8"))
+                    self._send_json(200, catalog_data)
+                    return
+                except Exception:
+                    pass
+            self._send_json(200, [])
+            return
+
+        elif self.path.startswith("/api/v1/catalog/categories") or self.path.startswith("/v1/catalog/categories"):
+            self._send_json(200, ["triggers", "connectivity", "databases", "ai", "security", "control"])
+            return
+
+        # 3. Transparent Local Auth (Developer profile, 0 login friction)
+        elif self.path.startswith("/api/v1/auth/me") or self.path.startswith("/auth/me"):
+            self._send_json(200, {
+                "id": "local_dev",
+                "username": "william.rodriguez",
+                "name": "William Rodriguez",
+                "role": "admin",
+            })
+            return
+
+        elif self.path.startswith("/api/v1/projects"):
+            self._send_json(200, [])
+            return
+
+        # 4. Static Canvas Files (index.html, JS, CSS, SVG)
+        served = self._serve_static(self.path)
+        if served:
+            return
+
+        # 5. SPA Fallback: if not an API call and canvas exists, serve index.html
+        if not self.path.startswith("/api/") and not self.path.startswith("/v1/"):
+            if self._serve_static("index.html"):
+                return
+
+        self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
 
     def do_POST(self) -> None:
         if not self._is_allowed_origin():
@@ -126,6 +239,19 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         runner: LocalRunner = self.server.runner  # type: ignore
 
         body = self._read_json_body()
+
+        # 0. Local Dev Auth Login
+        if self.path in ("/api/v1/auth/login", "/auth/login"):
+            self._send_json(200, {
+                "token": "local_dev_token",
+                "user": {
+                    "id": "local_dev",
+                    "username": "william.rodriguez",
+                    "name": "William Rodriguez",
+                    "role": "admin",
+                },
+            })
+            return
 
         # 1. License Activation
         if self.path in ("/v1/license/activate", "/license/activate"):
@@ -143,7 +269,7 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             })
 
         # 2. Pipeline Compilation (With Freemium Enforcer)
-        elif self.path in ("/v1/pipeline/compile", "/pipeline/compile"):
+        elif self.path in ("/v1/pipeline/compile", "/pipeline/compile", "/api/v1/pipeline/compile"):
             canvas_ir = body.get("canvas_ir", {})
             project_name = body.get("project_name", "main_pipeline")
             existing_code = body.get("existing_pipeline_code", "")
@@ -177,7 +303,7 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"error": "COMPILATION_ERROR", "message": str(e)})
 
         # 3. Pipeline Simulation
-        elif self.path in ("/v1/pipeline/simulate", "/pipeline/simulate"):
+        elif self.path in ("/v1/pipeline/simulate", "/pipeline/simulate", "/api/v1/pipeline/simulate"):
             canvas_ir = body.get("canvas_ir", {})
             input_payload = body.get("input_payload", {})
             breakpoints = body.get("breakpoints", [])
@@ -185,8 +311,18 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             res = runner.run_simulation(canvas_ir, input_payload, breakpoints)
             self._send_json(200, res)
 
-        # 4. Workspace Test Execution
-        elif self.path in ("/v1/pipeline/test", "/pipeline/test"):
+        # 4. Pipeline Dry-Run Validation
+        elif self.path in ("/v1/pipeline/dry-run", "/api/v1/pipeline/dry-run"):
+            canvas_ir = body.get("canvas_ir", {})
+            self._send_json(200, {"valid": True, "node_count": len(canvas_ir.get("nodes", []))})
+
+        # 5. Pipeline Transform
+        elif self.path in ("/v1/pipeline/transform", "/api/v1/pipeline/transform"):
+            canvas_ir = body.get("canvas_ir", {})
+            self._send_json(200, canvas_ir)
+
+        # 6. Workspace Test Execution
+        elif self.path in ("/v1/pipeline/test", "/pipeline/test", "/api/v1/pipeline/test"):
             ws_path = body.get("workspace_dir")
             if not ws_path:
                 self._send_json(400, {"error": "MISSING_WORKSPACE_DIR"})
@@ -209,7 +345,7 @@ def start_ipc_server(
     http_port: int = DEFAULT_HTTP_PORT,
     use_http: bool = False,
 ) -> None:
-    """Start the daemon server, either on a Unix domain socket or local HTTP."""
+    """Start the daemon server, running both Unix socket and local HTTP on Linux/macOS."""
     license_mgr = LicenseManager()
     compiler = ASTCompiler()
     runner = LocalRunner()
@@ -226,7 +362,20 @@ def start_ipc_server(
             print("\n🛑 Apagando wpipe-engine...")
             server.server_close()
     else:
-        # Unix Domain Socket mode (Linux/macOS)
+        # On Linux/macOS: Start HTTP server in a background thread so Webview/browser can access canvas & API
+        http_server = None
+        try:
+            http_server = ThreadedHTTPServer((http_host, http_port), EngineRequestHandler)
+            http_server.license_mgr = license_mgr  # type: ignore
+            http_server.compiler = compiler  # type: ignore
+            http_server.runner = runner  # type: ignore
+            http_thread = threading.Thread(target=http_server.serve_forever, daemon=True)
+            http_thread.start()
+            print(f"🌐 wpipe-engine servidor canvas activo en http://{http_host}:{http_port}")
+        except Exception as e:
+            print(f"⚠️ No se pudo iniciar servidor HTTP local en {http_port}: {e}")
+
+        # Start Unix Domain Socket in main thread
         if os.path.exists(socket_path):
             try:
                 os.unlink(socket_path)
@@ -235,6 +384,7 @@ def start_ipc_server(
 
         server = UnixHTTPServer(socket_path, EngineRequestHandler)
         os.chmod(socket_path, 0o666)  # Allow user access
+        server.socket_path = socket_path  # type: ignore
         server.license_mgr = license_mgr  # type: ignore
         server.compiler = compiler  # type: ignore
         server.runner = runner  # type: ignore
@@ -243,6 +393,8 @@ def start_ipc_server(
             server.serve_forever()
         except KeyboardInterrupt:
             print("\n🛑 Apagando wpipe-engine...")
+            if http_server:
+                http_server.server_close()
             server.server_close()
             if os.path.exists(socket_path):
                 os.unlink(socket_path)

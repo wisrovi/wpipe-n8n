@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist --project-name=wpipe-portal"
+    "deploy": "wrangler pages deploy dist --project-name=wpipe-portal --branch=main --commit-dirty=true",
+    "deploy:preview": "wrangler pages deploy dist --project-name=wpipe-portal --commit-dirty=true"
   },
   "dependencies": {
     "lucide-react": "^0.453.0",

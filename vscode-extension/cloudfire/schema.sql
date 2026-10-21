@@ -5,18 +5,20 @@
 -- ============================================================================
 
 DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS leases;
 DROP TABLE IF EXISTS activations;
 DROP TABLE IF EXISTS licenses;
 
--- 1. Licenses Table
+-- 1. Licenses Table (Contracts / Entitlements)
 CREATE TABLE licenses (
     id TEXT PRIMARY KEY,
     license_key TEXT UNIQUE NOT NULL,
     customer_email TEXT NOT NULL,
     customer_name TEXT,
-    plan TEXT NOT NULL DEFAULT 'pro',           -- 'pro', 'team', 'enterprise'
+    plan TEXT NOT NULL DEFAULT 'pro',           -- 'free', 'pro', 'team', 'enterprise'
     status TEXT NOT NULL DEFAULT 'active',      -- 'active', 'expired', 'suspended', 'revoked'
-    max_machines INTEGER NOT NULL DEFAULT 2,    -- Allowed machines per developer
+    max_machines INTEGER NOT NULL DEFAULT 2,    -- Legacy backward compatibility
+    max_seats INTEGER NOT NULL DEFAULT 1,       -- Allowed concurrent floating seats
     expires_at TEXT,                            -- ISO-8601 timestamp (NULL = lifetime)
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -26,7 +28,7 @@ CREATE INDEX idx_licenses_key ON licenses(license_key);
 CREATE INDEX idx_licenses_email ON licenses(customer_email);
 CREATE INDEX idx_licenses_status ON licenses(status);
 
--- 2. Machine Activations Table (Leases)
+-- 2. Machine Activations Table (Legacy persistent activations)
 CREATE TABLE activations (
     id TEXT PRIMARY KEY,
     license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
@@ -42,10 +44,26 @@ CREATE TABLE activations (
 CREATE INDEX idx_activations_license ON activations(license_id);
 CREATE INDEX idx_activations_fingerprint ON activations(machine_fingerprint);
 
--- 3. Audit Logs Table (Security, Webhooks, Verification History)
+-- 3. Dynamic Floating Leases Table (Concurrent seat management)
+CREATE TABLE leases (
+    id TEXT PRIMARY KEY,
+    license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+    machine_fingerprint TEXT NOT NULL,          -- Neutral SHA-256 (Motherboard+CPU+MAC)
+    hostname TEXT,                              -- Display name for customer portal
+    os_name TEXT,                               -- Operating system
+    last_heartbeat_at TEXT NOT NULL,            -- ISO-8601 timestamp
+    lease_expires_at TEXT NOT NULL,             -- ISO-8601 timestamp (+2 hours TTL)
+    created_at TEXT NOT NULL,
+    UNIQUE(license_id, machine_fingerprint)
+);
+
+CREATE INDEX idx_leases_lookup ON leases(license_id, machine_fingerprint);
+CREATE INDEX idx_leases_expiration ON leases(lease_expires_at);
+
+-- 4. Audit Logs Table (Security, Webhooks, Verification History)
 CREATE TABLE audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,                   -- 'activate', 'verify', 'revoke', 'webhook_payment', 'quota_exceeded'
+    event_type TEXT NOT NULL,                   -- 'lease_acquired', 'heartbeat', 'seat_released', 'quota_exceeded', 'activate', 'verify'
     license_key TEXT,
     machine_fingerprint TEXT,
     ip_address TEXT,

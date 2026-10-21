@@ -241,6 +241,12 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         case "activateLicense":
           vscode.commands.executeCommand("wpipe.activateLicense");
           break;
+        case "copyToClipboard":
+          if (msg.text) {
+            vscode.env.clipboard.writeText(msg.text);
+            vscode.window.showInformationMessage("📋 Clave de licencia copiada al portapapeles.");
+          }
+          break;
       }
     });
   }
@@ -261,32 +267,49 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private getSidebarHtml(status?: any): string {
-    const isPro = status && status.is_pro;
-    const tierName = (status?.tier || "FREE").toUpperCase();
-    const key = status?.license_key || "";
+    const isPro = Boolean(status && status.is_pro);
+    const rawTier = (status?.tier || "FREE").toUpperCase();
+    const tierName = escapeHtml(rawTier);
+    const rawKey = status?.license_key || "";
+    const cleanKey = escapeHtml(rawKey);
+    const maskedKey = escapeHtml(maskKey(rawKey));
 
     const licenseCard = isPro
       ? `
-  <div class="card" style="border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08);">
-    <div style="display: flex; align-items: center; justify-content: space-between;">
-      <span style="font-weight: 800; color: #34d399; font-size: 12px; letter-spacing: 0.5px;">👑 PLAN ACTIVO: ${tierName}</span>
-      <span style="font-size: 9px; background: rgba(52, 211, 153, 0.25); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-weight: 700;">PRO</span>
+  <div class="card card-pro">
+    <div class="status-header">
+      <span class="pro-title">👑 Plan Activo: ${tierName}</span>
+      <span class="online-pill"><span class="pulse-dot"></span> En Línea</span>
     </div>
-    <div style="color: var(--vscode-foreground); font-size: 11px; margin-top: 4px;">
-      ✓ Bloques y pasos ilimitados
+    <div class="features-list">
+      <div class="feat-item"><span class="feat-icon">✓</span> Bloques y pasos ilimitados</div>
+      <div class="feat-item"><span class="feat-icon">✓</span> Puesto flotante en Cloudflare Edge</div>
     </div>
-    <div style="color: var(--vscode-descriptionForeground); font-size: 10px;">
-      ✓ Puesto flotante en Cloudflare Edge
-    </div>
-    ${key ? `<div style="font-family: monospace; font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 4px 6px; border-radius: 4px; margin-top: 4px; word-break: break-all;">${key}</div>` : ""}
+    ${cleanKey ? `
+    <div class="key-box">
+      <div class="key-label">CLAVE DE LICENCIA</div>
+      <div class="key-row">
+        <code id="licenseDisplay" class="masked-code" data-masked="${maskedKey}" data-real="${cleanKey}">${maskedKey}</code>
+        <div class="key-actions">
+          <button id="btnToggleMask" class="icon-btn" title="Mostrar / Ocultar clave" onclick="toggleMask()">👁️</button>
+          <button id="btnCopyKey" class="icon-btn" title="Copiar clave completa" onclick="copyKey()">📋</button>
+        </div>
+      </div>
+      <div id="copyToast" class="copy-toast" style="display: none;">✓ Copiada al portapapeles</div>
+    </div>` : ""}
     <button class="btn btn-secondary" style="margin-top: 6px; font-size: 11px; padding: 5px 8px;" onclick="send('activateLicense')">
       🔄 Cambiar Licencia
     </button>
   </div>`
       : `
-  <div class="card">
-    <div style="font-weight: 700; color: #fbbf24; font-size: 12px;">⚡ Plan Activo: FREE</div>
-    <div style="color: var(--vscode-descriptionForeground);">Límite: Máximo 5 bloques por pipeline</div>
+  <div class="card card-free">
+    <div style="font-weight: 700; color: #fbbf24; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
+      <span>⚡ Plan Activo: FREE</span>
+      <span style="font-size: 9px; background: rgba(251, 191, 36, 0.15); color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-weight: 700;">LIMITADO</span>
+    </div>
+    <div style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-top: 2px;">
+      Límite: Máximo 5 bloques por pipeline
+    </div>
     <button class="btn" style="margin-top: 6px; background: linear-gradient(135deg, #d97706, #f59e0b); color: #1e1e1e; font-size: 11px; padding: 6px 8px; font-weight: 700;" onclick="send('activateLicense')">
       ⭐ Activar Licencia Pro
     </button>
@@ -368,6 +391,117 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       gap: 6px;
       font-size: 11px;
     }
+    .card-pro {
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.08);
+    }
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pro-title {
+      font-weight: 800;
+      color: #34d399;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+    .online-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      background-color: #10b981;
+      border-radius: 50%;
+      display: inline-block;
+      box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-top: 4px;
+    }
+    .feat-item {
+      font-size: 11px;
+      color: var(--vscode-foreground);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .feat-icon {
+      color: #34d399;
+      font-weight: bold;
+    }
+    .key-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-top: 6px;
+    }
+    .key-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--vscode-descriptionForeground);
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .key-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .masked-code {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 10.5px;
+      color: #cbd5e1;
+      letter-spacing: 0.8px;
+      word-break: break-all;
+    }
+    .key-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--vscode-foreground);
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-size: 11px;
+      cursor: pointer;
+      line-height: 1;
+      transition: all 0.15s ease;
+    }
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .copy-toast {
+      font-size: 9.5px;
+      color: #34d399;
+      margin-top: 4px;
+      text-align: right;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -395,13 +529,84 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
 
   <script>
     const vscode = acquireVsCodeApi();
-    function send(type) {
-      vscode.postMessage({ type: type });
+    function send(type, data = {}) {
+      vscode.postMessage({ type: type, ...data });
+    }
+
+    let isMasked = true;
+    function toggleMask() {
+      const el = document.getElementById('licenseDisplay');
+      const btn = document.getElementById('btnToggleMask');
+      if (!el || !btn) return;
+      if (isMasked) {
+        el.textContent = el.getAttribute('data-real');
+        btn.textContent = '🙈';
+        btn.title = 'Ocultar clave';
+        isMasked = false;
+      } else {
+        el.textContent = el.getAttribute('data-masked');
+        btn.textContent = '👁️';
+        btn.title = 'Mostrar clave';
+        isMasked = true;
+      }
+    }
+
+    function copyKey() {
+      const el = document.getElementById('licenseDisplay');
+      if (!el) return;
+      const realKey = el.getAttribute('data-real');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(realKey).then(() => {
+          showToast();
+        }).catch(() => {
+          send('copyToClipboard', { text: realKey });
+          showToast();
+        });
+      } else {
+        send('copyToClipboard', { text: realKey });
+        showToast();
+      }
+    }
+
+    function showToast() {
+      const toast = document.getElementById('copyToast');
+      if (toast) {
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 2200);
+      }
     }
   </script>
 </body>
 </html>`;
   }
+}
+
+function maskKey(key: string): string {
+  if (!key) return "";
+  const parts = key.split("-");
+  if (parts.length >= 4) {
+    const maskedParts = parts.map((part, index) => {
+      if (index <= 1 || index === parts.length - 1) {
+        return part;
+      }
+      return "••••";
+    });
+    return maskedParts.join("-");
+  }
+  if (key.length > 8) {
+    return `${key.slice(0, 4)}-••••-••••-${key.slice(-4)}`;
+  }
+  return "••••••••";
+}
+
+function escapeHtml(text: string): string {
+  if (typeof text !== "string") return "";
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 export function deactivate() {

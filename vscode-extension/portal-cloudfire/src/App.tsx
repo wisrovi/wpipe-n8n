@@ -73,7 +73,6 @@ export default function App() {
   const [emailInput, setEmailInput] = useState<string>("");
   const [codeInput, setCodeInput] = useState<string>("");
   const [adminKeyInput, setAdminKeyInput] = useState<string>("");
-  const [debugOtp, setDebugOtp] = useState<string | null>(null);
 
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("wpipe_portal_session_token"));
   const [currentKey, setCurrentKey] = useState<string | null>(() => localStorage.getItem("wpipe_active_key"));
@@ -130,7 +129,6 @@ export default function App() {
 
     setLoading(true);
     setError(null);
-    setDebugOtp(null);
 
     try {
       const res = await fetch(`${API_BASE}/v1/portal/otp/send`, {
@@ -145,9 +143,6 @@ export default function App() {
       }
 
       setOtpStep("code");
-      if (json.debug_otp) {
-        setDebugOtp(json.debug_otp);
-      }
       setActionNotice(`Código de seguridad de 6 dígitos enviado a ${cleanEmail}`);
     } catch (err: any) {
       setError(err.message || "Error al solicitar código OTP.");
@@ -229,7 +224,6 @@ export default function App() {
     setCodeInput("");
     setAdminKeyInput("");
     setOtpStep("email");
-    setDebugOtp(null);
     setError(null);
     setActionNotice(null);
   };
@@ -385,7 +379,6 @@ export default function App() {
                       onClick={() => {
                         setOtpStep("email");
                         setCodeInput("");
-                        setDebugOtp(null);
                         setError(null);
                       }}
                       className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
@@ -419,19 +412,6 @@ export default function App() {
                       Expira en 10 minutos. Revisa tu bandeja de entrada o spam.
                     </p>
                   </div>
-
-                  {debugOtp && (
-                    <div className="p-2.5 bg-sky-950/60 border border-sky-800/80 rounded-lg flex items-center justify-between text-xs">
-                      <span className="text-sky-300">Modo Desarrollo: Código generado:</span>
-                      <button
-                        type="button"
-                        onClick={() => setCodeInput(debugOtp)}
-                        className="px-2 py-0.5 bg-sky-800 hover:bg-sky-700 text-white font-mono font-bold rounded cursor-pointer"
-                      >
-                        {debugOtp} (Autocompletar)
-                      </button>
-                    </div>
-                  )}
 
                   <button
                     type="submit"
@@ -485,34 +465,6 @@ export default function App() {
               </button>
             </form>
           )}
-
-          {/* Quick Demo Helper */}
-          <div className="mt-6 pt-4 border-t border-gray-800 text-center">
-            <span className="text-[11px] text-gray-500">¿Probando en demo? Usa una de estas opciones rápidas:</span>
-            <div className="flex flex-wrap gap-1.5 justify-center mt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("otp");
-                  setEmailInput("wisrovi@wisrovi.dev");
-                  setOtpStep("email");
-                }}
-                className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-emerald-300 rounded border border-gray-700 cursor-pointer"
-              >
-                📧 wisrovi@wisrovi.dev (OTP)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode("admin_key");
-                  setAdminKeyInput("WPIPE-ADM-84AB97A8FF7C");
-                }}
-                className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-purple-300 rounded border border-gray-700 cursor-pointer"
-              >
-                🔑 WPIPE-ADM-84AB97A8FF7C
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     );

@@ -140,3 +140,23 @@ def test_license_manager_offline_installation(tmp_path):
     assert status_pro["is_pro"] is True
     assert status_pro["max_blocks"] is None
     assert status_pro["customer_name"] == "William R."
+
+
+def test_seats_exceeded_fallback_to_free_tier(tmp_path):
+    mgr = LicenseManager(config_dir=tmp_path)
+    # Simulate a seats_exceeded state saved in license.json
+    mgr.license_file.write_text(json.dumps({
+        "license_key": "WPIPE-PRO-TEST",
+        "status": "seats_exceeded",
+        "plan": "free",
+        "max_seats": 5,
+        "active_seats": 5,
+        "message": "All 5 seats in use"
+    }))
+
+    status = mgr.get_status()
+    assert status["tier"] == "free"
+    assert status["is_pro"] is False
+    assert status["max_blocks"] == 5
+    assert "Capa Free Activa" in status["message"]
+    assert "portal.wisrovi.dev" in status["message"]

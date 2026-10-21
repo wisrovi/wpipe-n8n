@@ -24,6 +24,7 @@ class AdminPipelineContext(BaseModel):
     stats: dict[str, Any] = {}
     licenses: list[dict[str, Any]] = []
     activations: list[dict[str, Any]] = []
+    leases: list[dict[str, Any]] = []
     audit_logs: list[dict[str, Any]] = []
 
     # Execution status

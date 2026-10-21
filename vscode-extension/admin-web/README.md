@@ -35,27 +35,39 @@ Este componente utiliza el siguiente stack tecnológico optimizado para velocida
 
 2. **Gestión Global de Licencias**:
    - Búsqueda en tiempo real por correo, clave de licencia o cliente.
-   - Filtro por estado (`active`, `suspended`, `expired`).
+   - Filtro por estado (`active`, `suspended`, `expired`) y por plan (`starter`, `pro`, `enterprise`, `vip`).
+   - Cajón desplegable en acordeón para inspeccionar las máquinas conectadas en vivo a cada licencia.
+   - Modal de edición completa de estado, cupo de asientos, plan y fecha de caducidad.
    - Modificación instantánea de asientos (`max_seats` con botones `+` y `-`).
    - Activación y suspensión de licencias en 1 clic.
+   - Exportación de toda la base de licencias a formato CSV.
    - Copia rápida al portapapeles de claves de puesto y claves de administración.
 
-3. **Minter VIP / Enterprise**:
-   - Generación instantánea de licencias comerciales y partners sin pasar por pasarela de pago.
+3. **Minter VIP & Partners Pro**:
+   - Emisión soberana de licencias comerciales y partners sin pasar por pasarela de pago.
    - Asignación configurable de asientos flotantes y clave administrativa personalizada.
+   - Selector rápido de expiración (+30d, +90d, +1 año, de por vida).
+   - Generador automático de plantilla de correo de bienvenida para el socio con comandos de activación para terminal.
 
 4. **Monitor de Leases Flotantes**:
    - Inspección de estaciones de trabajo activas (hostname, OS, huella de máquina SHA-256).
    - Botón de expulsión inmediata (1-click kick) para liberar puestos ocupados.
    - Botón para purgar todos los leases expirados automáticamente.
+   - Búsqueda en vivo de puestos por máquina, SO o usuario.
 
-5. **Consola SQL Interactiva para D1**:
-   - Editor de consultas SQL con benchmarks de tiempo de ejecución en milisegundos.
-   - Presets integrados para auditoría rápida (`Licencias`, `Leases Activos`, `Códigos OTP`, `Log de Auditoría`).
-   - Visualizador tabular de resultados con recuento de filas afectadas.
+5. **Consola SQL Interactiva para D1 con Explorador Dinámico de Esquemas**:
+   - Explorador de tablas en tiempo real con árbol interactivo (`licenses`, `leases`, `audit_logs`, `otp_codes`, `activations`).
+   - Inspección de columnas, tipos de datos SQLite y claves primarias (`PK`).
+   - Inyección instantánea de consultas rápidas (`SELECT * FROM table LIMIT 25;`).
+   - Biblioteca de presets categorizada:
+     - 📊 *Métricas*: Distribución por plan, ocupación global de asientos, top organizaciones.
+     - 🔍 *Auditoría*: Últimos 50 eventos, códigos OTP recientes, distribución por sistema operativo.
+     - 🧹 *Mantenimiento*: Licencias caducadas, leases vencidos pendientes de purgar, licencias huérfanas.
+   - Medición precisa de tiempo de ejecución en milisegundos (`duration ms`) y región de Cloudflare.
+   - Exportación de resultados de cualquier consulta a **CSV** y **JSON**.
 
 6. **Flujo de Auditoría**:
-   - Registro de los últimos 100 eventos de licencias y webhooks de Lemon Squeezy.
+   - Registro de los últimos 100 eventos de licencias y webhooks de Lemon Squeezy con exportación a CSV.
 
 ---
 

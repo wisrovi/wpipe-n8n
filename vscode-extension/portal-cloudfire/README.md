@@ -36,10 +36,19 @@ npm run deploy
 
 ---
 
-## 🔒 Flujo de Autenticación y Gestión Multi-Licencia
+## 🔒 Flujo de Autenticación Blindada (OTP + Admin Key)
 
-1. **Acceso Flexible**: El cliente puede identificarse ingresando cualquiera de sus claves de licencia (`license_key`) o directamente su correo corporativo (`customer_email`) registrado en la compra.
-2. **Detección Automática de Organización**: El servidor consulta todas las licencias activas pertenecientes al mismo comprador en Cloudflare D1.
-3. **Selector Departamental**: Si la empresa cuenta con 2 o más licencias (ej. Departamento de IA y Departamento Backend), se despliega un selector en la barra superior para alternar entre ellas en caliente sin tener que re-autenticarse.
-4. **Tacómetro de Puestos y Auditoría**: El portal visualiza los asientos contratados, los puestos ocupados por leases flotantes (TTL de 2 horas) y la lista de máquinas conectadas.
-5. **Liberación Instantánea**: El botón **Liberar Asiento** ejecuta `DELETE https://api.wisrovi.dev/v1/portal/seats/:id`, liberando el puesto en Cloudflare D1 en 100 ms para que un nuevo equipo pueda utilizarlo de inmediato.
+1. **Acceso por Correo Corporativo con Código OTP de 6 dígitos**:
+   - El director o comprador introduce su email corporativo registrado en Lemon Squeezy o Stripe.
+   - El servidor genera un código criptográfico de 6 dígitos (válido por 10 minutos, con limitador de tasa de 5 solicitudes cada 15 min).
+   - Se envía a la bandeja del comprador y, al verificarlo, se genera un token de sesión firmado (JWT HS256) con validez de 24 horas.
+   - **Blindaje total**: Ningún atacante que conozca el email puede entrar sin acceso al buzón de correo.
+2. **Separación de Claves (Terminal VS Code vs. Clave de Administración)**:
+   - **Clave de Puesto (`license_key`, ej. `WPIPE-PRO-...`):** Exclusiva para que los desarrolladores activen su extensión en VS Code. El portal rechaza automáticamente cualquier intento de login con claves de puesto (`403 TERMINAL_KEY_NOT_ALLOWED`), impidiendo que empleados o practicantes expulsen a compañeros o accedan a datos corporativos.
+   - **Clave de Administración (`admin_key`, ej. `WPIPE-ADM-...`):** Clave maestra privada que solo se envía al comprador o director IT. Permite autenticación directa al portal sin esperar al código por correo.
+3. **Detección Automática de Organización & Selector Departamental**:
+   - Tras autenticarse, Cloudflare D1 localiza todas las licencias de la empresa y ofrece un selector reactivo en la barra superior para alternar departamentos en caliente.
+4. **Tacómetro de Puestos y Auditoría de Equipos**:
+   - Visualiza en vivo los puestos contratados, activos y libres, junto a la tabla de máquinas conectadas con su último *heartbeat*.
+5. **Liberación Instantánea de Asientos**:
+   - El botón **Liberar Asiento** ejecuta `DELETE /v1/portal/seats/:id`, liberando el puesto en D1 en menos de 50 ms para que un nuevo ordenador tome el relevo de inmediato.

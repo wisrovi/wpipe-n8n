@@ -53,7 +53,7 @@ export class EngineIpcClient {
           "Content-Type": "application/json",
           ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
         },
-        timeout: 25000,
+        timeout: 30000,
       };
 
       if (this.useHttp) {

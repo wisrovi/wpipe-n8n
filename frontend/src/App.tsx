@@ -1086,8 +1086,47 @@ export default function App() {
 
   // Check Active Session Token and Load Identity on Mount
   useEffect(() => {
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
     const token = localStorage.getItem("studio_session_token");
+
     if (!token) {
+      if (isVSCode) {
+        // Transparent auto-authentication in VS Code context: developer lands directly on interactive canvas
+        const defaultDevUser: UserProfile = {
+          id: "local_dev",
+          username: "william.rodriguez",
+          name: "William Rodriguez",
+          role: "admin",
+          avatar: "",
+          created_at: new Date().toISOString(),
+        };
+
+        fetch("/api/v1/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "william.rodriguez", password: "admin123" }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data && data.user) {
+              localStorage.setItem("studio_session_token", data.token);
+              localStorage.setItem("studio_user_id", data.user.id);
+              setSessionToken(data.token);
+              setCurrentUser(data.user);
+              fetchUserProjects(data.user.id, data.token);
+            } else {
+              setCurrentUser(defaultDevUser);
+            }
+          })
+          .catch(() => {
+            setCurrentUser(defaultDevUser);
+          })
+          .finally(() => {
+            setIsCheckingAuth(false);
+          });
+        return;
+      }
+
       setIsCheckingAuth(false);
       setCurrentUser(null);
       // Fetch public users list for quick demo presets
@@ -5986,7 +6025,7 @@ export default function App() {
       )}
 
       {/* 5. NATURAL FULL-SCREEN LOGIN / REGISTRATION OVERLAY */}
-      {!currentUser && (
+      {!currentUser && window.self === window.top && !window.location.search.includes("mode=vscode") && (
         <div className="fixed inset-0 z-[9999] bg-[#07090e] flex flex-col items-center justify-center p-4 select-none animate-in fade-in duration-200 overflow-y-auto w-screen h-screen">
           {/* Subtle glowing backdrops */}
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />

@@ -107,8 +107,8 @@ async function verifyPortalSessionToken(token: string, secret: string): Promise<
   }
 }
 
-async function sendOtpEmail(email: string, code: string, resendApiKey?: string): Promise<boolean> {
-  if (!resendApiKey) return false;
+async function sendOtpEmail(email: string, code: string, resendApiKey?: string): Promise<{ success: boolean; reason?: string }> {
+  if (!resendApiKey) return { success: false, reason: "NO_API_KEY" };
   try {
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -134,9 +134,13 @@ async function sendOtpEmail(email: string, code: string, resendApiKey?: string):
         `,
       }),
     });
-    return resp.ok;
-  } catch {
-    return false;
+    if (resp.ok) {
+      return { success: true };
+    }
+    const errText = await resp.text();
+    return { success: false, reason: errText };
+  } catch (err: any) {
+    return { success: false, reason: err?.message || String(err) };
   }
 }
 
@@ -234,12 +238,31 @@ export async function handlePortal(request: Request, env: Env, url: URL): Promis
        VALUES (?, ?, ?, 0, datetime('now', '+10 minutes'), 0, datetime('now'))`
     ).bind(otpId, email, codeHash).run();
 
-    const emailSent = await sendOtpEmail(email, code, (env as any).RESEND_API_KEY);
+    const emailResult = await sendOtpEmail(email, code, (env as any).RESEND_API_KEY);
 
     await env.DB.prepare(
       `INSERT INTO audit_logs (event_type, license_key, machine_fingerprint, ip_address, details_json, created_at)
        VALUES (?, ?, NULL, ?, ?, datetime('now'))`
-    ).bind("portal_otp_requested", null, clientIp, JSON.stringify({ email, email_sent: emailSent })).run();
+    ).bind("portal_otp_requested", null, clientIp, JSON.stringify({ email, email_sent: emailResult.success, reason: emailResult.reason })).run();
+
+    if (!emailResult.success) {
+      if (emailResult.reason === "NO_API_KEY") {
+        return new Response(
+          JSON.stringify({
+            error: "EMAIL_SERVICE_NOT_CONFIGURED",
+            message: "El servicio de envío de correos transaccionales está pendiente de activación (falta RESEND_API_KEY). Utiliza tu Clave de Administración Corporativa (WPIPE-ADM-...) para acceder inmediatamente o contacta a soporte.",
+          }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          error: "EMAIL_DELIVERY_FAILED",
+          message: "No fue posible despachar el correo de verificación. Por favor, intenta acceder con tu Clave de Administración.",
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({
@@ -247,9 +270,6 @@ export async function handlePortal(request: Request, env: Env, url: URL): Promis
         message: "Código de seguridad de 6 dígitos enviado a tu correo corporativo.",
         email,
         expires_in_minutes: 10,
-        delivery: emailSent ? "email" : "dev_log",
-        // In local/preview environments or before RESEND_API_KEY is configured, debug_otp allows instant testing
-        debug_otp: emailSent ? undefined : code,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );

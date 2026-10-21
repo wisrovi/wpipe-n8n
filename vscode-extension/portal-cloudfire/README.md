@@ -50,11 +50,20 @@ npm run deploy
    - Tras autenticarse, Cloudflare D1 localiza todas las licencias de la empresa y ofrece un selector reactivo en la barra superior para alternar departamentos en caliente.
 4. **Tacómetro Radial y Auditoría de Equipos**:
    - Visualiza en vivo los puestos contratados, activos y libres mediante un medidor circular SVG con umbrales de color dinámicos (Verde, Ámbar, Rojo).
-5. **Liberación Instantánea de Asientos**:
+5. **Liberación Instantánea de Asientos (Individual y Masiva)**:
    - El botón **Liberar Asiento** ejecuta `DELETE /v1/portal/seats/:id`, liberando el puesto en D1 en menos de 50 ms para que un nuevo ordenador tome el relevo de inmediato.
+   - El botón **Liberar Todos** permite desconectar en un solo clic todas las estaciones de la licencia (útil al finalizar jornadas o tras migraciones de flota).
 6. **Apodos de Equipos Personalizados (Station Nicknames)**:
    - Permite al director IT asignar nombres reconocibles a cada estación (ej. "Portátil de Juan", "Build Server CI") que se persisten localmente en su sesión.
-7. **Comando de Activación para Desarrolladores**:
-   - Snippet de código con 1 clic para copiar el comando de terminal oficial (`wpipe-engine activate --key <KEY>`) para distribución inmediata a los ingenieros.
-8. **Exportación de Inventario de Equipos (CSV)**:
-   - Descarga directa en un clic del inventario de máquinas activas de la organización para auditoría interna IT.
+7. **Modal de Invitación a Desarrolladores (+ Invitar)**:
+   - Enlace directo de 1 clic para VS Code (`vscode://wisrovi.wpipe-studio-vscode/activate?key=...`).
+   - Snippet de comando de activación por terminal (`wpipe-engine activate --key ...`).
+   - Plantilla formateada para copiar y pegar en Slack, Discord o Microsoft Teams.
+   - Código QR de escaneo rápido para tabletas o puestos de trabajo físicos.
+8. **Auto-Refresco Inteligente en Tiempo Real**:
+   - Selector en la barra de navegación superior (Manual, Cada 15s, Cada 30s) con contador en vivo y pulso luminoso animado.
+9. **Exportación Dual de Inventario IT (CSV y JSON)**:
+   - Descarga directa en un clic del inventario de máquinas activas y sus apodos tanto en tabla CSV (Excel/Sheets) como en JSON estructurado para scripts de DevOps.
+10. **Tiempo Relativo de Heartbeat y Sistema de Notificaciones Toast**:
+   - Muestra el tiempo transcurrido desde el último latido ("Hace 2 min", "Hace 15s") con hora exacta UTC.
+   - Notificaciones flotantes animadas (*Toasts*) para confirmaciones de copia, liberación de asientos y alertas.

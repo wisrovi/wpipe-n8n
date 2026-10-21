@@ -4,6 +4,7 @@
 -- Author: William Rodriguez (wisrovi.dev)
 -- ============================================================================
 
+DROP TABLE IF EXISTS otp_codes;
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS leases;
 DROP TABLE IF EXISTS activations;
@@ -12,7 +13,8 @@ DROP TABLE IF EXISTS licenses;
 -- 1. Licenses Table (Contracts / Entitlements)
 CREATE TABLE licenses (
     id TEXT PRIMARY KEY,
-    license_key TEXT UNIQUE NOT NULL,
+    license_key TEXT UNIQUE NOT NULL,           -- Terminal seat key for VS Code
+    admin_key TEXT,                             -- Private enterprise management key for portal
     customer_email TEXT NOT NULL,
     customer_name TEXT,
     plan TEXT NOT NULL DEFAULT 'pro',           -- 'free', 'pro', 'team', 'enterprise'
@@ -25,6 +27,7 @@ CREATE TABLE licenses (
 );
 
 CREATE INDEX idx_licenses_key ON licenses(license_key);
+CREATE INDEX idx_licenses_admin_key ON licenses(admin_key);
 CREATE INDEX idx_licenses_email ON licenses(customer_email);
 CREATE INDEX idx_licenses_status ON licenses(status);
 
@@ -74,27 +77,45 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_audit_event ON audit_logs(event_type);
 CREATE INDEX idx_audit_license ON audit_logs(license_key);
 
+-- 5. One-Time Passwords Table (Passwordless corporate email authentication)
+CREATE TABLE otp_codes (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,         -- SHA-256 of 6-digit verification code
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL,        -- +10 minutes
+    used INTEGER NOT NULL DEFAULT 0, -- 1 if consumed
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_otp_email ON otp_codes(email);
+CREATE INDEX idx_otp_expires ON otp_codes(expires_at);
+
 -- ============================================================================
 -- Initial Demo / Testing Seed Data
 -- ============================================================================
 INSERT INTO licenses (
     id,
     license_key,
+    admin_key,
     customer_email,
     customer_name,
     plan,
     status,
     max_machines,
+    max_seats,
     expires_at,
     created_at,
     updated_at
 ) VALUES (
     'lic_demo_william_2026',
     'WPIPE-PRO-DEMO-TEST-KEY-2026',
+    'WPIPE-ADM-84AB97A8FF7C',
     'wisrovi@wisrovi.dev',
     'William Rodriguez',
     'pro',
     'active',
+    5,
     5,
     '2030-01-01T00:00:00Z',
     datetime('now'),

@@ -34,9 +34,10 @@ npx wrangler pages deploy dist --project-name=wpipe-portal
 
 ---
 
-## 🔒 Flujo de Autenticación y Seguridad
+## 🔒 Flujo de Autenticación y Gestión Multi-Licencia
 
-1. El cliente introduce su `license_key` (recibida tras la compra en Lemon Squeezy o emitida por William).
-2. Se realiza una petición a `https://api.wisrovi.dev/v1/portal/login` validando la existencia y estado activo de la licencia en Cloudflare D1.
-3. El portal visualiza los asientos contratados, los asientos ocupados por leases activos (con TTL de 2 horas) y la lista de máquinas conectadas.
-4. El botón **Liberar Asiento** ejecuta `DELETE https://api.wisrovi.dev/v1/portal/seats/:id`, liberando el puesto en Cloudflare D1 en 100 ms para que un nuevo equipo pueda utilizarlo de inmediato.
+1. **Acceso Flexible**: El cliente puede identificarse ingresando cualquiera de sus claves de licencia (`license_key`) o directamente su correo corporativo (`customer_email`) registrado en la compra.
+2. **Detección Automática de Organización**: El servidor consulta todas las licencias activas pertenecientes al mismo comprador en Cloudflare D1.
+3. **Selector Departamental**: Si la empresa cuenta con 2 o más licencias (ej. Departamento de IA y Departamento Backend), se despliega un selector en la barra superior para alternar entre ellas en caliente sin tener que re-autenticarse.
+4. **Tacómetro de Puestos y Auditoría**: El portal visualiza los asientos contratados, los puestos ocupados por leases flotantes (TTL de 2 horas) y la lista de máquinas conectadas.
+5. **Liberación Instantánea**: El botón **Liberar Asiento** ejecuta `DELETE https://api.wisrovi.dev/v1/portal/seats/:id`, liberando el puesto en Cloudflare D1 en 100 ms para que un nuevo equipo pueda utilizarlo de inmediato.

@@ -24,7 +24,7 @@ Servidor de autoridad de licencias y distribución de binarios serverless para e
 ```
 cloudfire/
 ├── wrangler.toml              # Configuración de bindings D1, R2 y variables de entorno
-├── schema.sql                 # Esquema D1: licenses, activations, audit_logs
+├── schema.sql                 # Esquema D1: licenses, leases (asientos flotantes), activations, audit_logs
 ├── package.json               # Dependencias de compilación y scripts de despliegue
 ├── tsconfig.json              # Configuración de compilador TypeScript
 ├── keys.json                  # Par de claves Ed25519 generado (archivo protegido)
@@ -36,6 +36,9 @@ cloudfire/
     ├── crypto/
     │   └── ed25519.ts         # Módulo de firma criptográfica de tokens JWS/JWT
     └── routes/
+        ├── lease.ts           # POST /v1/license/lease, /heartbeat, /release (TTL 2h, ping 30m)
+        ├── portal.ts          # Endpoints de autoservicio para portal.wisrovi.dev (/v1/portal/*)
+        ├── admin.ts           # Super-Admin endpoints de bajo nivel (/v1/admin/*)
         ├── activate.ts        # POST /v1/license/activate
         ├── verify.ts          # POST /v1/license/verify
         ├── webhooks.ts        # POST /v1/webhooks/payment

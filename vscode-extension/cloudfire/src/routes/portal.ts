@@ -109,39 +109,56 @@ async function verifyPortalSessionToken(token: string, secret: string): Promise<
 
 async function sendOtpEmail(email: string, code: string, resendApiKey?: string): Promise<{ success: boolean; reason?: string }> {
   if (!resendApiKey) return { success: false, reason: "NO_API_KEY" };
-  try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "WPipe Studio <security@wisrovi.dev>",
-        to: [email],
-        subject: `${code} es tu código de acceso al Portal WPipe Studio`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; border: 1px solid #1e293b;">
-            <h2 style="color: #38bdf8; margin-top: 0; font-size: 20px;">WPipe Studio Enterprise</h2>
-            <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">Has solicitado acceder al Portal de Gestión de Licencias de tu empresa. Introduce el siguiente código de seguridad:</p>
-            <div style="background: #1e293b; padding: 20px; border-radius: 8px; text-align: center; margin: 24px 0; border: 1px solid #334155;">
-              <span style="font-family: monospace; font-size: 34px; font-weight: 700; letter-spacing: 6px; color: #38bdf8;">${code}</span>
+
+  const senders = ["WPipe Studio <security@wisrovi.dev>", "WPipe Studio <onboarding@resend.dev>"];
+  let lastError = "";
+
+  for (const fromAddress of senders) {
+    try {
+      const resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [email],
+          subject: `${code} es tu código de acceso al Portal WPipe Studio`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; border: 1px solid #1e293b;">
+              <h2 style="color: #38bdf8; margin-top: 0; font-size: 20px;">WPipe Studio Enterprise</h2>
+              <p style="font-size: 14px; color: #94a3b8; line-height: 1.5;">Has solicitado acceder al Portal de Gestión de Licencias de tu empresa. Introduce el siguiente código de seguridad:</p>
+              <div style="background: #1e293b; padding: 20px; border-radius: 8px; text-align: center; margin: 24px 0; border: 1px solid #334155;">
+                <span style="font-family: monospace; font-size: 34px; font-weight: 700; letter-spacing: 6px; color: #38bdf8;">${code}</span>
+              </div>
+              <p style="font-size: 12px; color: #64748b;">Este código expira en 10 minutos. Si no has solicitado este acceso, puedes ignorar este correo de forma segura.</p>
+              <hr style="border: 0; border-top: 1px solid #334155; margin: 24px 0;" />
+              <p style="font-size: 11px; color: #475569;">WPipe Studio &bull; Plataforma Serverless de Licenciamiento Flotante &bull; portal.wisrovi.dev</p>
             </div>
-            <p style="font-size: 12px; color: #64748b;">Este código expira en 10 minutos. Si no has solicitado este acceso, puedes ignorar este correo de forma segura.</p>
-            <hr style="border: 0; border-top: 1px solid #334155; margin: 24px 0;" />
-            <p style="font-size: 11px; color: #475569;">WPipe Studio &bull; Plataforma Serverless de Licenciamiento Flotante &bull; portal.wisrovi.dev</p>
-          </div>
-        `,
-      }),
-    });
-    if (resp.ok) {
-      return { success: true };
+          `,
+        }),
+      });
+
+      if (resp.ok) {
+        return { success: true };
+      }
+
+      const errJson: any = await resp.json().catch(() => ({}));
+      lastError = errJson.message || "Error al enviar correo";
+
+      // If unverified custom domain, fallback to onboarding@resend.dev
+      if (fromAddress.includes("wisrovi.dev") && lastError.toLowerCase().includes("not verified")) {
+        continue;
+      }
+
+      return { success: false, reason: lastError };
+    } catch (err: any) {
+      lastError = err?.message || String(err);
     }
-    const errText = await resp.text();
-    return { success: false, reason: errText };
-  } catch (err: any) {
-    return { success: false, reason: err?.message || String(err) };
   }
+
+  return { success: false, reason: lastError };
 }
 
 async function resolveAuthorizedEmail(request: Request, env: Env): Promise<{ email: string; targetLicense?: any } | null> {
@@ -258,7 +275,7 @@ export async function handlePortal(request: Request, env: Env, url: URL): Promis
       return new Response(
         JSON.stringify({
           error: "EMAIL_DELIVERY_FAILED",
-          message: "No fue posible despachar el correo de verificación. Por favor, intenta acceder con tu Clave de Administración.",
+          message: emailResult.reason || "No fue posible despachar el correo de verificación. Por favor, intenta acceder con tu Clave de Administración.",
         }),
         { status: 502, headers: { "Content-Type": "application/json" } }
       );

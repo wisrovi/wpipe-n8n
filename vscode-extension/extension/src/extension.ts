@@ -241,6 +241,12 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         case "activateLicense":
           vscode.commands.executeCommand("wpipe.activateLicense");
           break;
+        case "openPortal":
+          vscode.env.openExternal(vscode.Uri.parse("https://portal.wisrovi.dev"));
+          break;
+        case "restartDaemon":
+          vscode.commands.executeCommand("wpipe.startDaemon");
+          break;
         case "copyToClipboard":
           if (msg.text) {
             vscode.env.clipboard.writeText(msg.text);
@@ -270,47 +276,107 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     const isPro = Boolean(status && status.is_pro);
     const rawTier = (status?.tier || "FREE").toUpperCase();
     const tierName = escapeHtml(rawTier);
+    const customerName = status?.customer_name ? escapeHtml(status.customer_name) : "Desarrollador";
     const rawKey = status?.license_key || "";
     const cleanKey = escapeHtml(rawKey);
     const maskedKey = escapeHtml(maskKey(rawKey));
+    const rawMfp = status?.machine_fingerprint || "";
+    const shortMfp = escapeHtml(formatFingerprint(rawMfp));
+    const expInfo = formatExpiration(status?.lease_expires_at);
+
+    // Engine metadata
+    const enginePid = status?.engine?.pid ? escapeHtml(String(status.engine.pid)) : "Activo";
+    const pythonVer = status?.engine?.python_version ? escapeHtml(status.engine.python_version) : "3.13";
+    const transportType = status?.engine?.transport === "unix_socket" ? "Unix Socket (/tmp/wpipe.sock)" : "HTTP Local (127.0.0.1:49152)";
 
     const licenseCard = isPro
       ? `
   <div class="card card-pro">
     <div class="status-header">
-      <span class="pro-title">👑 Plan Activo: ${tierName}</span>
-      <span class="online-pill"><span class="pulse-dot"></span> En Línea</span>
+      <div class="tier-pill">
+        <span class="crown">👑</span>
+        <span class="tier-text">PLAN ${tierName}</span>
+      </div>
+      <span class="online-pill" title="Asiento sincronizado y validado en Cloudflare Edge">
+        <span class="pulse-dot"></span> Puesto Activo
+      </span>
     </div>
-    <div class="features-list">
-      <div class="feat-item"><span class="feat-icon">✓</span> Bloques y pasos ilimitados</div>
-      <div class="feat-item"><span class="feat-icon">✓</span> Puesto flotante en Cloudflare Edge</div>
+
+    <div class="meta-section">
+      <div class="meta-row">
+        <span class="meta-k">👤 Titular:</span>
+        <span class="meta-v font-bold">${customerName}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-k">📅 Vigencia:</span>
+        <span class="meta-v ${expInfo.isNear ? 'text-warning' : 'text-success'}">
+          ${escapeHtml(expInfo.formatted)} <span class="days-text">${escapeHtml(expInfo.daysLeftText)}</span>
+        </span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-k">🖥️ ID Equipo:</span>
+        <span class="meta-v font-mono" title="Huella física registrada: ${escapeHtml(rawMfp)}">${shortMfp}</span>
+      </div>
     </div>
+
     ${cleanKey ? `
     <div class="key-box">
-      <div class="key-label">CLAVE DE LICENCIA</div>
+      <div class="key-header">
+        <span class="key-label">CLAVE ASIGNADA</span>
+        <span class="key-shield">🔒 Protegida</span>
+      </div>
       <div class="key-row">
         <code id="licenseDisplay" class="masked-code" data-masked="${maskedKey}" data-real="${cleanKey}">${maskedKey}</code>
         <div class="key-actions">
-          <button id="btnToggleMask" class="icon-btn" title="Mostrar / Ocultar clave" onclick="toggleMask()">👁️</button>
+          <button id="btnToggleMask" class="icon-btn" title="Mostrar / Ocultar clave real" onclick="toggleMask()">👁️</button>
           <button id="btnCopyKey" class="icon-btn" title="Copiar clave completa" onclick="copyKey()">📋</button>
         </div>
       </div>
       <div id="copyToast" class="copy-toast" style="display: none;">✓ Copiada al portapapeles</div>
     </div>` : ""}
-    <button class="btn btn-secondary" style="margin-top: 6px; font-size: 11px; padding: 5px 8px;" onclick="send('activateLicense')">
-      🔄 Cambiar Licencia
-    </button>
+
+    <div class="capabilities-box">
+      <div class="cap-title">Capacidades del Entorno:</div>
+      <div class="cap-grid">
+        <div class="cap-item"><span class="check">✓</span> Bloques Ilimitados</div>
+        <div class="cap-item"><span class="check">✓</span> Paralelismo (Parallel)</div>
+        <div class="cap-item"><span class="check">✓</span> Background Asíncrono</div>
+        <div class="cap-item"><span class="check">✓</span> Live Debugging</div>
+        <div class="cap-item"><span class="check">✓</span> Smart AST Merge</div>
+        <div class="cap-item"><span class="check">✓</span> Generación Docker & Tests</div>
+      </div>
+    </div>
+
+    <div class="card-btn-row">
+      <button class="btn btn-secondary btn-sm" onclick="send('activateLicense')" title="Cambiar clave o desconectar puesto">
+        🔄 Cambiar Licencia
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="send('openPortal')" title="Abrir portal web de gestión de asientos">
+        🌐 Gestionar Puestos
+      </button>
+    </div>
   </div>`
       : `
   <div class="card card-free">
-    <div style="font-weight: 700; color: #fbbf24; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
-      <span>⚡ Plan Activo: FREE</span>
-      <span style="font-size: 9px; background: rgba(251, 191, 36, 0.15); color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-weight: 700;">LIMITADO</span>
+    <div class="status-header">
+      <div class="tier-pill-free">
+        <span>⚡ PLAN FREE (Community)</span>
+      </div>
+      <span class="limited-pill">Máximo 5 bloques</span>
     </div>
-    <div style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-top: 2px;">
-      Límite: Máximo 5 bloques por pipeline
+
+    <p class="free-info">
+      Estás utilizando la versión comunitaria local. Ideal para pruebas y pipelines pequeños.
+    </p>
+
+    <div class="limits-box">
+      <div class="limit-row"><span class="limit-check">✓</span> Hasta 5 bloques por pipeline</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Paralelismo (Parallel) bloqueado</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Tareas en background bloqueadas</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Live debugging con breakpoints</div>
     </div>
-    <button class="btn" style="margin-top: 6px; background: linear-gradient(135deg, #d97706, #f59e0b); color: #1e1e1e; font-size: 11px; padding: 6px 8px; font-weight: 700;" onclick="send('activateLicense')">
+
+    <button class="btn btn-upgrade" onclick="send('activateLicense')">
       ⭐ Activar Licencia Pro
     </button>
   </div>`;
@@ -320,21 +386,27 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 12px;
       color: var(--vscode-foreground);
       background: var(--vscode-sideBar-background);
       display: flex;
       flex-direction: column;
       gap: 12px;
+      line-height: 1.4;
     }
     .header {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--vscode-widget-border, #333);
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
     }
     .logo {
       width: 32px;
@@ -347,76 +419,141 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       color: white;
       font-weight: 800;
       font-size: 16px;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+      flex-shrink: 0;
+    }
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .title {
       font-size: 13px;
       font-weight: 700;
       color: var(--vscode-foreground);
     }
+    .version-tag {
+      font-size: 9px;
+      font-weight: 700;
+      background: rgba(2, 132, 199, 0.2);
+      color: #38bdf8;
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
     .subtitle {
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--vscode-descriptionForeground);
     }
     .btn {
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       border: none;
-      padding: 9px 12px;
+      padding: 8px 12px;
       border-radius: 5px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 600;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
       width: 100%;
-      transition: background 0.15s ease;
+      transition: all 0.15s ease;
     }
     .btn:hover {
       background: var(--vscode-button-hoverBackground);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0369a1, #075985);
     }
     .btn-secondary {
       background: var(--vscode-button-secondaryBackground, #2d2d2d);
       color: var(--vscode-button-secondaryForeground, #ccc);
     }
+    .btn-secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground, #3a3a3a);
+    }
+    .btn-sm {
+      padding: 5px 8px;
+      font-size: 10.5px;
+    }
+    .btn-upgrade {
+      background: linear-gradient(135deg, #d97706, #f59e0b);
+      color: #111;
+      font-weight: 700;
+      padding: 8px;
+    }
+    .btn-upgrade:hover {
+      background: linear-gradient(135deg, #b45309, #d97706);
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
     .card {
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
-      padding: 12px;
+      border-radius: 7px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
       font-size: 11px;
     }
     .card-pro {
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%);
+    }
+    .card-free {
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.04);
     }
     .status-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
     }
-    .pro-title {
+    .tier-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
       font-weight: 800;
       color: #34d399;
-      font-size: 12px;
+      font-size: 11.5px;
       letter-spacing: 0.5px;
+    }
+    .tier-pill-free {
+      font-weight: 700;
+      color: #fbbf24;
+      font-size: 11.5px;
     }
     .online-pill {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 600;
       color: #34d399;
-      background: rgba(16, 185, 129, 0.18);
-      border: 1px solid rgba(16, 185, 129, 0.35);
-      padding: 2px 7px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 6px;
       border-radius: 999px;
+    }
+    .limited-pill {
+      font-size: 9.5px;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-weight: 600;
     }
     .pulse-dot {
       width: 6px;
@@ -424,44 +561,80 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       background-color: #10b981;
       border-radius: 50%;
       display: inline-block;
-      box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
       animation: pulse 2s infinite;
     }
     @keyframes pulse {
       0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      70% { transform: scale(1); box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
-    .features-list {
+    .meta-section {
       display: flex;
       flex-direction: column;
       gap: 3px;
-      margin-top: 4px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
-    .feat-item {
-      font-size: 11px;
-      color: var(--vscode-foreground);
+    .meta-row {
       display: flex;
       align-items: center;
-      gap: 5px;
+      justify-content: space-between;
+      font-size: 10.5px;
     }
-    .feat-icon {
+    .meta-k {
+      color: var(--vscode-descriptionForeground);
+    }
+    .meta-v {
+      color: var(--vscode-foreground);
+    }
+    .font-bold {
+      font-weight: 700;
+    }
+    .font-mono {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 10px;
+    }
+    .text-success {
       color: #34d399;
-      font-weight: bold;
+      font-weight: 600;
+    }
+    .text-warning {
+      color: #fbbf24;
+      font-weight: 600;
+    }
+    .text-muted {
+      color: var(--vscode-descriptionForeground);
+    }
+    .days-text {
+      font-size: 9.5px;
+      opacity: 0.85;
     }
     .key-box {
       background: rgba(0, 0, 0, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
+      border-radius: 5px;
       padding: 6px 8px;
-      margin-top: 6px;
+    }
+    .key-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
     }
     .key-label {
       font-size: 9px;
       font-weight: 700;
       color: var(--vscode-descriptionForeground);
       letter-spacing: 0.5px;
-      margin-bottom: 4px;
+    }
+    .key-shield {
+      font-size: 9px;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.12);
+      padding: 1px 4px;
+      border-radius: 3px;
     }
     .key-row {
       display: flex;
@@ -471,14 +644,15 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     }
     .masked-code {
       font-family: var(--vscode-editor-font-family, monospace);
-      font-size: 10.5px;
+      font-size: 10px;
       color: #cbd5e1;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.6px;
       word-break: break-all;
     }
     .key-actions {
       display: flex;
-      gap: 4px;
+      gap: 3px;
+      flex-shrink: 0;
     }
     .icon-btn {
       background: rgba(255, 255, 255, 0.08);
@@ -486,20 +660,116 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-foreground);
       border-radius: 4px;
       padding: 2px 5px;
-      font-size: 11px;
+      font-size: 10px;
       cursor: pointer;
-      line-height: 1;
+      line-height: 1.2;
       transition: all 0.15s ease;
     }
     .icon-btn:hover {
-      background: rgba(255, 255, 255, 0.18);
-      border-color: rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.2);
     }
     .copy-toast {
       font-size: 9.5px;
       color: #34d399;
-      margin-top: 4px;
+      margin-top: 3px;
       text-align: right;
+      font-weight: 600;
+    }
+    .capabilities-box {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 6px;
+    }
+    .cap-title {
+      font-size: 9.5px;
+      font-weight: 700;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 4px;
+      letter-spacing: 0.3px;
+    }
+    .cap-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px 6px;
+      font-size: 10px;
+    }
+    .cap-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--vscode-foreground);
+    }
+    .check {
+      color: #34d399;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .card-btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .free-info {
+      font-size: 10.5px;
+      color: var(--vscode-descriptionForeground);
+      line-height: 1.4;
+    }
+    .limits-box {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-size: 10.5px;
+    }
+    .limit-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .limit-check {
+      color: #fbbf24;
+      font-weight: bold;
+    }
+    .limit-cross {
+      color: #ef4444;
+      font-weight: bold;
+    }
+    .tech-details {
+      background: rgba(0, 0, 0, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 10.5px;
+    }
+    .tech-summary {
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--vscode-foreground);
+      font-size: 10.5px;
+      outline: none;
+      user-select: none;
+    }
+    .tech-content {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding-top: 6px;
+    }
+    .tech-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tech-k {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+    }
+    .tech-v {
+      font-size: 10px;
+    }
+    .text-accent {
+      color: #38bdf8;
       font-weight: 600;
     }
   </style>
@@ -508,24 +778,53 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
   <div class="header">
     <div class="logo">W</div>
     <div>
-      <div class="title">WPipe Studio</div>
-      <div class="subtitle">Visual Pipeline Designer</div>
+      <div class="title-row">
+        <span class="title">WPipe Studio</span>
+        <span class="version-tag">v1.0.0</span>
+      </div>
+      <div class="subtitle">Visual Pipeline Orchestrator</div>
     </div>
   </div>
 
-  <button class="btn" onclick="send('openCanvas')">
-    🚀 Abrir WPipe Studio (Full Canvas)
+  <button class="btn btn-primary" onclick="send('openCanvas')">
+    🚀 Abrir Lienzo de Bloques (Canvas)
   </button>
 
-  <button class="btn btn-secondary" onclick="send('newPipeline')">
-    ➕ Crear Nuevo Pipeline (.wpipe)
-  </button>
-
-  <button class="btn btn-secondary" onclick="send('openDemo')">
-    📂 Abrir Pipeline de Ejemplo
-  </button>
+  <div class="btn-grid">
+    <button class="btn btn-secondary btn-sm" onclick="send('newPipeline')">
+      ➕ Nuevo Pipeline
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick="send('openDemo')">
+      📂 Demo Oficial
+    </button>
+  </div>
 
   ${licenseCard}
+
+  <details class="tech-details" open>
+    <summary class="tech-summary">⚙️ Motor Local & Entorno</summary>
+    <div class="tech-content">
+      <div class="tech-row">
+        <span class="tech-k">Estado Motor:</span>
+        <span class="tech-v text-success">● Activo (PID: ${enginePid})</span>
+      </div>
+      <div class="tech-row">
+        <span class="tech-k">Entorno Python:</span>
+        <span class="tech-v font-mono">${pythonVer}</span>
+      </div>
+      <div class="tech-row">
+        <span class="tech-k">Canal IPC:</span>
+        <span class="tech-v font-mono" title="${transportType}">${transportType.includes("Unix") ? "Unix Socket" : "HTTP Local"}</span>
+      </div>
+      <div class="tech-row">
+        <span class="tech-k">Catálogo de Pasos:</span>
+        <span class="tech-v text-accent">196 steps oficiales</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top: 4px;" onclick="send('restartDaemon')">
+        🔄 Reiniciar Motor Local
+      </button>
+    </div>
+  </details>
 
   <script>
     const vscode = acquireVsCodeApi();
@@ -546,7 +845,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       } else {
         el.textContent = el.getAttribute('data-masked');
         btn.textContent = '👁️';
-        btn.title = 'Mostrar clave';
+        btn.title = 'Mostrar clave real';
         isMasked = true;
       }
     }
@@ -579,6 +878,42 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
+}
+
+function formatExpiration(isoDate?: string): { formatted: string; daysLeftText: string; isNear: boolean } {
+  if (!isoDate) {
+    return { formatted: "Permanente / Vitalicia", daysLeftText: "♾️", isNear: false };
+  }
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) {
+      return { formatted: isoDate, daysLeftText: "", isNear: false };
+    }
+    const now = new Date();
+    const diffMs = d.getTime() - now.getTime();
+    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const formatted = `${day}/${month}/${year}`;
+    if (daysLeft < 0) {
+      return { formatted, daysLeftText: `(Expiró hace ${Math.abs(daysLeft)}d)`, isNear: true };
+    } else if (daysLeft === 0) {
+      return { formatted, daysLeftText: "(Expira hoy)", isNear: true };
+    } else {
+      return { formatted, daysLeftText: `(${daysLeft}d restantes)`, isNear: daysLeft <= 15 };
+    }
+  } catch {
+    return { formatted: isoDate, daysLeftText: "", isNear: false };
+  }
+}
+
+function formatFingerprint(fp?: string): string {
+  if (!fp) return "Local-Hardware";
+  if (fp.length > 16) {
+    return `${fp.slice(0, 8)}...${fp.slice(-6)}`;
+  }
+  return fp;
 }
 
 function maskKey(key: string): string {

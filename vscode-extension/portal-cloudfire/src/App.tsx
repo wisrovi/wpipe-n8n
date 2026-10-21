@@ -1,7 +1,7 @@
 /**
  * WPipe Studio - Enterprise Customer Self-Service Portal
  * Deployed at: portal.wisrovi.dev (Cloudflare Pages at 0 €/month)
- * Multi-License Organization Management (Switch between departmental keys)
+ * Multi-License Organization Management & Secure OTP Authentication
  * Author: William Rodriguez (wisrovi.dev)
  */
 
@@ -19,6 +19,12 @@ import {
   Building2,
   Copy,
   Layers,
+  Mail,
+  Key,
+  ShieldCheck,
+  ArrowLeft,
+  Send,
+  Lock,
 } from "lucide-react";
 
 interface Device {
@@ -34,6 +40,7 @@ interface Device {
 interface OrganizationLicense {
   id: string;
   license_key: string;
+  admin_key?: string;
   plan: string;
   status: string;
   max_seats: number;
@@ -45,6 +52,7 @@ interface OrganizationLicense {
 
 interface LicenseOverview {
   license_key: string;
+  admin_key?: string;
   customer_name: string;
   customer_email: string;
   plan: string;
@@ -59,16 +67,24 @@ interface LicenseOverview {
 const API_BASE = "https://api.wisrovi.dev";
 
 export default function App() {
-  const [identifierInput, setIdentifierInput] = useState<string>("");
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("wpipe_portal_key"));
+  // Auth state
+  const [authMode, setAuthMode] = useState<"otp" | "admin_key">("otp");
+  const [otpStep, setOtpStep] = useState<"email" | "code">("email");
+  const [emailInput, setEmailInput] = useState<string>("");
+  const [codeInput, setCodeInput] = useState<string>("");
+  const [adminKeyInput, setAdminKeyInput] = useState<string>("");
+  const [debugOtp, setDebugOtp] = useState<string | null>(null);
+
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("wpipe_portal_session_token"));
   const [currentKey, setCurrentKey] = useState<string | null>(() => localStorage.getItem("wpipe_active_key"));
   const [data, setData] = useState<LicenseOverview | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showAdminKeys, setShowAdminKeys] = useState<boolean>(false);
 
-  // Load overview for an active license
+  // Load overview for authorized session
   const fetchOverview = async (authToken: string, targetKey?: string) => {
     setLoading(true);
     setError(null);
@@ -92,7 +108,7 @@ export default function App() {
       localStorage.setItem("wpipe_active_key", json.license_key);
     } catch (err: any) {
       setError(err.message || "Error al conectar con el servidor.");
-      if (err.message.includes("UNAUTHORIZED")) {
+      if (err.message && (err.message.includes("UNAUTHORIZED") || err.message.includes("expirada"))) {
         handleLogout();
       }
     } finally {
@@ -106,43 +122,114 @@ export default function App() {
     }
   }, [token]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Request 6-digit OTP code to corporate email
+  const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = identifierInput.trim();
-    if (!clean) return;
+    const cleanEmail = emailInput.trim().toLowerCase();
+    if (!cleanEmail) return;
 
     setLoading(true);
     setError(null);
+    setDebugOtp(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/v1/portal/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.message || "Error al enviar código de verificación.");
+      }
+
+      setOtpStep("code");
+      if (json.debug_otp) {
+        setDebugOtp(json.debug_otp);
+      }
+      setActionNotice(`Código de seguridad de 6 dígitos enviado a ${cleanEmail}`);
+    } catch (err: any) {
+      setError(err.message || "Error al solicitar código OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify 6-digit OTP code
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const cleanCode = codeInput.trim();
+    if (!cleanEmail || !cleanCode) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/v1/portal/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail, code: cleanCode }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.message || "Código incorrecto o expirado.");
+      }
+
+      localStorage.setItem("wpipe_portal_session_token", json.token);
+      setToken(json.token);
+      fetchOverview(json.token);
+    } catch (err: any) {
+      setError(err.message || "Error al verificar código.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login with private Admin Key
+  const handleLoginAdminKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanKey = adminKeyInput.trim().toUpperCase();
+    if (!cleanKey) return;
+
+    setLoading(true);
+    setError(null);
+
     try {
       const res = await fetch(`${API_BASE}/v1/portal/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: clean }),
+        body: JSON.stringify({ admin_key: cleanKey }),
       });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || "Identificador no encontrado o licencia inactiva.");
-      }
       const json = await res.json();
-      localStorage.setItem("wpipe_portal_key", json.token);
-      localStorage.setItem("wpipe_active_key", json.token);
+
+      if (!res.ok) {
+        throw new Error(json.message || "Clave no válida.");
+      }
+
+      localStorage.setItem("wpipe_portal_session_token", json.token);
       setToken(json.token);
-      setCurrentKey(json.token);
       fetchOverview(json.token);
     } catch (err: any) {
-      setError(err.message || "Error al autenticar acceso.");
+      setError(err.message || "Error al autenticar con clave.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("wpipe_portal_key");
+    localStorage.removeItem("wpipe_portal_session_token");
     localStorage.removeItem("wpipe_active_key");
     setToken(null);
     setCurrentKey(null);
     setData(null);
-    setIdentifierInput("");
+    setEmailInput("");
+    setCodeInput("");
+    setAdminKeyInput("");
+    setOtpStep("email");
+    setDebugOtp(null);
     setError(null);
     setActionNotice(null);
   };
@@ -161,7 +248,7 @@ export default function App() {
   const handleLiberateSeat = async (leaseId: string, hostname: string | null) => {
     if (!token) return;
     const confirmKick = window.confirm(
-      `¿Deseas liberar inmediatamente el asiento del equipo "${hostname || 'PC'}"? El nuevo ordenador podrá usar la licencia Pro en 1 segundo.`
+      `¿Deseas liberar inmediatamente el asiento del equipo "${hostname || "PC"}"? El nuevo ordenador podrá usar la licencia Pro en 1 segundo.`
     );
     if (!confirmKick) return;
 
@@ -176,7 +263,7 @@ export default function App() {
       if (!res.ok) {
         throw new Error("No se pudo liberar el asiento.");
       }
-      setActionNotice(`✅ Asiento del equipo "${hostname || 'PC'}" liberado exitosamente.`);
+      setActionNotice(`✅ Asiento del equipo "${hostname || "PC"}" liberado exitosamente.`);
       await fetchOverview(token, currentKey || undefined);
     } catch (err: any) {
       setError(err.message || "Error al liberar el asiento.");
@@ -186,7 +273,7 @@ export default function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // VIEW 1: Login Form
+  // VIEW 1: Secure Authentication Gate (OTP & Admin Key)
   // ---------------------------------------------------------------------------
   if (!token || !data) {
     return (
@@ -199,65 +286,230 @@ export default function App() {
             <h1 className="text-2xl font-black text-white tracking-tight">
               WPipe Studio
             </h1>
-            <p className="text-xs text-sky-400 font-semibold tracking-wider uppercase mt-1">
-              Portal de Autoservicio Enterprise
+            <p className="text-xs text-sky-400 font-semibold tracking-wider uppercase mt-1 flex items-center justify-center gap-1.5">
+              <ShieldCheck size={14} />
+              <span>Portal de Autoservicio Enterprise</span>
             </p>
             <p className="text-xs text-gray-400 mt-2">
-              Gestiona todas las licencias de tu organización, audita equipos en tiempo real y libera asientos en 1 clic.
+              Gestión segura de licencias corporativas, auditoría de equipos en tiempo real y liberación de asientos.
             </p>
           </div>
 
+          {/* Mode Selector Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-900/90 rounded-xl mb-5 border border-gray-800">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("otp");
+                setError(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                authMode === "otp"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              <Mail size={13} />
+              <span>Correo (OTP)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("admin_key");
+                setError(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                authMode === "admin_key"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              <Key size={13} />
+              <span>Clave Admin</span>
+            </button>
+          </div>
+
           {error && (
-            <div className="mb-4 p-3 bg-red-950/80 border border-red-700/80 rounded-lg text-xs text-red-200 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-red-400 shrink-0" />
-              <span>{error}</span>
+            <div className="mb-4 p-3 bg-red-950/80 border border-red-700/80 rounded-lg text-xs text-red-200 flex items-start gap-2">
+              <AlertTriangle size={15} className="text-red-400 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                Clave de Licencia o Correo Corporativo
-              </label>
-              <input
-                type="text"
-                value={identifierInput}
-                onChange={(e) => setIdentifierInput(e.target.value)}
-                placeholder="WPIPE-PRO-... o it-admin@empresa.com"
-                className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-mono"
-                required
-              />
-              <p className="text-[11px] text-gray-500 mt-1">
-                Ingresa tu clave de licencia o el correo corporativo con el que compraste en Lemon Squeezy para ver todas tus licencias agrupadas.
-              </p>
+          {actionNotice && (
+            <div className="mb-4 p-3 bg-sky-950/80 border border-sky-700/80 rounded-lg text-xs text-sky-200 flex items-start gap-2">
+              <CheckCircle2 size={15} className="text-sky-400 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{actionNotice}</span>
             </div>
+          )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50"
-            >
-              {loading ? "Verificando..." : "Acceder al Portal"}
-            </button>
-          </form>
+          {/* TAB 1: Passwordless Email OTP */}
+          {authMode === "otp" && (
+            <div>
+              {otpStep === "email" ? (
+                <form onSubmit={handleRequestOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
+                      <span>Correo Corporativo del Comprador</span>
+                      <span className="text-[10px] text-gray-500 font-normal">Sin contraseñas</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="it-admin@empresa.com"
+                      className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-sans"
+                      required
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                      Te enviaremos un código de seguridad de 6 dígitos de un solo uso para verificar que eres el propietario del buzón.
+                    </p>
+                  </div>
 
-          {/* Quick Demo Keys Helper */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Send size={14} />
+                    <span>{loading ? "Enviando código..." : "Enviar Código de Seguridad"}</span>
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Verificando:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpStep("email");
+                        setCodeInput("");
+                        setDebugOtp(null);
+                        setError(null);
+                      }}
+                      className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
+                    >
+                      <ArrowLeft size={12} />
+                      <span>Cambiar correo</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-gray-900/80 rounded-lg border border-gray-800 text-center">
+                    <span className="text-xs font-mono font-bold text-sky-300">{emailInput}</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-300 mb-1.5 text-center">
+                      Código de Seguridad (6 dígitos)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={codeInput}
+                      onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, ""))}
+                      placeholder="000000"
+                      className="w-full py-3 px-4 bg-gray-900/90 border border-gray-700 rounded-lg text-2xl text-center text-white tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-bold"
+                      required
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1.5 text-center">
+                      Expira en 10 minutos. Revisa tu bandeja de entrada o spam.
+                    </p>
+                  </div>
+
+                  {debugOtp && (
+                    <div className="p-2.5 bg-sky-950/60 border border-sky-800/80 rounded-lg flex items-center justify-between text-xs">
+                      <span className="text-sky-300">Modo Desarrollo: Código generado:</span>
+                      <button
+                        type="button"
+                        onClick={() => setCodeInput(debugOtp)}
+                        className="px-2 py-0.5 bg-sky-800 hover:bg-sky-700 text-white font-mono font-bold rounded cursor-pointer"
+                      >
+                        {debugOtp} (Autocompletar)
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading || codeInput.length !== 6}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Lock size={14} />
+                    <span>{loading ? "Verificando..." : "Verificar y Entrar"}</span>
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: Private Admin Key */}
+          {authMode === "admin_key" && (
+            <form onSubmit={handleLoginAdminKey} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
+                  <span>Clave de Administración Corporativa</span>
+                  <span className="text-[10px] text-purple-400 font-mono">WPIPE-ADM-...</span>
+                </label>
+                <input
+                  type="text"
+                  value={adminKeyInput}
+                  onChange={(e) => setAdminKeyInput(e.target.value)}
+                  placeholder="WPIPE-ADM-XXXX-XXXX"
+                  className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-mono uppercase"
+                  required
+                  autoFocus
+                />
+                <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                  Esta clave privada solo la recibe el director o comprador en su recibo de compra. Otorga control total sobre la liberación de asientos.
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-lg text-[11px] text-amber-200/90 flex items-start gap-2">
+                <Lock size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Aviso de Seguridad:</strong> Las claves de terminal (VS Code tipo <code>WPIPE-PRO-...</code>) no tienen acceso a este portal. Si eres empleado, usa tu clave directamente en el plugin.
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Key size={14} />
+                <span>{loading ? "Autenticando..." : "Acceder con Clave Maestra"}</span>
+              </button>
+            </form>
+          )}
+
+          {/* Quick Demo Helper */}
           <div className="mt-6 pt-4 border-t border-gray-800 text-center">
-            <span className="text-[11px] text-gray-500">¿Probando en demo? Usa una de estas opciones:</span>
+            <span className="text-[11px] text-gray-500">¿Probando en demo? Usa una de estas opciones rápidas:</span>
             <div className="flex flex-wrap gap-1.5 justify-center mt-2">
               <button
                 type="button"
-                onClick={() => setIdentifierInput("wisrovi@wisrovi.dev")}
+                onClick={() => {
+                  setAuthMode("otp");
+                  setEmailInput("wisrovi@wisrovi.dev");
+                  setOtpStep("email");
+                }}
                 className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-emerald-300 rounded border border-gray-700 cursor-pointer"
               >
-                📧 wisrovi@wisrovi.dev (Ver todas)
+                📧 wisrovi@wisrovi.dev (OTP)
               </button>
               <button
                 type="button"
-                onClick={() => setIdentifierInput("WPIPE-ENT-C0E4-E966-A3FA")}
+                onClick={() => {
+                  setAuthMode("admin_key");
+                  setAdminKeyInput("WPIPE-ADM-84AB97A8FF7C");
+                }}
                 className="text-[10px] font-mono px-2 py-1 bg-gray-800/80 hover:bg-gray-700 text-purple-300 rounded border border-gray-700 cursor-pointer"
               >
-                🔑 WPIPE-ENT (20 asientos)
+                🔑 WPIPE-ADM-84AB97A8FF7C
               </button>
             </div>
           </div>
@@ -300,7 +552,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Multi-License Selector Dropdown (When company has 2+ licenses) */}
+        {/* Multi-License Selector Dropdown & Actions */}
         <div className="flex items-center gap-3">
           {orgLicenses.length > 1 && (
             <div className="flex items-center gap-2 bg-gray-900 border border-sky-800/60 rounded-lg px-2.5 py-1">
@@ -381,7 +633,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-gray-400">Licencia activa actual:</span>
+              <span className="text-xs text-gray-400">Licencia activa:</span>
               <code className="text-xs font-mono font-bold text-sky-300 bg-sky-950/80 px-2.5 py-1 rounded border border-sky-700/80 flex items-center gap-1.5">
                 <span>{data.license_key}</span>
                 <button
@@ -536,17 +788,27 @@ export default function App() {
           )}
         </div>
 
-        {/* All Organization Licenses Cards (When company has 2+ licenses) */}
-        {orgLicenses.length > 1 && (
+        {/* All Organization Licenses Cards */}
+        {orgLicenses.length > 0 && (
           <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-6 shadow-xl space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Building2 size={18} className="text-indigo-400" />
-                <span>Todas las Licencias de tu Empresa ({orgLicenses.length})</span>
-              </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Haz clic en "Gestionar" para alternar entre las claves asignadas a distintos departamentos o proyectos.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Building2 size={18} className="text-indigo-400" />
+                  <span>Claves Corporativas de tu Organización ({orgLicenses.length})</span>
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Entrega la clave de terminal a tus empleados. Guarda la clave de administración en privado.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminKeys(!showAdminKeys)}
+                className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 font-semibold cursor-pointer w-fit"
+              >
+                <Key size={13} />
+                <span>{showAdminKeys ? "Ocultar Claves Admin" : "Mostrar Claves Admin"}</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -570,24 +832,52 @@ export default function App() {
                       </span>
                     </div>
 
+                    {/* Terminal Key for Employees */}
                     <div className="mt-2.5">
-                      <div className="flex items-center justify-between">
-                        <code className="text-xs font-mono font-bold text-white">
+                      <span className="text-[10px] text-gray-400 font-medium block">
+                        Clave de Puesto (VS Code empleados):
+                      </span>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <code className="text-xs font-mono font-bold text-white truncate max-w-[200px]">
                           {lic.license_key}
                         </code>
                         <button
                           type="button"
                           onClick={() => handleCopyKey(lic.license_key)}
-                          className="text-gray-400 hover:text-white cursor-pointer ml-1"
-                          title="Copiar clave"
+                          className="text-gray-400 hover:text-white cursor-pointer ml-1 p-1"
+                          title="Copiar clave de puesto"
                         >
                           <Copy size={12} />
                         </button>
                       </div>
-                      <span className="text-[10px] text-gray-500 mt-1 block">
-                        {lic.expires_at ? `Expira: ${lic.expires_at.slice(0, 10)}` : "Vitalicia (Lifetime)"}
-                      </span>
                     </div>
+
+                    {/* Admin Key (Secret for IT Director) */}
+                    {showAdminKeys && lic.admin_key && (
+                      <div className="mt-2 pt-2 border-t border-gray-800/60">
+                        <span className="text-[10px] text-purple-400 font-medium block flex items-center gap-1">
+                          <Lock size={10} />
+                          <span>Clave de Administración (Privada):</span>
+                        </span>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <code className="text-[11px] font-mono font-bold text-purple-300 truncate max-w-[200px]">
+                            {lic.admin_key}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyKey(lic.admin_key!)}
+                            className="text-gray-400 hover:text-purple-300 cursor-pointer ml-1 p-1"
+                            title="Copiar clave de administración"
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <span className="text-[10px] text-gray-500 mt-2 block">
+                      {lic.expires_at ? `Expira: ${lic.expires_at.slice(0, 10)}` : "Vitalicia (Lifetime)"}
+                    </span>
 
                     <div className="mt-3 pt-2.5 border-t border-gray-800/80 flex items-center justify-between">
                       {isSelected ? (
@@ -619,7 +909,7 @@ export default function App() {
             <div>
               <h4 className="text-sm font-bold text-white">¿Se ha estropeado un ordenador o rotado un empleado?</h4>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                Pulsa <strong>"Liberar Asiento"</strong> en la tabla superior. El asiento se liberará en 1 segundo y el nuevo empleado podrá utilizar la licencia Pro sin trámites.
+                Pulsa <strong>"Liberar Asiento"</strong> en la tabla superior. El puesto se liberará en 1 segundo y el nuevo empleado podrá utilizar la licencia Pro sin trámites.
               </p>
             </div>
           </div>

@@ -21,6 +21,35 @@ function isAuthorizedAdmin(request: Request, env: Env): boolean {
 
 export async function handleAdmin(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
+  const masterKey = env.ADMIN_MASTER_KEY || "wisrovi2026";
+
+  // 0. POST /v1/admin/auth/verify (Validate Master Key)
+  if (path === "/v1/admin/auth/verify" && request.method === "POST") {
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {}
+
+    const providedKey = (body.master_key || body.key || "").trim();
+    if (providedKey === masterKey || isAuthorizedAdmin(request, env)) {
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          authorized: true,
+          token: masterKey,
+          admin_name: "William Rodriguez",
+          role: "Super-Admin",
+          timestamp: new Date().toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ error: "INVALID_MASTER_KEY", message: "Contraseña maestra de Super-Admin no válida." }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   if (!isAuthorizedAdmin(request, env)) {
     return new Response(

@@ -231,23 +231,26 @@ class CloudflareAdminClient:
         clean_plan = plan.strip().lower()
         prefix = f"WPIPE-{clean_plan.upper()}"
         license_key = (custom_key or generate_license_key(prefix)).strip().upper()
+        admin_key = f"WPIPE-ADM-{secrets.token_hex(6).upper()}"
         license_id = f"lic_{secrets.token_hex(8)}"
 
         sql = """
-            INSERT INTO licenses (id, license_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO licenses (id, license_key, admin_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))
         """
-        params = [license_id, license_key, clean_email, clean_name, clean_plan, max_machines, max_machines, expires_at]
+        params = [license_id, license_key, admin_key, clean_email, clean_name, clean_plan, max_machines, max_machines, expires_at]
         self.execute_query(sql, params)
 
         return {
             "id": license_id,
             "license_key": license_key,
+            "admin_key": admin_key,
             "customer_email": clean_email,
             "customer_name": clean_name,
             "plan": clean_plan,
             "status": "active",
             "max_machines": max_machines,
+            "max_seats": max_machines,
             "expires_at": expires_at,
         }
 

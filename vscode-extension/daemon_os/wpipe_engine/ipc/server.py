@@ -5,6 +5,7 @@ Author: William Rodriguez (wisrovi.dev)
 
 import json
 import os
+import platform
 import socket
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -103,6 +104,14 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             })
         elif self.path in ("/v1/license/status", "/license/status"):
             status = license_mgr.get_status()
+            status["engine"] = {
+                "pid": os.getpid(),
+                "version": "1.0.0",
+                "python_version": platform.python_version(),
+                "hostname": socket.gethostname(),
+                "os": platform.system(),
+                "transport": "unix_socket" if hasattr(self.server, "socket_path") else "http",
+            }
             self._send_json(200, status)
         else:
             self._send_json(404, {"error": "NOT_FOUND", "path": self.path})

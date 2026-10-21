@@ -178,6 +178,79 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
     );
   }
 
+  // 4. GET /v1/admin/system/ping (Edge telemetry & D1 round-trip benchmark)
+  if (path === "/v1/admin/system/ping" && request.method === "GET") {
+    const start = Date.now();
+    await env.DB.prepare("SELECT 1;").first();
+    const duration = Date.now() - start;
+    const cf = (request as any).cf;
+    return new Response(
+      JSON.stringify({
+        status: "healthy",
+        latency_ms: duration,
+        edge_colo: cf?.colo || "EDGE",
+        country: cf?.country || "ES",
+        server_timestamp: new Date().toISOString(),
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // 5. POST /v1/admin/licenses/update (Direct state & quota editor)
+  if (path === "/v1/admin/licenses/update" && request.method === "POST") {
+    const body: any = await request.json().catch(() => ({}));
+    const { license_id, status, max_seats, plan, expires_at } = body;
+    if (!license_id) {
+      return new Response(JSON.stringify({ error: "MISSING_LICENSE_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await env.DB.prepare(
+      `UPDATE licenses SET 
+        status = coalesce(?, status),
+        max_seats = coalesce(?, max_seats),
+        max_machines = coalesce(?, max_machines),
+        plan = coalesce(?, plan),
+        expires_at = ?,
+        updated_at = datetime('now')
+      WHERE id = ?`
+    ).bind(status ?? null, max_seats ?? null, max_seats ?? null, plan ?? null, expires_at ?? null, license_id).run();
+
+    return new Response(JSON.stringify({ status: "success", updated_id: license_id }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 6. POST /v1/admin/leases/kick (Kick specific lease by ID)
+  if (path === "/v1/admin/leases/kick" && request.method === "POST") {
+    const body: any = await request.json().catch(() => ({}));
+    const { lease_id } = body;
+    if (!lease_id) {
+      return new Response(JSON.stringify({ error: "MISSING_LEASE_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await env.DB.prepare("DELETE FROM leases WHERE id = ?").bind(lease_id).run();
+    return new Response(JSON.stringify({ status: "success", kicked_id: lease_id }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 7. POST /v1/admin/leases/purge (Purge all expired leases)
+  if (path === "/v1/admin/leases/purge" && request.method === "POST") {
+    const result = await env.DB.prepare("DELETE FROM leases WHERE lease_expires_at <= datetime('now')").run();
+    return new Response(
+      JSON.stringify({ status: "success", purged_count: result.meta?.changes || 0 }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   return new Response(JSON.stringify({ error: "NOT_FOUND", path }), {
     status: 404,
     headers: { "Content-Type": "application/json" },

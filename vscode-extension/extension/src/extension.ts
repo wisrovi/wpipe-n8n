@@ -23,6 +23,15 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBarItem);
   statusBarItem.show();
 
+  // 2. Register Custom Editor for *.wpipe and *.wpipe.json files
+  context.subscriptions.push(WPipeCanvasEditorProvider.register(context, ipcClient));
+
+  // 3. Register Sidebar Provider (Activity Bar)
+  const sidebarProvider = new WPipeSidebarProvider(context, ipcClient);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(WPipeSidebarProvider.viewType, sidebarProvider)
+  );
+
   async function updateStatusBar() {
     try {
       const status = await ipcClient.getLicenseStatus();
@@ -41,14 +50,10 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  // 2. Register Custom Editor for *.wpipe and *.wpipe.json files
-  context.subscriptions.push(WPipeCanvasEditorProvider.register(context, ipcClient));
-
-  // 3. Register Sidebar Provider (Activity Bar)
-  const sidebarProvider = new WPipeSidebarProvider(context, ipcClient);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(WPipeSidebarProvider.viewType, sidebarProvider)
-  );
+  async function updateStatusAndUi() {
+    await updateStatusBar();
+    await sidebarProvider.refresh();
+  }
 
   // 4. Register Commands
   context.subscriptions.push(
@@ -100,17 +105,20 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("wpipe.activateLicense", async () => {
-      const key = await vscode.window.showInputBox({
-        prompt: "Introduce tu clave de licencia WPipe Pro",
-        placeHolder: "WPIPE-PRO-XXXX-XXXX-XXXX",
-        validateInput: (text) => {
-          if (!text || text.trim().length < 8) {
-            return "Introduce una clave de licencia válida.";
-          }
-          return null;
-        },
-      });
+    vscode.commands.registerCommand("wpipe.activateLicense", async (keyArg?: string) => {
+      const key =
+        typeof keyArg === "string" && keyArg.trim().length >= 8
+          ? keyArg.trim()
+          : await vscode.window.showInputBox({
+              prompt: "Introduce tu clave de licencia WPipe Pro",
+              placeHolder: "WPIPE-PRO-XXXX-XXXX-XXXX",
+              validateInput: (text) => {
+                if (!text || text.trim().length < 8) {
+                  return "Introduce una clave de licencia válida.";
+                }
+                return null;
+              },
+            });
 
       if (!key) return;
 
@@ -121,10 +129,11 @@ export async function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
+            await daemonManager.ensureDaemonRunning();
             const res = await ipcClient.activateLicense(key.trim());
             if (res.success) {
               vscode.window.showInformationMessage(`🎉 ${res.message}`);
-              await updateStatusBar();
+              await updateStatusAndUi();
             } else {
               vscode.window.showErrorMessage(`❌ Error de activación: ${res.message}`);
             }
@@ -167,9 +176,24 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // 5. Auto-start daemon and initial status check
+  // 5. Register URI Handler for 1-click activation: vscode://wisrovi.wpipe-studio-vscode/activate?key=...
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+        if (uri.path === "/activate") {
+          const params = new URLSearchParams(uri.query);
+          const key = params.get("key");
+          if (key) {
+            vscode.commands.executeCommand("wpipe.activateLicense", key);
+          }
+        }
+      },
+    })
+  );
+
+  // 6. Auto-start daemon and initial status check
   daemonManager.ensureDaemonRunning().then(() => {
-    updateStatusBar();
+    updateStatusAndUi();
   });
 }
 
@@ -178,22 +202,24 @@ export async function activate(context: vscode.ExtensionContext) {
  */
 class WPipeSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "wpipe.sidebarView";
+  private _view?: vscode.WebviewView;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly ipcClient: EngineIpcClient
   ) {}
 
-  public resolveWebviewView(
+  public async resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
-  ): void {
+  ): Promise<void> {
+    this._view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
     };
 
-    webviewView.webview.html = this.getSidebarHtml();
+    await this.refresh();
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       switch (msg.type) {
@@ -219,7 +245,53 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private getSidebarHtml(): string {
+  public async refresh(): Promise<void> {
+    if (!this._view) return;
+    try {
+      const status = await this.ipcClient.getLicenseStatus();
+      this._view.webview.html = this.getSidebarHtml(status);
+    } catch {
+      this._view.webview.html = this.getSidebarHtml({
+        tier: "free",
+        is_pro: false,
+        max_blocks: 5,
+        message: "Plan Free",
+      });
+    }
+  }
+
+  private getSidebarHtml(status?: any): string {
+    const isPro = status && status.is_pro;
+    const tierName = (status?.tier || "FREE").toUpperCase();
+    const key = status?.license_key || "";
+
+    const licenseCard = isPro
+      ? `
+  <div class="card" style="border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.08);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-weight: 800; color: #34d399; font-size: 12px; letter-spacing: 0.5px;">👑 PLAN ACTIVO: ${tierName}</span>
+      <span style="font-size: 9px; background: rgba(52, 211, 153, 0.25); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-weight: 700;">PRO</span>
+    </div>
+    <div style="color: var(--vscode-foreground); font-size: 11px; margin-top: 4px;">
+      ✓ Bloques y pasos ilimitados
+    </div>
+    <div style="color: var(--vscode-descriptionForeground); font-size: 10px;">
+      ✓ Puesto flotante en Cloudflare Edge
+    </div>
+    ${key ? `<div style="font-family: monospace; font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 4px 6px; border-radius: 4px; margin-top: 4px; word-break: break-all;">${key}</div>` : ""}
+    <button class="btn btn-secondary" style="margin-top: 6px; font-size: 11px; padding: 5px 8px;" onclick="send('activateLicense')">
+      🔄 Cambiar Licencia
+    </button>
+  </div>`
+      : `
+  <div class="card">
+    <div style="font-weight: 700; color: #fbbf24; font-size: 12px;">⚡ Plan Activo: FREE</div>
+    <div style="color: var(--vscode-descriptionForeground);">Límite: Máximo 5 bloques por pipeline</div>
+    <button class="btn" style="margin-top: 6px; background: linear-gradient(135deg, #d97706, #f59e0b); color: #1e1e1e; font-size: 11px; padding: 6px 8px; font-weight: 700;" onclick="send('activateLicense')">
+      ⭐ Activar Licencia Pro
+    </button>
+  </div>`;
+
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -319,13 +391,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     📂 Abrir Pipeline de Ejemplo
   </button>
 
-  <div class="card">
-    <div style="font-weight: 700; color: #fbbf24; font-size: 12px;">⚡ Plan Activo: FREE</div>
-    <div style="color: var(--vscode-descriptionForeground);">Límite: Máximo 5 bloques por pipeline</div>
-    <button class="btn" style="margin-top: 6px; background: linear-gradient(135deg, #d97706, #f59e0b); color: #1e1e1e; font-size: 11px; padding: 6px 8px; font-weight: 700;" onclick="send('activateLicense')">
-      ⭐ Activar Licencia Pro
-    </button>
-  </div>
+  ${licenseCard}
 
   <script>
     const vscode = acquireVsCodeApi();

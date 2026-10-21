@@ -36,22 +36,43 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
 
     server_version = "WPipeEngine/1.0.0"
 
+    def _is_allowed_origin(self) -> bool:
+        """Check if incoming request Origin is trusted (localhost, 127.0.0.1, or vscode-webview)."""
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return True  # Native sockets, CLI, curl, local tools without Origin header
+        return (
+            origin.startswith("http://localhost:")
+            or origin.startswith("http://127.0.0.1:")
+            or origin.startswith("vscode-webview://")
+            or origin == "null"
+        )
+
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if self._is_allowed_origin():
+            allowed = origin if origin else "*"
+            self.send_header("Access-Control-Allow-Origin", allowed)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Vary", "Origin")
+
     def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
         raw = json.dumps(data, indent=2).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(raw)
 
     def do_OPTIONS(self) -> None:
+        if not self._is_allowed_origin():
+            self.send_response(403)
+            self.end_headers()
+            return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
         self.end_headers()
 
     def _read_json_body(self) -> dict[str, Any]:
@@ -65,6 +86,10 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self) -> None:
+        if not self._is_allowed_origin():
+            self._send_json(403, {"error": "FORBIDDEN_ORIGIN", "message": "Cross-origin request rejected."})
+            return
+
         license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
 
         if self.path in ("/", "/v1/health", "/health"):
@@ -83,6 +108,10 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
 
     def do_POST(self) -> None:
+        if not self._is_allowed_origin():
+            self._send_json(403, {"error": "FORBIDDEN_ORIGIN", "message": "Cross-origin request rejected."})
+            return
+
         license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
         compiler: ASTCompiler = self.server.compiler  # type: ignore
         runner: LocalRunner = self.server.runner  # type: ignore

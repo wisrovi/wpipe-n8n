@@ -7,36 +7,53 @@
 
 import { Env } from "./activate";
 
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 function isAuthorizedAdmin(request: Request, env: Env): boolean {
-  const masterKey = env.ADMIN_MASTER_KEY || "wisrovi2026";
+  const masterKey = env.ADMIN_MASTER_KEY?.trim();
+  if (!masterKey) return false;
+
   const auth = request.headers.get("Authorization");
   if (auth && auth.startsWith("Bearer ")) {
     const token = auth.slice(7).trim();
-    if (token === masterKey) return true;
+    if (constantTimeEquals(token, masterKey)) return true;
   }
   const headerKey = request.headers.get("x-admin-key");
-  if (headerKey && headerKey.trim() === masterKey) return true;
+  if (headerKey && constantTimeEquals(headerKey.trim(), masterKey)) return true;
   return false;
 }
 
 export async function handleAdmin(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
-  const masterKey = env.ADMIN_MASTER_KEY || "wisrovi2026";
+  const masterKey = env.ADMIN_MASTER_KEY?.trim();
 
   // 0. POST /v1/admin/auth/verify (Validate Master Key)
   if (path === "/v1/admin/auth/verify" && request.method === "POST") {
+    if (!masterKey) {
+      return new Response(
+        JSON.stringify({ error: "CONFIG_ERROR", message: "Clave maestra de Super-Admin no configurada en el servidor." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     let body: any = {};
     try {
       body = await request.json();
     } catch {}
 
     const providedKey = (body.master_key || body.key || "").trim();
-    if (providedKey === masterKey || isAuthorizedAdmin(request, env)) {
+    if ((providedKey && constantTimeEquals(providedKey, masterKey)) || isAuthorizedAdmin(request, env)) {
       return new Response(
         JSON.stringify({
           status: "success",
           authorized: true,
-          token: masterKey,
           admin_name: "William Rodriguez",
           role: "Super-Admin",
           timestamp: new Date().toISOString(),

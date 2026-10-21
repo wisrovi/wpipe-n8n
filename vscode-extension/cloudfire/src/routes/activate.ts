@@ -15,6 +15,7 @@ export interface Env {
   LEASE_DURATION_DAYS?: string;
   LEMONSQUEEZY_WEBHOOK_SECRET?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  ADMIN_MASTER_KEY?: string;
 }
 
 export async function handleActivate(request: Request, env: Env): Promise<Response> {

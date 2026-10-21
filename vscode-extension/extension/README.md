@@ -30,10 +30,10 @@ Diseña pipelines de datos visuales mediante bloques ensamblables al estilo Scra
    - Un clic en **Compilar a Python** genera la arquitectura completa en tu espacio de trabajo: `app/pipelines.py`, `app/main.py`, `Dockerfile`, `Makefile` y suite de pruebas `tests/test_pipeline.py`.
 3. **Smart AST Code Merge**:
    - Preserva automáticamente tu código manual escrito dentro de los bloques `# >>> [WPIPE:CUSTOM_IMPORTS]` y `# >>> [WPIPE:CUSTOM_LOGIC]`.
-4. **Activación Profunda 1-Clic, Enmascaramiento de Clave & Barra Lateral Segura**:
-   - Soporte nativo para enlaces profundos `vscode://wisrovi.wpipe-studio-vscode/activate?key=...` emitidos desde `portal.wisrovi.dev` o `admin.wisrovi.dev`.
-   - Protección anti-exposición (*shoulder-surfing/screen-sharing*): clave enmascarada por defecto (`WPIPE-PRO-••••-••••-9E5F`), botón de visualización conmutable (👁️/🙈) y botón de copiado directo al portapapeles (📋).
-   - Barra lateral reactiva con indicador de puesto en línea (`● En Línea`), sanitización XSS de entidades HTML y aislamiento estricto de orígenes IPC.
+4. **Developer Cockpit & Tarjeta Enriquecida de Puesto**:
+   - Visualización de datos contextuales reales: Titular/Organización, vigencia del lease con días restantes, huella de hardware del equipo (`ID Máquina`), clave asignada protegida con alternador (👁️/🙈) y botón de copiado directo (📋).
+   - Diagnóstico en tiempo real del motor local `wpipe-engine` (PID activo, versión Python, transporte IPC, catálogo de 196 steps) y reinicio en un clic.
+   - Acceso directo en un clic al portal web de gestión de puestos (`portal.wisrovi.dev`) y soporte para activación profunda `vscode://wisrovi.wpipe-studio-vscode/activate?key=...`.
 5. **Modelo Freemium Transparente**:
    - **Plan Free (Gratuito)**: Permite diseñar pipelines de hasta **5 bloques** sin registro ni tarjeta de crédito.
    - **Plan Pro**: Desbloquea pipelines de complejidad ilimitada, ejecución paralela concurrente (`Parallel`), tareas en segundo plano (`Background`) y depuración paso a paso en vivo con breakpoints.

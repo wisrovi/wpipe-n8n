@@ -22,8 +22,18 @@ export interface LicenseStatus {
   };
   machine_fingerprint?: string;
   lease_expires_at?: string;
+  activated_at?: string;
+  is_floating?: boolean;
   message?: string;
   upgrade_url?: string;
+  engine?: {
+    pid: number;
+    version: string;
+    python_version: string;
+    hostname: string;
+    os: string;
+    transport: string;
+  };
 }
 
 export class EngineIpcClient {

@@ -123,29 +123,33 @@ with st.spinner("Ejecutando pipeline WPipe..."):
 stats = pipe_result.get("stats", {})
 licenses = pipe_result.get("licenses", [])
 activations = pipe_result.get("activations", [])
+leases = pipe_result.get("leases", [])
 audit_logs = pipe_result.get("audit_logs", [])
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     st.metric(label="Total Licencias", value=stats.get("total_licenses", 0))
 with col2:
     st.metric(label="Licencias Activas", value=stats.get("active_licenses", 0))
 with col3:
-    st.metric(label="Máquinas Vinculadas", value=stats.get("total_activations", 0))
+    st.metric(label="Asientos Flotantes (2h TTL)", value=stats.get("active_floating_leases", len(leases)))
 with col4:
-    st.metric(label="Eventos Auditoría (7d)", value=stats.get("recent_logs_7d", 0))
+    st.metric(label="Equipos Históricos", value=stats.get("total_activations", 0))
+with col5:
+    st.metric(label="Auditoría (7d)", value=stats.get("recent_logs_7d", 0))
 
 st.divider()
 
 # -----------------------------------------------------------------------------
-# Tabs Interface
+# Tabs Interface (Super-Admin Local Console - Option A)
 # -----------------------------------------------------------------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "👥 Licencias & Clientes",
-    "💻 Máquinas & Leases",
-    "📦 Binarios & R2",
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "👥 Licencias & Clientes (Minador VIP)",
+    "💻 Asientos Flotantes en Vivo (Leases)",
+    "🛠️ Consola SQL D1 (Superpoder Exclusivo)",
+    "📦 Binarios & R2 Release Manager",
     "📜 Logs de Auditoría",
-    "💳 Pasarelas (Lemon / Stripe)",
+    "💳 Pasarelas (Lemon / Stripe) & Simulador",
 ])
 
 # =============================================================================
@@ -163,13 +167,13 @@ with tab1:
                 cust_name = st.text_input("Nombre / Empresa *", placeholder="Acme Inc.")
                 plan = st.selectbox("Plan", ["pro", "team", "enterprise"], index=0)
             with fcol2:
-                max_mach = st.number_input("Máquinas Permitidas", min_value=1, max_value=20, value=2)
+                max_seats = st.number_input("Asientos Flotantes Concurrentes", min_value=1, max_value=100, value=5)
                 duration = st.selectbox(
                     "Duración de la Licencia",
                     ["1 Mes", "1 Año", "Vitalicia (Lifetime)"],
                     index=1,
                 )
-                custom_key = st.text_input("Clave Personalizada (opcional)", placeholder="Dejar vacío para auto-generar")
+                custom_key = st.text_input("Clave Personalizada / VIP (opcional)", placeholder="Ej: WPIPE-VIP-LIFETIME-2026")
 
             submitted = st.form_submit_button("Generar y Activar Licencia", type="primary")
             if submitted:
@@ -191,7 +195,8 @@ with tab1:
                                 "customer_email": cust_email,
                                 "customer_name": cust_name,
                                 "plan": plan,
-                                "max_machines": int(max_mach),
+                                "max_machines": int(max_seats),
+                                "max_seats": int(max_seats),
                                 "expires_at": expires_at,
                                 "custom_key": custom_key if custom_key.strip() else None,
                             },
@@ -222,7 +227,7 @@ with tab1:
         df_licenses = pd.DataFrame(filtered_licenses)
         cols_order = [
             "license_key", "plan", "status", "customer_name", "customer_email",
-            "max_machines", "expires_at", "created_at"
+            "max_seats", "max_machines", "expires_at", "created_at"
         ]
         display_cols = [c for c in cols_order if c in df_licenses.columns]
         st.dataframe(df_licenses[display_cols], use_container_width=True, height=350)
@@ -260,12 +265,46 @@ with tab1:
         st.info("No se encontraron licencias registradas.")
 
 # =============================================================================
-# TAB 2: Máquinas & Leases
+# TAB 2: Asientos Flotantes en Vivo (Leases)
 # =============================================================================
 with tab2:
-    st.subheader("Equipos Vinculados (Huellas de Hardware Anti-Piratería)")
-    st.caption("Cada equipo tiene una huella SHA-256 única vinculada a la licencia del desarrollador.")
+    st.subheader("💻 Asientos Flotantes Concurrentes (Leases en Vivo - TTL 2h)")
+    st.caption("Cada desarrollador activo adquiere un lease dinámico renovado cada 30 min. Si supera el cupo, degrada a Free.")
 
+    if leases:
+        df_leases = pd.DataFrame(leases)
+        lease_cols = [
+            "id", "license_key", "customer_name", "hostname", "os_name",
+            "last_heartbeat_at", "lease_expires_at", "is_active"
+        ]
+        display_lease_cols = [c for c in lease_cols if c in df_leases.columns]
+        st.dataframe(df_leases[display_lease_cols], use_container_width=True, height=280)
+
+        st.markdown("#### 🔓 Liberar / Expulsar Asiento Flotante Inmediatamente")
+        st.caption("Si un ordenador se estropeó o un practicante terminó su período, libera su puesto con 1 clic.")
+
+        lcol1, lcol2 = st.columns([3, 1])
+        with lcol1:
+            sel_lease = st.selectbox(
+                "Seleccionar Asiento a Liberar",
+                options=[f"{l['id']} — {l.get('hostname') or 'PC'} ({l.get('license_key') or ''})" for l in leases],
+            )
+            lease_id = sel_lease.split(" — ")[0]
+        with lcol2:
+            st.write("")
+            st.write("")
+            if st.button("🔓 Liberar Asiento", type="primary", use_container_width=True):
+                admin_pipeline.run({
+                    "action": "delete_lease",
+                    "target_id": lease_id,
+                })
+                st.success("¡Asiento flotante liberado al instante vía WPipe Pipeline!")
+                st.rerun()
+    else:
+        st.info("No hay asientos flotantes activos en este momento.")
+
+    st.divider()
+    st.markdown("#### 🖥️ Equipos Históricos Registrados (Activaciones Permanentes)")
     if activations:
         df_act = pd.DataFrame(activations)
         act_cols = [
@@ -273,36 +312,69 @@ with tab2:
             "machine_fingerprint", "last_verified_at", "lease_expires_at"
         ]
         display_act_cols = [c for c in act_cols if c in df_act.columns]
-        st.dataframe(df_act[display_act_cols], use_container_width=True, height=350)
-
-        st.markdown("#### Desvincular Equipo")
-        st.caption("Si un cliente cambia de ordenador o formatea su sistema, desvincula su máquina anterior para liberar su cupo.")
+        st.dataframe(df_act[display_act_cols], use_container_width=True, height=200)
 
         dcol1, dcol2 = st.columns([3, 1])
         with dcol1:
             sel_act = st.selectbox(
-                "Seleccionar Activación a Desvincular",
+                "Seleccionar Activación Histórica",
                 options=[f"{a['id']} — {a.get('hostname') or 'PC'} ({a.get('license_key') or ''})" for a in activations],
             )
             act_id = sel_act.split(" — ")[0]
         with dcol2:
             st.write("")
             st.write("")
-            if st.button("🔓 Desvincular Máquina", type="primary", use_container_width=True):
+            if st.button("🗑️ Desvincular Máquina Antigua", type="secondary", use_container_width=True):
                 admin_pipeline.run({
                     "action": "delete_activation",
                     "target_id": act_id,
                 })
-                st.success("Máquina desvinculada exitosamente vía WPipe Pipeline.")
+                st.success("Activación histórica eliminada.")
                 st.rerun()
-    else:
-        st.info("Aún no hay máquinas registradas.")
 
 # =============================================================================
-# TAB 3: Binarios & R2
+# TAB 3: Consola SQL D1 (Superpoder Exclusivo de William)
 # =============================================================================
 with tab3:
-    st.subheader("Distribución de Binarios `wpipe-engine` (Cloudflare R2)")
+    st.subheader("🛠️ Consola SQL Directa sobre Cloudflare D1")
+    st.caption("Ejecuta consultas interactivas y comandos SQL de bajo nivel directamente contra la base de datos de producción.")
+
+    st.markdown("##### Consultas Rápidas (Presets)")
+    pcol1, pcol2, pcol3, pcol4 = st.columns(4)
+    preset_query = None
+    with pcol1:
+        if st.button("📋 Ver Todas las Licencias"):
+            preset_query = "SELECT id, license_key, plan, max_seats, status, customer_email FROM licenses ORDER BY created_at DESC;"
+    with pcol2:
+        if st.button("🟢 Ver Leases Activos"):
+            preset_query = "SELECT * FROM leases WHERE lease_expires_at > datetime('now');"
+    with pcol3:
+        if st.button("🧹 Limpiar Leases Caducados"):
+            preset_query = "DELETE FROM leases WHERE lease_expires_at < datetime('now');"
+    with pcol4:
+        if st.button("📊 Auditoría por Tipo"):
+            preset_query = "SELECT event_type, count(*) as count FROM audit_logs GROUP BY event_type ORDER BY count DESC;"
+
+    default_sql = preset_query or "SELECT * FROM licenses LIMIT 10;"
+    sql_input = st.text_area("Sentencia SQL", value=default_sql, height=100)
+
+    if st.button("⚡ Ejecutar Consulta SQL", type="primary"):
+        with st.spinner("Ejecutando en Cloudflare D1..."):
+            try:
+                sql_results = client.execute_query(sql_input)
+                if sql_results:
+                    st.success(f"✅ Consulta ejecutada exitosamente. Registros devueltos: {len(sql_results)}")
+                    st.dataframe(pd.DataFrame(sql_results), use_container_width=True)
+                else:
+                    st.info("Consulta ejecutada. Cero registros devueltos o comando de modificación completado.")
+            except Exception as e:
+                st.error(f"Error al ejecutar SQL en D1: {e}")
+
+# =============================================================================
+# TAB 4: Binarios & R2 Release Manager
+# =============================================================================
+with tab4:
+    st.subheader("📦 Distribución de Binarios `wpipe-engine` (Cloudflare R2)")
     st.caption("Los binarios se sirven sin costo de transferencia (Zero-Egress Fees) a los usuarios de VS Code.")
 
     # Fetch latest manifest
@@ -325,17 +397,17 @@ with tab3:
     )
 
 # =============================================================================
-# TAB 4: Logs de Auditoría
+# TAB 5: Logs de Auditoría
 # =============================================================================
-with tab4:
-    st.subheader("Registro de Seguridad & Auditoría")
+with tab5:
+    st.subheader("📜 Registro de Seguridad & Auditoría")
     st.caption("Eventos en tiempo real cargados por ManageAuditStep.")
 
     lcol1, lcol2 = st.columns([3, 1])
     with lcol1:
         ev_filter = st.selectbox(
             "Tipo de Evento",
-            ["all", "activate_success", "activate_failed_not_found", "verify_success", "payment_processed"],
+            ["all", "lease_acquired", "seat_released_gracefully", "seat_liberated_via_portal", "lease_quota_exceeded", "activate_success", "verify_success"],
         )
     with lcol2:
         limit_logs = st.number_input("Límite de Registros", min_value=10, max_value=500, value=50, step=10)
@@ -351,9 +423,9 @@ with tab4:
         st.info("No hay registros de auditoría para el filtro seleccionado.")
 
 # =============================================================================
-# TAB 5: Pasarelas de Pago (Lemon Squeezy / Stripe)
+# TAB 6: Pasarelas de Pago (Lemon Squeezy / Stripe) & Simulador
 # =============================================================================
-with tab5:
+with tab6:
     st.subheader("💳 Integración de Pasarelas de Pago")
     st.caption("Configuración de webhooks automáticos para emisión de licencias en tiempo real tras la compra.")
 

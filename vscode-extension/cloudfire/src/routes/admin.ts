@@ -84,18 +84,20 @@ export async function handleAdmin(request: Request, env: Env, url: URL): Promise
 
     const licenseId = `lic_vip_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const finalKey = (custom_key || `WPIPE-VIP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`).trim().toUpperCase();
+    const adminKey = `WPIPE-ADM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
     await env.DB.prepare(
       `INSERT INTO licenses (
-        id, license_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(licenseId, finalKey, customer_email || "vip@wisrovi.dev", customer_name || "VIP Partner", plan, max_seats, max_seats, expires_at).run();
+        id, license_key, admin_key, customer_email, customer_name, plan, status, max_machines, max_seats, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(licenseId, finalKey, adminKey, customer_email || "vip@wisrovi.dev", customer_name || "VIP Partner", plan, max_seats, max_seats, expires_at).run();
 
     return new Response(
       JSON.stringify({
         status: "success",
         license_id: licenseId,
         license_key: finalKey,
+        admin_key: adminKey,
         max_seats,
         plan,
         expires_at,

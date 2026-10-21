@@ -108,8 +108,8 @@
         },
         "wpipe.canvasUrl": {
           "type": "string",
-          "default": "http://localhost:5173",
-          "description": "URL base del frontend del lienzo visual WPipe Studio (por defecto http://localhost:5173)."
+          "default": "http://127.0.0.1:49152",
+          "description": "URL base del frontend del lienzo visual WPipe Studio (por defecto http://127.0.0.1:49152 servido localmente por wpipe-engine, sin necesidad de Docker)."
         }
       }
     }

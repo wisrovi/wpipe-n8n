@@ -10,6 +10,8 @@ import * as os from "os";
 export interface LicenseStatus {
   tier: "free" | "pro" | "team" | "enterprise";
   is_pro: boolean;
+  license_key?: string;
+  customer_name?: string;
   max_blocks: number | null;
   features?: {
     unlimited_blocks: boolean;
@@ -51,7 +53,7 @@ export class EngineIpcClient {
           "Content-Type": "application/json",
           ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
         },
-        timeout: 10000,
+        timeout: 25000,
       };
 
       if (this.useHttp) {

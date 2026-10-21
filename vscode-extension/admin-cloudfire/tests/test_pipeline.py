@@ -16,16 +16,17 @@ from pipelines import create_admin_pipeline
 
 
 def test_admin_pipeline_structure():
-    """Validates that create_admin_pipeline configures the 4 standard WPipe steps in sequence."""
+    """Validates that create_admin_pipeline configures the 5 standard WPipe steps in sequence."""
     pipeline = create_admin_pipeline()
 
     assert pipeline.pipeline_name == "admin_cloudfire_pipeline"
-    assert len(pipeline.steps) == 4
+    assert len(pipeline.steps) == 5
 
     step_names = [step.name for step in pipeline.steps]
     assert "FetchStatsStep" in step_names
     assert "ManageLicensesStep" in step_names
     assert "ManageActivationsStep" in step_names
+    assert "ManageLeasesStep" in step_names
     assert "ManageAuditStep" in step_names
 
 

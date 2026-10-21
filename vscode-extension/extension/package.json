@@ -105,6 +105,11 @@
           "type": "string",
           "default": "https://api.wisrovi.dev",
           "description": "Servidor de autoridad de licencias Cloudflare."
+        },
+        "wpipe.canvasUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "URL base del frontend del lienzo visual WPipe Studio (por defecto http://localhost:5173)."
         }
       }
     }

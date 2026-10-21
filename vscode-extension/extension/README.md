@@ -30,9 +30,10 @@ Diseña pipelines de datos visuales mediante bloques ensamblables al estilo Scra
    - Un clic en **Compilar a Python** genera la arquitectura completa en tu espacio de trabajo: `app/pipelines.py`, `app/main.py`, `Dockerfile`, `Makefile` y suite de pruebas `tests/test_pipeline.py`.
 3. **Smart AST Code Merge**:
    - Preserva automáticamente tu código manual escrito dentro de los bloques `# >>> [WPIPE:CUSTOM_IMPORTS]` y `# >>> [WPIPE:CUSTOM_LOGIC]`.
-4. **Activación Profunda 1-Clic & Barra Lateral Dinámica**:
+4. **Activación Profunda 1-Clic, Enmascaramiento de Clave & Barra Lateral Segura**:
    - Soporte nativo para enlaces profundos `vscode://wisrovi.wpipe-studio-vscode/activate?key=...` emitidos desde `portal.wisrovi.dev` o `admin.wisrovi.dev`.
-   - Barra lateral reactiva en el Activity Bar que refleja en tiempo real el plan contratado (`PRO`, `ENTERPRISE`, `VIP`) con verificación de límites y clave asociada.
+   - Protección anti-exposición (*shoulder-surfing/screen-sharing*): clave enmascarada por defecto (`WPIPE-PRO-••••-••••-9E5F`), botón de visualización conmutable (👁️/🙈) y botón de copiado directo al portapapeles (📋).
+   - Barra lateral reactiva con indicador de puesto en línea (`● En Línea`), sanitización XSS de entidades HTML y aislamiento estricto de orígenes IPC.
 5. **Modelo Freemium Transparente**:
    - **Plan Free (Gratuito)**: Permite diseñar pipelines de hasta **5 bloques** sin registro ni tarjeta de crédito.
    - **Plan Pro**: Desbloquea pipelines de complejidad ilimitada, ejecución paralela concurrente (`Parallel`), tareas en segundo plano (`Background`) y depuración paso a paso en vivo con breakpoints.

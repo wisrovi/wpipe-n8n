@@ -1,12 +1,12 @@
 /**
- * WPipe Studio - Super-Admin Web Console (Pro-Max Edition)
+ * WPipe Studio - Super-Admin Web Console (Pro-Max Enterprise Edition)
  * Deployed at: admin.wisrovi.dev (Cloudflare Pages at 0 €/month)
- * Complete Administrative Sovereignty: D1 SQL Console with Dynamic Schema Explorer,
- * VIP/Partner License Minter, Accordion Lease Inspector, CSV/JSON Exporters, & Edge Telemetry.
+ * Sovereign Infrastructure Control: D1 Dynamic Schema Explorer, Query History,
+ * Bulk Operations Bar, VS Code Deep Link & QR Minter, Sortable SQL Engine & NOC Auto-Refresh.
  * Author: William Rodriguez (wisrovi.dev)
  */
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Shield,
   Database,
@@ -34,6 +34,12 @@ import {
   HelpCircle,
   Send,
   Zap,
+  History,
+  ArrowUpDown,
+  CheckSquare,
+  Square,
+  Radio,
+  QrCode,
 } from "lucide-react";
 
 const API_BASE = "https://api.wisrovi.dev";
@@ -93,8 +99,13 @@ export default function App() {
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // NOC Auto-Refresh State
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(0); // 0 = off, 10, 30, 60
+  const [refreshCountdown, setRefreshCountdown] = useState<number>(0);
+  const timerRef = useRef<any>(null);
 
   // Telemetry & Health State
   const [pingData, setPingData] = useState<{ latency_ms: number; edge_colo: string; status: string } | null>(null);
@@ -102,10 +113,11 @@ export default function App() {
   // Module States
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [licenses, setLicenses] = useState<LicenseRecord[]>([]);
+  const [selectedLicenseIds, setSelectedLicenseIds] = useState<Set<string>>(new Set());
   const [expandedLicenseId, setExpandedLicenseId] = useState<string | null>(null);
   const [editingLicense, setEditingLicense] = useState<LicenseRecord | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState<string>("" );
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [planFilter, setPlanFilter] = useState<string>("all");
 
@@ -117,6 +129,7 @@ export default function App() {
   const [vipDuration, setVipDuration] = useState<string>("365");
   const [vipCustomKey, setVipCustomKey] = useState<string>("");
   const [vipResult, setVipResult] = useState<any>(null);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
 
   // Leases State
   const [leases, setLeases] = useState<LeaseRecord[]>([]);
@@ -128,14 +141,71 @@ export default function App() {
   );
   const [sqlResults, setSqlResults] = useState<any[] | null>(null);
   const [sqlMeta, setSqlMeta] = useState<any>(null);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+  const [sqlHistory, setSqlHistory] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("wpipe_sql_history") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
   const [schemaTables, setSchemaTables] = useState<TableSchemaInfo[]>([]);
   const [loadingSchema, setLoadingSchema] = useState<boolean>(false);
   const [expandedSchemaTable, setExpandedSchemaTable] = useState<string | null>(null);
+  const [schemaSearch, setSchemaSearch] = useState<string>("");
   const [selectedPresetCategory, setSelectedPresetCategory] = useState<string>("metrics");
 
   // Audit Logs State
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditSearch, setAuditSearch] = useState<string>("");
+
+  const planBreakdown = useMemo(() => {
+    const counts: Record<string, number> = { starter: 0, pro: 0, enterprise: 0, vip: 0, other: 0 };
+    licenses.forEach((l) => {
+      const p = (l.plan || "").toLowerCase();
+      if (p in counts) counts[p]++;
+      else counts.other++;
+    });
+    const total = licenses.length || 1;
+    return {
+      starter: counts.starter,
+      pro: counts.pro,
+      enterprise: counts.enterprise,
+      vip: counts.vip,
+      starterPct: Math.round((counts.starter / total) * 100),
+      proPct: Math.round((counts.pro / total) * 100),
+      enterprisePct: Math.round((counts.enterprise / total) * 100),
+      vipPct: Math.round((counts.vip / total) * 100),
+    };
+  }, [licenses]);
+
+  const expiringSoonLicenses = useMemo(() => {
+    const now = Date.now();
+    const thirtyDaysMs = 30 * 86400 * 1000;
+    return licenses.filter((l) => {
+      if (!l.expires_at) return false;
+      const diff = new Date(l.expires_at).getTime() - now;
+      return diff > 0 && diff <= thirtyDaysMs;
+    });
+  }, [licenses]);
+
+  const extendExpiration = (days: number | null) => {
+    if (!editingLicense) return;
+    if (days === null) {
+      setEditingLicense({ ...editingLicense, expires_at: null });
+      return;
+    }
+    const base = editingLicense.expires_at ? new Date(editingLicense.expires_at) : new Date();
+    const target = new Date(base.getTime() + days * 86400 * 1000);
+    setEditingLicense({ ...editingLicense, expires_at: target.toISOString() });
+  };
+
+  const showToast = (text: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   // Execute authenticated SQL query
   const executeSql = async (sql: string, params: any[] = []): Promise<any> => {
@@ -185,6 +255,7 @@ export default function App() {
       setIsAuthenticated(true);
       fetchInitialData(keyToVerify);
       loadSchemaExplorer(keyToVerify);
+      showToast("Sesión de Super-Admin iniciada correctamente.");
     } catch (err: any) {
       setError(err.message || "Error al autenticar acceso.");
       setIsAuthenticated(false);
@@ -198,6 +269,29 @@ export default function App() {
       verifyAuth(masterKey);
     }
   }, []);
+
+  // NOC Auto-Refresh Interval Engine
+  useEffect(() => {
+    if (!isAuthenticated || autoRefreshInterval <= 0) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+
+    setRefreshCountdown(autoRefreshInterval);
+    timerRef.current = setInterval(() => {
+      setRefreshCountdown((prev) => {
+        if (prev <= 1) {
+          fetchInitialData();
+          return autoRefreshInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isAuthenticated, autoRefreshInterval]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,8 +308,6 @@ export default function App() {
 
   // Initial Data Fetcher
   const fetchInitialData = async (token = masterKey) => {
-    setLoading(true);
-    setError(null);
     try {
       // 1. Fetch Stats
       const statsRes = await fetch(`${API_BASE}/v1/admin/stats`, {
@@ -246,8 +338,6 @@ export default function App() {
       checkPing();
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -317,8 +407,7 @@ export default function App() {
         }),
       });
       if (!res.ok) throw new Error("Error al actualizar licencia.");
-      setSuccessNotice(`Licencia ${editingLicense.license_key} actualizada correctamente.`);
-      setTimeout(() => setSuccessNotice(null), 3000);
+      showToast(`Licencia ${editingLicense.license_key} actualizada correctamente.`);
       setEditingLicense(null);
       fetchInitialData();
     } catch (err: any) {
@@ -338,6 +427,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${masterKey}` },
         body: JSON.stringify({ license_id: licenseId, status: nextStatus }),
       });
+      showToast(`Estado cambiado a: ${nextStatus}`);
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -362,6 +452,62 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Bulk Operations
+  const handleBulkStatus = async (targetStatus: "active" | "suspended") => {
+    if (selectedLicenseIds.size === 0) return;
+    const ids = Array.from(selectedLicenseIds);
+    const placeholders = ids.map(() => "?").join(",");
+    setLoading(true);
+    try {
+      await executeSql(
+        `UPDATE licenses SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        [targetStatus, ...ids]
+      );
+      showToast(`${ids.length} licencias actualizadas a '${targetStatus}'.`);
+      setSelectedLicenseIds(new Set());
+      fetchInitialData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkAddSeats = async (delta = 1) => {
+    if (selectedLicenseIds.size === 0) return;
+    const ids = Array.from(selectedLicenseIds);
+    const placeholders = ids.map(() => "?").join(",");
+    setLoading(true);
+    try {
+      await executeSql(
+        `UPDATE licenses SET max_seats = max_seats + ?, max_machines = max_machines + ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+        [delta, delta, ...ids]
+      );
+      showToast(`+${delta} asiento añadido a ${ids.length} licencias.`);
+      setSelectedLicenseIds(new Set());
+      fetchInitialData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelectAllLicenses = () => {
+    if (selectedLicenseIds.size === filteredLicenses.length) {
+      setSelectedLicenseIds(new Set());
+    } else {
+      setSelectedLicenseIds(new Set(filteredLicenses.map((l) => l.id)));
+    }
+  };
+
+  const toggleSelectLicense = (id: string) => {
+    const next = new Set(selectedLicenseIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedLicenseIds(next);
   };
 
   // Mint VIP License with Duration Preset
@@ -400,8 +546,7 @@ export default function App() {
       if (!res.ok) throw new Error(json.message || "Error al acuñar licencia VIP.");
 
       setVipResult(json);
-      setSuccessNotice(`¡Licencia VIP creada con éxito para ${json.customer_name || "Socio"}!`);
-      setTimeout(() => setSuccessNotice(null), 5000);
+      showToast(`¡Licencia VIP creada con éxito para ${json.customer_name || "Socio"}!`);
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -420,8 +565,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${masterKey}` },
         body: JSON.stringify({ lease_id: leaseId }),
       });
-      setSuccessNotice("Puesto expulsado con éxito.");
-      setTimeout(() => setSuccessNotice(null), 3000);
+      showToast("Puesto expulsado con éxito.");
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -439,8 +583,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${masterKey}` },
       });
       const json = await res.json();
-      setSuccessNotice(`Purga completada: ${json.purged_count || 0} puestos expirados liberados.`);
-      setTimeout(() => setSuccessNotice(null), 3000);
+      showToast(`Purga completada: ${json.purged_count || 0} puestos expirados liberados.`);
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -449,18 +592,25 @@ export default function App() {
     }
   };
 
-  // Run Custom SQL Query
-  const handleRunSql = async () => {
-    if (!sqlQuery.trim()) return;
+  // Run Custom SQL Query with History
+  const handleRunSql = async (overrideQuery?: string) => {
+    const queryToRun = overrideQuery || sqlQuery;
+    if (!queryToRun.trim()) return;
     setLoading(true);
     setError(null);
     setSqlResults(null);
     setSqlMeta(null);
 
     try {
-      const data = await executeSql(sqlQuery);
+      const data = await executeSql(queryToRun);
       setSqlResults(data.results || []);
       setSqlMeta(data.meta || null);
+
+      // Save to SQL History
+      const nextHistory = [queryToRun, ...sqlHistory.filter((q) => q !== queryToRun)].slice(0, 8);
+      setSqlHistory(nextHistory);
+      localStorage.setItem("wpipe_sql_history", JSON.stringify(nextHistory));
+      showToast("Consulta ejecutada con éxito.");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -492,6 +642,7 @@ export default function App() {
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
+    showToast("Copiado al portapapeles.");
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
@@ -519,6 +670,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showToast(`Descargado ${filename}`);
   };
 
   // Export Data to JSON
@@ -531,6 +683,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showToast(`Descargado ${filename}`);
   };
 
   // Filtered Licenses
@@ -577,6 +730,33 @@ export default function App() {
       );
     });
   }, [auditLogs, auditSearch]);
+
+  // Sorted SQL Results
+  const sortedSqlResults = useMemo(() => {
+    if (!sqlResults || !sortColumn) return sqlResults;
+    return [...sqlResults].sort((a, b) => {
+      const valA = a[sortColumn];
+      const valB = b[sortColumn];
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+      if (typeof valA === "number" && typeof valB === "number") {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+      return sortAsc
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  }, [sqlResults, sortColumn, sortAsc]);
+
+  const handleSortHeader = (col: string) => {
+    if (sortColumn === col) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortColumn(col);
+      setSortAsc(true);
+    }
+  };
 
   // Categorized Presets Library
   const sqlPresets = [
@@ -729,14 +909,20 @@ export default function App() {
                 PRO-MAX SOVEREIGN
               </span>
             </div>
-            <p className="text-[10px] text-gray-400">
-              William Rodriguez &bull; Cloudflare D1 Authority &bull;{" "}
+            <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
+              <span>William Rodriguez &bull;</span>
               {pingData ? (
-                <span className="text-emerald-400 font-mono">
-                  {pingData.edge_colo} ({pingData.latency_ms}ms) &bull; Healthy
+                <span className="text-emerald-400 font-mono flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {pingData.edge_colo} ({pingData.latency_ms}ms)
                 </span>
               ) : (
                 <span className="text-gray-500">Conectando...</span>
+              )}
+              {autoRefreshInterval > 0 && (
+                <span className="text-indigo-400 font-mono text-[9px] bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-800">
+                  NOC Auto-Poll: {refreshCountdown}s
+                </span>
               )}
             </p>
           </div>
@@ -817,13 +1003,29 @@ export default function App() {
           </button>
         </div>
 
-        {/* Refresh & Logout Controls */}
+        {/* NOC Refresh Selector & Logout */}
         <div className="flex items-center gap-2">
+          {/* NOC Polling Switcher */}
+          <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg px-2 py-1 text-xs">
+            <Radio size={12} className={autoRefreshInterval > 0 ? "text-emerald-400 animate-pulse" : "text-gray-500"} />
+            <select
+              value={autoRefreshInterval}
+              onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value, 10))}
+              className="bg-transparent text-gray-300 text-[11px] focus:outline-none cursor-pointer"
+              title="Auto-refresco estilo NOC"
+            >
+              <option value="0" className="bg-gray-900">Auto: OFF</option>
+              <option value="10" className="bg-gray-900">Auto: 10s</option>
+              <option value="30" className="bg-gray-900">Auto: 30s</option>
+              <option value="60" className="bg-gray-900">Auto: 60s</option>
+            </select>
+          </div>
+
           <button
             onClick={() => fetchInitialData()}
             disabled={loading}
             className="p-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition text-xs flex items-center gap-1.5 cursor-pointer border border-gray-700/60"
-            title="Recargar datos"
+            title="Recargar datos manualmente"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
@@ -838,24 +1040,25 @@ export default function App() {
         </div>
       </header>
 
-      {/* Global Alerts & Notices */}
-      {error && (
-        <div className="mx-6 mt-4 p-3 bg-red-950/80 border border-red-700/80 rounded-xl text-xs text-red-200 flex items-start gap-2 shadow-lg">
-          <AlertTriangle size={15} className="text-red-400 shrink-0 mt-0.5" />
-          <div className="flex-1">{error}</div>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-white font-bold">
-            &times;
-          </button>
-        </div>
-      )}
-
-      {successNotice && (
-        <div className="mx-6 mt-4 p-3 bg-emerald-950/80 border border-emerald-700/80 rounded-xl text-xs text-emerald-200 flex items-start gap-2 shadow-lg">
-          <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />
-          <div className="flex-1">{successNotice}</div>
-          <button onClick={() => setSuccessNotice(null)} className="text-emerald-400 hover:text-white font-bold">
-            &times;
-          </button>
+      {/* Floating Modern Toast Stack */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 duration-300">
+          <div
+            className={`p-3.5 rounded-xl border shadow-2xl flex items-center gap-3 backdrop-blur-xl ${
+              toastMessage.type === "success"
+                ? "bg-emerald-950/90 border-emerald-600 text-emerald-200"
+                : toastMessage.type === "error"
+                ? "bg-red-950/90 border-red-600 text-red-200"
+                : "bg-indigo-950/90 border-indigo-600 text-indigo-200"
+            }`}
+          >
+            {toastMessage.type === "success" ? (
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle size={16} className="text-red-400 shrink-0" />
+            )}
+            <span className="text-xs font-medium">{toastMessage.text}</span>
+          </div>
         </div>
       )}
 
@@ -926,16 +1129,131 @@ export default function App() {
               </div>
             </div>
 
+            {/* Plan Distribution & Expiring Alerts Panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Segmented Plan Distribution */}
+              <div className="lg:col-span-2 bg-[#0f172a] border border-gray-800 p-5 rounded-2xl shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Activity size={14} className="text-indigo-400" />
+                    <span>Distribución de Licencias por Nivel de Suscripción</span>
+                  </span>
+                  <span className="text-[11px] text-gray-400 font-mono">
+                    Total: {licenses.length} licencias activas
+                  </span>
+                </div>
+
+                {/* Segmented Bar */}
+                <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden flex">
+                  {planBreakdown.starter > 0 && (
+                    <div
+                      style={{ width: `${planBreakdown.starterPct}%` }}
+                      className="bg-blue-500 h-full transition-all"
+                      title={`Starter: ${planBreakdown.starter} (${planBreakdown.starterPct}%)`}
+                    />
+                  )}
+                  {planBreakdown.pro > 0 && (
+                    <div
+                      style={{ width: `${planBreakdown.proPct}%` }}
+                      className="bg-indigo-500 h-full transition-all"
+                      title={`Pro: ${planBreakdown.pro} (${planBreakdown.proPct}%)`}
+                    />
+                  )}
+                  {planBreakdown.enterprise > 0 && (
+                    <div
+                      style={{ width: `${planBreakdown.enterprisePct}%` }}
+                      className="bg-purple-500 h-full transition-all"
+                      title={`Enterprise: ${planBreakdown.enterprise} (${planBreakdown.enterprisePct}%)`}
+                    />
+                  )}
+                  {planBreakdown.vip > 0 && (
+                    <div
+                      style={{ width: `${planBreakdown.vipPct}%` }}
+                      className="bg-amber-400 h-full transition-all"
+                      title={`VIP: ${planBreakdown.vip} (${planBreakdown.vipPct}%)`}
+                    />
+                  )}
+                </div>
+
+                {/* Legend badges */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+                  <div className="flex items-center gap-1.5 bg-gray-900/80 px-2 py-1 rounded border border-gray-800">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="text-gray-300">Starter:</span>
+                    <strong className="text-white ml-auto">{planBreakdown.starter}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-gray-900/80 px-2 py-1 rounded border border-gray-800">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <span className="text-gray-300">Pro:</span>
+                    <strong className="text-white ml-auto">{planBreakdown.pro}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-gray-900/80 px-2 py-1 rounded border border-gray-800">
+                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                    <span className="text-gray-300">Enterprise:</span>
+                    <strong className="text-white ml-auto">{planBreakdown.enterprise}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-gray-900/80 px-2 py-1 rounded border border-gray-800">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="text-gray-300">VIP/Partner:</span>
+                    <strong className="text-white ml-auto">{planBreakdown.vip}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expiring Soon Watchdog */}
+              <div className="bg-[#0f172a] border border-gray-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <AlertTriangle size={14} className={expiringSoonLicenses.length > 0 ? "text-amber-400" : "text-gray-500"} />
+                    <span>Vencimientos Próximos (&lt;30d)</span>
+                  </span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                    expiringSoonLicenses.length > 0
+                      ? "bg-amber-950 text-amber-300 border border-amber-800"
+                      : "bg-gray-800 text-gray-400"
+                  }`}>
+                    {expiringSoonLicenses.length} alertas
+                  </span>
+                </div>
+
+                {expiringSoonLicenses.length > 0 ? (
+                  <div className="space-y-2 mt-2 max-h-24 overflow-y-auto pr-1">
+                    {expiringSoonLicenses.map((lic) => (
+                      <div key={lic.id} className="flex items-center justify-between text-xs p-1.5 rounded bg-gray-900/80 border border-gray-800 font-mono">
+                        <div className="truncate max-w-[130px]">
+                          <span className="text-white font-bold block truncate">{lic.customer_name || lic.customer_email}</span>
+                          <span className="text-[10px] text-amber-400">{lic.expires_at?.slice(0, 10)}</span>
+                        </div>
+                        <button
+                          onClick={() => setEditingLicense(lic)}
+                          className="px-2 py-0.5 bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 rounded text-[10px] cursor-pointer"
+                        >
+                          Renovar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs text-gray-500 font-sans">
+                    ✓ Sin licencias en riesgo de vencer este mes.
+                  </div>
+                )}
+                <span className="text-[10px] text-gray-500 font-mono block mt-2">
+                  Vigilancia automática por Cloudflare D1
+                </span>
+              </div>
+            </div>
+
             {/* Quick Actions Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* VIP Minter Quick Card */}
               <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 text-indigo-400">
                   <Sparkles size={18} />
-                  <h3 className="font-bold text-sm text-white">Minador VIP Directo</h3>
+                  <h3 className="font-bold text-sm text-white">Minador VIP & Partners</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  ¿Necesitas generar una licencia para un inversor, partner o universidad sin pasar por Lemon Squeezy?
+                  Acuña licencias institucionales para partners, universidades o demos con enlace de activación automática para VS Code.
                 </p>
                 <button
                   onClick={() => setActiveTab("vip_minter")}
@@ -953,7 +1271,7 @@ export default function App() {
                   <h3 className="font-bold text-sm text-white">Explorador SQL & Tablas</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Inspecciona las 5 tablas de Cloudflare D1 en tiempo real con el explorador dinámico de esquemas y presets.
+                  Inspecciona dinámicamente las 5 tablas D1, ejecuta consultas analíticas y exporta resultados en CSV o JSON.
                 </p>
                 <button
                   onClick={() => setActiveTab("sql_console")}
@@ -971,7 +1289,7 @@ export default function App() {
                   <h3 className="font-bold text-sm text-white">Mantenimiento de Leases</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Purga en 1 solo clic los leases expirados que ya no envían heartbeat para liberar cupos de clientes.
+                  Purga en 1 clic los leases huérfanos que ya no envían heartbeat para liberar cupos de clientes.
                 </p>
                 <button
                   onClick={handlePurgeExpiredLeases}
@@ -1043,7 +1361,7 @@ export default function App() {
         )}
 
         {/* =================================================================== */}
-        {/* TAB 2: ADVANCED LICENSE MANAGER (ACCORDION & EDIT MODAL) */}
+        {/* TAB 2: ADVANCED LICENSE MANAGER (BATCH OPERATIONS & ACCORDION) */}
         {/* =================================================================== */}
         {activeTab === "licenses" && (
           <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-5">
@@ -1104,11 +1422,60 @@ export default function App() {
               </div>
             </div>
 
+            {/* Batch Action Floating Toolbar (Appears when 1+ selected) */}
+            {selectedLicenseIds.size > 0 && (
+              <div className="bg-indigo-950/80 border border-indigo-700 p-3 rounded-xl flex items-center justify-between shadow-xl animate-in fade-in duration-200">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-white">
+                    {selectedLicenseIds.size} seleccionada{selectedLicenseIds.size > 1 ? "s" : ""}:
+                  </span>
+                  <button
+                    onClick={() => handleBulkStatus("active")}
+                    className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-medium cursor-pointer"
+                  >
+                    Activar Todas
+                  </button>
+                  <button
+                    onClick={() => handleBulkStatus("suspended")}
+                    className="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-xs font-medium cursor-pointer"
+                  >
+                    Suspender Todas
+                  </button>
+                  <button
+                    onClick={() => handleBulkAddSeats(1)}
+                    className="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-xs font-medium cursor-pointer"
+                  >
+                    +1 Asiento a Todas
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setSelectedLicenseIds(new Set())}
+                  className="text-xs text-gray-400 hover:text-white cursor-pointer"
+                >
+                  Deseleccionar
+                </button>
+              </div>
+            )}
+
             {/* Licenses Table with Accordion Leases */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400 font-medium">
+                    <th className="pb-3 w-8">
+                      <button
+                        onClick={toggleSelectAllLicenses}
+                        className="text-gray-400 hover:text-white cursor-pointer"
+                        title="Seleccionar todas"
+                      >
+                        {selectedLicenseIds.size === filteredLicenses.length && filteredLicenses.length > 0 ? (
+                          <CheckSquare size={14} className="text-indigo-400" />
+                        ) : (
+                          <Square size={14} />
+                        )}
+                      </button>
+                    </th>
                     <th className="pb-3 w-8"></th>
                     <th className="pb-3">Clave de Puesto (VS Code)</th>
                     <th className="pb-3">Clave Admin Privada</th>
@@ -1122,11 +1489,21 @@ export default function App() {
                 <tbody className="divide-y divide-gray-800/60 font-mono">
                   {filteredLicenses.map((lic) => {
                     const isExpanded = expandedLicenseId === lic.id;
+                    const isSelected = selectedLicenseIds.has(lic.id);
                     const connectedLeases = leases.filter((l) => l.license_id === lic.id);
 
                     return (
                       <React.Fragment key={lic.id}>
-                        <tr className="hover:bg-gray-800/30 transition">
+                        <tr className={`hover:bg-gray-800/30 transition ${isSelected ? "bg-indigo-950/20" : ""}`}>
+                          <td className="py-3 text-center">
+                            <button
+                              onClick={() => toggleSelectLicense(lic.id)}
+                              className="text-gray-500 hover:text-white cursor-pointer"
+                            >
+                              {isSelected ? <CheckSquare size={14} className="text-indigo-400" /> : <Square size={14} />}
+                            </button>
+                          </td>
+
                           <td className="py-3 text-center">
                             <button
                               onClick={() => setExpandedLicenseId(isExpanded ? null : lic.id)}
@@ -1244,7 +1621,7 @@ export default function App() {
                         {/* Accordion Drawer: Connected Leases */}
                         {isExpanded && (
                           <tr className="bg-gray-950/60">
-                            <td colSpan={8} className="p-4 pl-12 border-b border-gray-800/80">
+                            <td colSpan={9} className="p-4 pl-12 border-b border-gray-800/80">
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between text-xs text-gray-400 font-sans">
                                   <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
@@ -1302,7 +1679,7 @@ export default function App() {
                     </h3>
                     <button
                       onClick={() => setEditingLicense(null)}
-                      className="text-gray-400 hover:text-white font-bold text-base"
+                      className="text-gray-400 hover:text-white font-bold text-base cursor-pointer"
                     >
                       &times;
                     </button>
@@ -1371,6 +1748,36 @@ export default function App() {
                         placeholder="Ej. 2027-12-31T23:59:59Z o dejar vacío"
                         className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono"
                       />
+                      <div className="flex items-center gap-1.5 pt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => extendExpiration(30)}
+                          className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
+                        >
+                          +30 Días
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => extendExpiration(90)}
+                          className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
+                        >
+                          +90 Días
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => extendExpiration(365)}
+                          className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
+                        >
+                          +1 Año
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => extendExpiration(null)}
+                          className="px-2 py-0.5 bg-purple-950/80 hover:bg-purple-900 border border-purple-800 rounded text-[10px] text-purple-200 cursor-pointer transition"
+                        >
+                          Vitalicia (Lifetime)
+                        </button>
+                      </div>
                     </div>
 
                     <div className="pt-3 flex items-center justify-end gap-2 border-t border-gray-800">
@@ -1397,7 +1804,7 @@ export default function App() {
         )}
 
         {/* =================================================================== */}
-        {/* TAB 3: PRO VIP & PARTNER MINTER */}
+        {/* TAB 3: PRO VIP & PARTNER MINTER WITH DEEP LINK & QR CODE */}
         {/* =================================================================== */}
         {activeTab === "vip_minter" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1433,7 +1840,7 @@ export default function App() {
                     <span>Acuñador de Licencias VIP & Partners</span>
                   </h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Emisión criptográfica instantánea en Cloudflare D1.
+                    Emisión criptográfica instantánea en Cloudflare D1 con deep links de activación directa.
                   </p>
                 </div>
               </div>
@@ -1532,12 +1939,22 @@ export default function App() {
                 </button>
               </form>
 
-              {/* Minter Output & Email Generator */}
+              {/* Minter Output with VS Code Deep Link & QR Preview */}
               {vipResult && (
                 <div className="mt-4 p-4 bg-purple-950/40 border border-purple-800 rounded-xl space-y-4">
-                  <div className="flex items-center gap-2 text-purple-300 font-bold">
-                    <CheckCircle2 size={16} />
-                    <span>¡Licencia Acuñada y Activa en Cloudflare D1!</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-purple-300 font-bold">
+                      <CheckCircle2 size={16} />
+                      <span>¡Licencia Acuñada y Activa en Cloudflare D1!</span>
+                    </div>
+
+                    <button
+                      onClick={() => setShowQrModal(true)}
+                      className="px-2.5 py-1 bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <QrCode size={13} />
+                      <span>Ver Código QR</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
@@ -1568,6 +1985,24 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* 1-Click VS Code Deep Link */}
+                  <div className="bg-indigo-950/60 border border-indigo-800 p-3 rounded-lg flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-white block">Enlace de Activación 1-Clic para VS Code:</span>
+                      <code className="text-[11px] text-indigo-300 font-mono">
+                        vscode://wisrovi.wpipe-studio-vscode/activate?key={vipResult.license_key}
+                      </code>
+                    </div>
+                    <button
+                      onClick={() =>
+                        handleCopy(`vscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}`)
+                      }
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold cursor-pointer shrink-0"
+                    >
+                      Copiar Deep Link
+                    </button>
+                  </div>
+
                   {/* Ready to send email template */}
                   <div className="p-3 bg-gray-900/90 rounded-lg border border-gray-800 space-y-2">
                     <div className="flex items-center justify-between">
@@ -1577,7 +2012,7 @@ export default function App() {
                       </span>
                       <button
                         onClick={() => {
-                          const emailText = `Hola ${vipName || "Socio"},\n\nAquí tienes tu licencia oficial de WPipe Studio (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} puestos):\n\n- Clave de Activación (VS Code): ${vipResult.license_key}\n- Clave de Administración Privada: ${vipResult.admin_key}\n- Portal de Autoservicio: https://portal.wisrovi.dev\n\nPara activar en terminal:\nwpipe-engine activate --key ${vipResult.license_key}\n\nUn cordial saludo,\nWilliam Rodriguez - wisrovi.dev`;
+                          const emailText = `Hola ${vipName || "Socio"},\n\nAquí tienes tu licencia oficial de WPipe Studio (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} puestos):\n\n- Clave de Activación (VS Code): ${vipResult.license_key}\n- Clave de Administración Privada: ${vipResult.admin_key}\n- Portal de Autoservicio: https://portal.wisrovi.dev\n\nActivación rápida en 1 clic (VS Code):\nvscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}\n\nPara activar en terminal:\nwpipe-engine activate --key ${vipResult.license_key}\n\nUn cordial saludo,\nWilliam Rodriguez - wisrovi.dev`;
                           handleCopy(emailText);
                         }}
                         className="text-[10px] text-purple-300 hover:text-white cursor-pointer"
@@ -1594,6 +2029,9 @@ Aquí tienes tu licencia oficial de WPipe Studio (${vipResult.plan.toUpperCase()
 - Clave de Administración Privada: ${vipResult.admin_key}
 - Portal de Autoservicio: https://portal.wisrovi.dev
 
+Activación rápida en 1 clic (VS Code):
+vscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}
+
 Para activar en terminal:
 wpipe-engine activate --key ${vipResult.license_key}
 
@@ -1604,6 +2042,34 @@ William Rodriguez - wisrovi.dev`}
                 </div>
               )}
             </div>
+
+            {/* QR Code Modal Preview */}
+            {showQrModal && vipResult && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-[#0f172a] border border-purple-700 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+                  <h3 className="font-bold text-white text-base">Código QR de Activación</h3>
+                  <p className="text-xs text-gray-400">
+                    Escanea para activar la licencia en VS Code o terminal móvil.
+                  </p>
+                  <div className="bg-white p-4 rounded-xl inline-block shadow-inner">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                        `vscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}`
+                      )}`}
+                      alt="Activation QR"
+                      className="w-44 h-44 mx-auto"
+                    />
+                  </div>
+                  <div className="font-mono text-xs text-indigo-300 font-bold">{vipResult.license_key}</div>
+                  <button
+                    onClick={() => setShowQrModal(false)}
+                    className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1668,8 +2134,18 @@ William Rodriguez - wisrovi.dev`}
                           {le.os_name || "Linux"}
                         </span>
                       </td>
-                      <td className="py-3 text-gray-500 text-[11px] truncate max-w-[150px]">
-                        {le.machine_fingerprint}
+                      <td className="py-3 text-gray-400 text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate max-w-[130px] font-mono">{le.machine_fingerprint}</span>
+                          <button
+                            type="button"
+                            onClick={() => setLeaseSearch(le.machine_fingerprint)}
+                            className="text-gray-500 hover:text-indigo-400 cursor-pointer p-0.5"
+                            title="Filtrar todas las conexiones de este ordenador"
+                          >
+                            <Search size={11} />
+                          </button>
+                        </div>
                       </td>
                       <td className="py-3 text-gray-400">
                         {new Date(le.last_heartbeat_at).toLocaleTimeString()}
@@ -1701,7 +2177,7 @@ William Rodriguez - wisrovi.dev`}
         )}
 
         {/* =================================================================== */}
-        {/* TAB 5: D1 SQL CONSOLE WITH DYNAMIC SCHEMA EXPLORER & PRESETS */}
+        {/* TAB 5: D1 SQL CONSOLE WITH DYNAMIC SCHEMA, HISTORY & SORTABLE TABLE */}
         {/* =================================================================== */}
         {activeTab === "sql_console" && (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -1724,59 +2200,79 @@ William Rodriguez - wisrovi.dev`}
                   </button>
                 </div>
 
-                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                  {schemaTables.map((tbl) => {
-                    const isExpanded = expandedSchemaTable === tbl.name;
-                    return (
-                      <div key={tbl.name} className="border border-gray-800/80 rounded-lg overflow-hidden bg-gray-900/40">
-                        <div
-                          onClick={() => setExpandedSchemaTable(isExpanded ? null : tbl.name)}
-                          className="p-2 flex items-center justify-between cursor-pointer hover:bg-gray-800/60 transition text-xs"
-                        >
-                          <div className="flex items-center gap-1.5 font-mono text-indigo-300 font-semibold">
-                            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            <span>{tbl.name}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-500 font-mono bg-gray-800 px-1.5 py-0.5 rounded">
-                            {tbl.rowCount}
-                          </span>
-                        </div>
+                {/* Schema Search Filter */}
+                <div className="relative">
+                  <Search size={11} className="absolute left-2.5 top-2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={schemaSearch}
+                    onChange={(e) => setSchemaSearch(e.target.value)}
+                    placeholder="Filtrar tablas o campos..."
+                    className="w-full pl-7 pr-2 py-1 bg-gray-900 border border-gray-800 rounded text-[11px] text-white placeholder-gray-500 focus:outline-none"
+                  />
+                </div>
 
-                        {isExpanded && (
-                          <div className="p-2 bg-gray-950/70 border-t border-gray-800/60 space-y-2 text-[11px]">
-                            <button
-                              onClick={() =>
-                                setSqlQuery(`SELECT * FROM ${tbl.name} ORDER BY 1 DESC LIMIT 25;`)
-                              }
-                              className="w-full text-left py-1 px-2 rounded bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 font-mono text-[10px] flex items-center justify-between cursor-pointer"
-                            >
-                              <span>⚡ SELECT * LIMIT 25</span>
-                              <Play size={10} />
-                            </button>
-
-                            <div className="space-y-1 font-mono text-[10px] pt-1">
-                              {tbl.columns.map((col) => (
-                                <div
-                                  key={col.name}
-                                  onClick={() => setSqlQuery((prev) => `${prev} ${col.name}`)}
-                                  className="flex items-center justify-between p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white cursor-pointer transition"
-                                  title="Haz clic para insertar columna en la consulta"
-                                >
-                                  <span className="text-gray-300 font-semibold">{col.name}</span>
-                                  <div className="flex items-center gap-1">
-                                    {col.pk === 1 && (
-                                      <span className="text-[9px] bg-amber-950 text-amber-400 px-1 rounded">PK</span>
-                                    )}
-                                    <span className="text-[9px] text-gray-500">{col.type}</span>
-                                  </div>
-                                </div>
-                              ))}
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {schemaTables
+                    .filter((tbl) => {
+                      if (!schemaSearch.trim()) return true;
+                      const term = schemaSearch.toLowerCase();
+                      const matchTable = tbl.name.toLowerCase().includes(term);
+                      const matchCol = tbl.columns.some((c) => c.name.toLowerCase().includes(term));
+                      return matchTable || matchCol;
+                    })
+                    .map((tbl) => {
+                      const isExpanded = expandedSchemaTable === tbl.name;
+                      return (
+                        <div key={tbl.name} className="border border-gray-800/80 rounded-lg overflow-hidden bg-gray-900/40">
+                          <div
+                            onClick={() => setExpandedSchemaTable(isExpanded ? null : tbl.name)}
+                            className="p-2 flex items-center justify-between cursor-pointer hover:bg-gray-800/60 transition text-xs"
+                          >
+                            <div className="flex items-center gap-1.5 font-mono text-indigo-300 font-semibold">
+                              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              <span>{tbl.name}</span>
                             </div>
+                            <span className="text-[10px] text-gray-500 font-mono bg-gray-800 px-1.5 py-0.5 rounded">
+                              {tbl.rowCount}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+                          {isExpanded && (
+                            <div className="p-2 bg-gray-950/70 border-t border-gray-800/60 space-y-2 text-[11px]">
+                              <button
+                                onClick={() =>
+                                  setSqlQuery(`SELECT * FROM ${tbl.name} ORDER BY 1 DESC LIMIT 25;`)
+                                }
+                                className="w-full text-left py-1 px-2 rounded bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 font-mono text-[10px] flex items-center justify-between cursor-pointer"
+                              >
+                                <span>⚡ SELECT * LIMIT 25</span>
+                                <Play size={10} />
+                              </button>
+
+                              <div className="space-y-1 font-mono text-[10px] pt-1">
+                                {tbl.columns.map((col) => (
+                                  <div
+                                    key={col.name}
+                                    onClick={() => setSqlQuery((prev) => `${prev} ${col.name}`)}
+                                    className="flex items-center justify-between p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white cursor-pointer transition"
+                                    title="Haz clic para insertar columna en la consulta"
+                                  >
+                                    <span className="text-gray-300 font-semibold">{col.name}</span>
+                                    <div className="flex items-center gap-1">
+                                      {col.pk === 1 && (
+                                        <span className="text-[9px] bg-amber-950 text-amber-400 px-1 rounded">PK</span>
+                                      )}
+                                      <span className="text-[9px] text-gray-500">{col.type}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 
@@ -1823,7 +2319,7 @@ William Rodriguez - wisrovi.dev`}
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {sqlPresets
                     .filter((p) => p.category === selectedPresetCategory)
                     .map((preset) => (
@@ -1838,9 +2334,42 @@ William Rodriguez - wisrovi.dev`}
                     ))}
                 </div>
               </div>
+
+              {/* SQL Query History Pills */}
+              {sqlHistory.length > 0 && (
+                <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-4 shadow-xl space-y-2">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-800">
+                    <span className="font-bold text-[11px] text-gray-400 flex items-center gap-1">
+                      <History size={12} className="text-gray-400" />
+                      <span>Historial Reciente</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSqlHistory([]);
+                        localStorage.removeItem("wpipe_sql_history");
+                      }}
+                      className="text-[10px] text-gray-500 hover:text-red-400 cursor-pointer"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {sqlHistory.map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSqlQuery(h)}
+                        className="w-full text-left p-1.5 rounded bg-gray-900/80 hover:bg-gray-800 text-[10px] font-mono text-gray-400 hover:text-indigo-300 truncate block cursor-pointer transition"
+                        title={h}
+                      >
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Right Column: SQL Editor & Tabular Results */}
+            {/* Right Column: SQL Editor & Sortable Results */}
             <div className="lg:col-span-3 bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1855,7 +2384,7 @@ William Rodriguez - wisrovi.dev`}
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleRunSql}
+                    onClick={() => handleRunSql()}
                     disabled={loading}
                     className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white rounded-lg text-xs font-bold transition shadow-lg shadow-indigo-500/20 cursor-pointer flex items-center gap-1.5"
                   >
@@ -1884,24 +2413,24 @@ William Rodriguez - wisrovi.dev`}
                       Tiempo: <strong className="text-emerald-400">{sqlMeta.duration ?? 0} ms</strong>
                     </span>
                     <span>
-                      Filas: <strong className="text-white">{sqlResults?.length ?? 0}</strong>
+                      Filas: <strong className="text-white">{sortedSqlResults?.length ?? 0}</strong>
                     </span>
                     <span>
                       Región: <strong className="text-purple-400">{sqlMeta.served_by_region || "GLOBAL"}</strong>
                     </span>
                   </div>
 
-                  {sqlResults && sqlResults.length > 0 && (
+                  {sortedSqlResults && sortedSqlResults.length > 0 && (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => exportToCsv(sqlResults, "d1_query_results.csv")}
+                        onClick={() => exportToCsv(sortedSqlResults, "d1_query_results.csv")}
                         className="text-[10px] px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded flex items-center gap-1 cursor-pointer font-sans"
                       >
                         <Download size={10} />
                         <span>CSV</span>
                       </button>
                       <button
-                        onClick={() => exportToJson(sqlResults, "d1_query_results.json")}
+                        onClick={() => exportToJson(sortedSqlResults, "d1_query_results.json")}
                         className="text-[10px] px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded flex items-center gap-1 cursor-pointer font-sans"
                       >
                         <Download size={10} />
@@ -1912,26 +2441,33 @@ William Rodriguez - wisrovi.dev`}
                 </div>
               )}
 
-              {/* Results Tabular View */}
-              {sqlResults && (
+              {/* Sortable Results Tabular View */}
+              {sortedSqlResults && (
                 <div className="overflow-x-auto max-h-96 overflow-y-auto border border-gray-800 rounded-xl">
-                  {sqlResults.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500 text-xs">
+                  {sortedSqlResults.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500 text-xs font-sans">
                       La consulta se ejecutó con éxito pero no devolvió filas.
                     </div>
                   ) : (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className="sticky top-0 bg-gray-900 border-b border-gray-800 text-gray-300">
                         <tr>
-                          {Object.keys(sqlResults[0]).map((col) => (
-                            <th key={col} className="p-2.5 font-semibold">
-                              {col}
+                          {Object.keys(sortedSqlResults[0]).map((col) => (
+                            <th
+                              key={col}
+                              onClick={() => handleSortHeader(col)}
+                              className="p-2.5 font-semibold cursor-pointer hover:bg-gray-800/80 transition select-none"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span>{col}</span>
+                                <ArrowUpDown size={11} className={sortColumn === col ? "text-indigo-400" : "text-gray-600"} />
+                              </div>
                             </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-800/60">
-                        {sqlResults.map((row, idx) => (
+                        {sortedSqlResults.map((row, idx) => (
                           <tr key={idx} className="hover:bg-gray-800/40">
                             {Object.values(row).map((val: any, cidx) => (
                               <td key={cidx} className="p-2.5 text-gray-300 truncate max-w-xs">

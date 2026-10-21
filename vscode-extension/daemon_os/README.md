@@ -22,16 +22,18 @@ Motor nativo del sistema y servidor de licencias local para **WPipe Studio (wisr
 
 ## Capacidades Principales
 
-1. **Hardware Machine Fingerprinting**:
+1. **Hardware Machine Fingerprinting & Floating Seats**:
    - Genera una huella SHA-256 reproducible a partir del UUID de la placa base, ID de CPU y dirección MAC.
-   - Vincula criptográficamente la licencia al equipo físico para prevenir duplicaciones.
+   - Es agnóstica del usuario del SO: múltiples cuentas locales (`/home/juan`, `/home/maria`) en el mismo PC consumen **1 solo asiento**.
+   - Hilo en segundo plano que envía *heartbeats* cada 30 min para renovar el TTL de 2 horas.
+   - En caso de concurrencia excedida (`409 SEATS_EXCEEDED`), degrada elegantemente a la Capa Free (≤ 5 bloques) con enlace a `portal.wisrovi.dev`.
 2. **Enforcer Freemium Estricto**:
    - **Plan Free / Community**: Permite hasta **5 bloques** por pipeline. Bloquea el uso de bloques Pro (`Parallel`, `Background`, `AI Step`) con código `PRO_FEATURE_REQUIRED` y enlace a `wisrovi.dev`.
    - **Plan Pro**: Desbloquea bloques ilimitados, concurrencia, Smart AST code merge y depuración paso a paso.
 3. **Smart AST Code Merge**:
    - Preserva los bloques `# >>> [WPIPE:CUSTOM_IMPORTS]` y `# >>> [WPIPE:CUSTOM_LOGIC]` escritos manualmente por el usuario.
 4. **Validación Offline con Período de Gracia**:
-   - Valida el token firmado sin necesidad de conexión constante a internet durante 30 días, con 7 días de gracia adicionales.
+   - Valida el token firmado sin necesidad de conexión constante a internet, con 7 días de gracia adicionales.
 
 ---
 
@@ -53,10 +55,14 @@ Motor nativo del sistema y servidor de licencias local para **WPipe Studio (wisr
 
 ---
 
-## Ejecución de Pruebas Unitarias
+## Ejecución de Pruebas Unitarias y Cobertura
 
 ```bash
+# Ejecutar suite de pruebas con pytest
 pytest tests/ -v
+
+# Calcular cobertura de código
+./coverage.sh
 ```
 La suite incluye 13 tests cubriendo verificación de firmas Ed25519, tokens adulterados, límites de 5 bloques y preservación de código AST.
 

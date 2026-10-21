@@ -235,7 +235,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 <body>
   <iframe
     id="studioFrame"
-    src="http://localhost:5173"
+    src="http://localhost:5173/?mode=vscode"
     allow="clipboard-read; clipboard-write; microphone; camera"
   ></iframe>
 
@@ -256,7 +256,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     function reloadFrame() {
       fallback.style.display = 'none';
       frame.style.display = 'block';
-      frame.src = 'http://localhost:5173?' + Date.now();
+      frame.src = 'http://localhost:5173/?mode=vscode&t=' + Date.now();
     }
 
     // Bridge message communication between iframe and VS Code extension

@@ -21,7 +21,7 @@ import threading
 
 # Embedded Ed25519 Public Key (32-byte raw hex) paired with Cloudflare Worker
 DEFAULT_PUBLIC_KEY_HEX = "470531dc5170a830ff8028efa9e400b3717965404a28626ffa9cdbe3404e9ed1"
-DEFAULT_LICENSE_SERVER_URL = "https://api.wisrovi.dev"
+DEFAULT_LICENSE_SERVER_URL = os.environ.get("WPIPE_LICENSE_SERVER_URL", "https://api.wisrovi.dev")
 HEARTBEAT_INTERVAL_SECONDS = 1800  # 30 minutes
 
 
@@ -204,7 +204,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
                 if res.get("status") == "renewed":
                     data["expires_at"] = res.get("expires_at")
@@ -237,7 +237,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 data.pop("lease_id", None)
                 data.pop("lease_token", None)
                 self.license_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -360,7 +360,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 lease_token = result.get("lease_token")
                 if lease_token:
@@ -395,8 +395,13 @@ class LicenseManager:
                 }
                 self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
                 return False, f"Cupo lleno ({err_data.get('active_seats')}/{err_data.get('max_seats')} en uso). WPipe Studio funcionará en Capa Free (≤ 5 bloques). Libera un asiento en https://portal.wisrovi.dev."
-            elif e.code == 404:
-                return False, "Clave de licencia no encontrada o inválida."
+            elif e.code in (400, 404):
+                err_msg = e.read().decode("utf-8", errors="ignore")
+                try:
+                    err_json = json.loads(err_msg)
+                    return False, err_json.get("message", "Clave de licencia no encontrada o inválida.")
+                except Exception:
+                    return False, "Clave de licencia no encontrada o inválida."
         except Exception:
             pass
 
@@ -409,7 +414,7 @@ class LicenseManager:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 lease_token = result.get("lease_token")
                 if not lease_token:

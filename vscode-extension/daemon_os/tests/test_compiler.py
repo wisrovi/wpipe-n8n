@@ -25,7 +25,10 @@ def test_ast_compiler_generates_standard_microservice_files():
     pipe_code = files["app/pipelines.py"]
     assert "Pipeline(pipeline_name=\"security_scanner\")" in pipe_code
     assert "HttpRequestStep as HttpRequest" in pipe_code or "HttpRequest" in pipe_code
-    assert "NmapScanStep(target='127.0.0.1')" in pipe_code
+    assert (
+        'NmapScanStep(target="127.0.0.1")' in pipe_code
+        or "NmapScanStep(target='127.0.0.1')" in pipe_code
+    )
     assert "William Rodriguez" in files["README.md"]
 
 

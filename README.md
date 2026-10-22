@@ -164,6 +164,10 @@ WPipe Studio opera con un modelo híbrido **Cloud Web / Local Engine**:
 3. **W3C Private Network Access (PNA)**: La aplicación web en HTTPS se conecta de forma segura con el daemon local `wpipe-engine` (`http://127.0.0.1:49152`) mediante cabeceras preflight `Access-Control-Allow-Private-Network: true`.
 4. **Verificación Criptográfica Ed25519 en Navegador**: El navegador verifica tokens JWS firmados con curva Ed25519 mediante `window.crypto.subtle.verify` contra la clave pública oficial de wisrovi.dev, garantizando que el estado de licencia Pro sea inviolable incluso si un tercero intercepta o simula el endpoint local.
 5. **Widget de Estado & Enlaces Profundos**: `EngineStatusWidget` monitoriza en la cabecera la salud del motor local y el catálogo de 196 steps, mientras `ConnectEngineModal` asiste en la conexión con deep links `vscode://wisrovi.wpipe-studio-vscode/open` e instrucciones de terminal en 1 clic.
+6. **Gestión Enterprise Híbrida de Proyectos Multi-Microservicio**:
+   - **Local PC Workspaces (`~/.wpipe/workspaces/`)**: Cuando el daemon local está activo, los microservicios se compilan y almacenan físicamente en el disco del desarrollador con su árbol completo de código ejecutable (`app/pipelines.py`, `Dockerfile`, `Makefile`, `.env`, `requirements.txt`).
+   - **Borradores Offline en Navegador (`IndexedDB` / `localStorage`)**: Si el usuario accede desde un navegador sin daemon o sin conexión, la PWA preserva múltiples proyectos en almacenamiento local seguro sin pérdida de datos.
+   - **Portabilidad `.wpipe`**: Exportación e importación de proyectos en formato `.wpipe` en un clic, permitiendo compartir pipelines o abrirlos directamente en la extensión oficial de VS Code.
 
 ---
 

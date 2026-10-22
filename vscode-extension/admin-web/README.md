@@ -1,4 +1,4 @@
-# WPipe Studio - Super-Admin Web Console
+# WPipe Studio — Super-Admin Web Console
 
 A secure, serverless super-administrative web application designed for William Rodriguez to manage the complete lifecycle of WPipe Studio floating licenses, enterprise seats, active worker leases, and Cloudflare D1 database operations with zero operational cost.
 
@@ -8,90 +8,95 @@ A secure, serverless super-administrative web application designed for William R
 
 ---
 
-## 🛠️ Tecnologías y Librerías Relevantes
+## 🛠️ Core Technologies and Relevant Libraries
 
-Este componente utiliza el siguiente stack tecnológico optimizado para velocidad, seguridad estricta y bajo consumo de recursos:
+This component utilizes an optimized technology stack engineered for speed, strict security, and minimal resource consumption:
 
-| Tecnología / Librería | Versión / Tipo | Propósito en el Ecosistema |
+| Technology / Library | Version / Type | Purpose in Ecosystem |
 | :--- | :--- | :--- |
-| **React** | `^18.3.1` | Librería reactiva para la interfaz de administración y gestión de estado. |
-| **Vite** | `^5.4.21` | Bundler y servidor de desarrollo ultra-rápido basado en ESM. |
-| **TypeScript** | `^5.6.3` | Tipado estricto para modelos de licencias, leases y respuestas de la API. |
-| **Tailwind CSS** | `^3.4.14` | Framework CSS utilitario para diseño moderno con modo oscuro de alta fidelidad. |
-| **Lucide React** | `^0.453.0` | Conjunto de iconos vectoriales para acciones de base de datos, seguridad y métricas. |
-| **Cloudflare Pages** | Serverless Edge | Despliegue estático global con SSL automático y protección contra DDoS. |
-| **Cloudflare D1** | SQLite Distribuido | Base de datos relacional serverless donde residen las licencias y auditorías. |
-| **Cloudflare Workers** | Edge Compute | Microservicio REST autenticado con Master Key para operaciones CRUD y ejecución SQL. |
+| **React** | `^18.3.1` | Declarative UI library for high-frequency admin state and reactive updates. |
+| **Vite** | `^5.4.21` | High-speed ESM build tool and local development server. |
+| **TypeScript** | `^5.6.3` | Strict type definitions for licenses, leases, and Cloudflare D1 queries. |
+| **Tailwind CSS** | `^3.4.14` | Utility-first styling framework with high-contrast dark theme. |
+| **Lucide React** | `^0.453.0` | Enterprise iconography for security indicators, telemetry, and database tools. |
+| **Cloudflare Pages** | Serverless Edge | Global edge CDN hosting with automated SSL and DDoS mitigation. |
+| **Cloudflare D1** | SQLite at Edge | Distributed relational database storing license records and audit trails. |
+| **Cloudflare Workers** | Edge Compute | Master Key-authenticated REST microservices handling CRUD operations and SQL execution. |
 
 ---
 
-## 🚀 Características Principales
+## 🚀 Key Administrative Capabilities & Safeguards
 
-1. **Dashboard de Métricas en Vivo & NOC Telemetry**:
-   - Total de licencias registradas y activas.
-   - Puestos flotantes (leases) conectados en tiempo real.
-   - Eventos de seguridad y webhooks en los últimos 7 días.
-   - Barra segmentada de distribución visual de licencias por nivel (`Starter`, `Pro`, `Enterprise`, `VIP/Partner`).
-   - Panel guardián de vencimientos próximos (&lt;30 días) con botón de renovación rápida en 1 clic.
-   - NOC Auto-Refresh configurable (`OFF`, `10s`, `30s`, `60s`) con telemetría de latencia al edge de Cloudflare (ms) y PoP activo.
-
-2. **Gestión Global y Masiva de Licencias**:
-   - Barra de acciones por lote: selección múltiple para activar, suspender o incrementar asientos a decenas de licencias simultáneamente.
-   - Búsqueda en tiempo real por correo, clave de licencia o cliente.
-   - Filtro por estado (`active`, `suspended`, `expired`) y por plan (`starter`, `pro`, `enterprise`, `vip`).
-   - Cajón desplegable en acordeón para inspeccionar las máquinas conectadas en vivo a cada licencia.
-   - Modal de edición completa con botones de extensión rápida (`+30 Días`, `+90 Días`, `+1 Año`, `Vitalicia`).
-   - Modificación instantánea de asientos (`max_seats` con botones `+` y `-`).
-   - Activación y suspensión de licencias en 1 clic.
-   - Exportación de toda la base de licencias a formato CSV.
-
-3. **Minter VIP & Partners Pro**:
-   - Emisión soberana de licencias comerciales y partners sin pasar por pasarela de pago.
-   - Enlace directo de activación de 1 clic para VS Code (`vscode://wisrovi.wpipe-studio-vscode/activate?key=...`).
-   - Generador visual de código QR de activación rápida para tabletas o puestos físicos.
-   - Generador automático de plantilla de correo de bienvenida en Markdown para el socio con comandos de activación para terminal.
-
-4. **Monitor de Leases Flotantes & Inspección de Hardware**:
-   - Inspección de estaciones de trabajo activas (hostname, OS, huella de máquina SHA-256).
-   - Botón de búsqueda por huella de hardware para ver todas las sesiones asociadas a un ordenador físico.
-   - Botón de expulsión inmediata (1-click kick) para liberar puestos ocupados.
-   - Botón para purgar todos los leases expirados automáticamente.
-   - Búsqueda en vivo de puestos por máquina, SO o usuario.
-
-5. **Consola SQL Interactiva para D1 con Explorador Dinámico de Esquemas**:
-   - Explorador de tablas en tiempo real con árbol interactivo (`licenses`, `leases`, `audit_logs`, `otp_codes`, `activations`).
-   - Inserción en 1 clic de nombres de columnas y tablas directamente en el editor SQL.
-   - Historial de las últimas 8 consultas ejecutadas persistido en navegador.
-   - Tabla de resultados ordenable por columnas (ASC / DESC).
-   - Medición precisa de tiempo de ejecución en milisegundos (`duration ms`) y región de Cloudflare.
-   - Exportación de resultados de cualquier consulta a **CSV** y **JSON**.
-
-6. **Flujo de Auditoría**:
-   - Registro de los últimos 100 eventos de licencias y webhooks de Lemon Squeezy con exportación a CSV.
-
-7. **Sistema de Notificaciones Flotantes Toast**:
-   - Notificaciones contextuales animadas para confirmaciones de operaciones, copiado de claves y alertas del sistema.
+1. **Destructive SQL Safeguards & Raw D1 Console**:
+   - Built-in SQL editor with interactive schema explorer for all tables (`licenses`, `leases`, `audit_logs`, `otp_codes`, `activations`).
+   - Safety validation blocking accidental destructive operations (`DROP`, `TRUNCATE`, unconstrained `DELETE`) without explicit double-confirmation.
+   - Execution duration telemetry (`duration ms`) and exportable result sets (CSV, JSON).
+2. **Live Metrics Dashboard & NOC Telemetry**:
+   - Total registered and active licenses with floating lease count.
+   - License distribution bar across tiers (`Starter`, `Pro`, `Enterprise`, `VIP/Partner`).
+   - Expiration guardian table (<30 days remaining) with 1-click renewal.
+   - NOC Auto-Refresh configurable (`OFF`, `10s`, `30s`, `60s`) with Cloudflare edge ping latency.
+3. **Global & Batch License Management**:
+   - Batch operations toolbar: activate, suspend, or expand seats across multiple licenses at once.
+   - Instant search by email, license key, or customer name.
+   - Live hardware inspection drawer showing connected machines, hostnames, and SHA-256 fingerprints.
+   - Quick extension controls (`+30 Days`, `+90 Days`, `+1 Year`, `Lifetime`).
+4. **VIP Minter & Sovereign Partner Onboarding**:
+   - Direct minting of commercial and VIP partner licenses bypassing payment webhooks.
+   - 1-click deep link generation (`vscode://wisrovi.wpipe-studio-vscode/activate?key=...`).
+   - Visual QR code generator and Markdown welcome email builder with CLI terminal instructions.
+5. **Floating Lease Monitor & Hardware Inspector**:
+   - Real-time inspection of active workstations (hostname, OS, hardware fingerprint).
+   - 1-click machine eviction (kick) to free up occupied floating seats.
+   - Instant purge of expired leases.
+6. **Audit Trail**:
+   - Log of the last 100 license and webhook lifecycle events with CSV export.
 
 ---
 
-## 💻 Desarrollo Local y Despliegue
+## 💻 Local Development & Deployment
 
-### Requisitos Previos
+### Prerequisites
 - Node.js 18+
 - npm
 
-### Instalación y Ejecución Local
+### Installation & Development Server
 ```bash
-cd wpipe-studio/vscode-extension/admin-web
+cd vscode-extension/admin-web
+npm install
 npm run dev
 ```
 
-### Compilación para Producción
+### Production Build
 ```bash
 npm run build
 ```
 
-### Despliegue a Cloudflare Pages
+### Deploy to Cloudflare Pages
 ```bash
 npx wrangler pages deploy dist --project-name=wpipe-admin --branch=main --commit-dirty=true
 ```
+
+---
+
+## ⚖️ Copyright, Authorship & Intellectual Property Rights
+
+> [!NOTE]
+> **Official Intellectual Property and Attribution Statement**  
+> This administrative console and all associated management logic are copyrighted and maintained under the terms below.
+
+### Platform & Engineering Ecosystem
+- **Platform**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE)
+- **Official Admin**: [https://admin.wisrovi.dev](https://admin.wisrovi.dev)
+
+### Lead Architect & Author Attribution
+- **Lead Author & Solutions Architect**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
+- **Title**: **AI Leader & Solutions Architect**
+- **Website**: [https://wisrovi.dev](https://wisrovi.dev)
+- **Location**: Badajoz, Extremadura, Spain
+- **Mission**: *Bridging advanced artificial intelligence, distributed cloud architectures, and high-performance execution systems.*
+
+### Intellectual Property & Terms of Use
+All software components, visual block representations, and orchestration abstractions are the exclusive intellectual property of **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Unauthorized removal or alteration of authorship metadata is strictly prohibited.
+
+**Copyright © 2026 wisrovi ([wisrovi.dev](https://wisrovi.dev)). All Rights Reserved.**

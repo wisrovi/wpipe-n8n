@@ -102,7 +102,7 @@ import {
   StepForward,
   FastForward,
 } from "lucide-react";
-import { EngineStatusWidget, LicenseProBadge } from "./components/EngineStatusWidget";
+import { EngineStatusWidget, LicenseProBadge, ConnectEngineModal } from "./components/EngineStatusWidget";
 import {
   probeEngineStatus,
   EngineStatus,
@@ -587,6 +587,7 @@ export default function App() {
     stepsCount: 0,
     message: "Detectando motor local...",
   });
+  const [showEngineModal, setShowEngineModal] = useState<boolean>(false);
 
   const checkEngine = async (preferredPort?: number) => {
     const status = await probeEngineStatus(preferredPort || engineStatus.port);
@@ -1968,6 +1969,25 @@ export default function App() {
     }
   }, [activeMainTab, mermaidCode]);
 
+  // Render Mermaid diagrams embedded within README and Markdown previews
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const nodes = document.querySelectorAll(".markdown-body .mermaid:not([data-processed='true'])");
+      if (nodes.length > 0) {
+        try {
+          mermaid.run({
+            nodes: Array.from(nodes) as HTMLElement[],
+          }).catch((err) => {
+            console.warn("Mermaid markdown preview render warning:", err);
+          });
+        } catch (e) {
+          console.warn("Mermaid run error:", e);
+        }
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [readmePreviewMode, activeMainTab, githubViewingFile, generatedFiles]);
+
   // Switch to Flowchart view
   const handleOpenFlowchart = () => {
     const code = getMermaidFromBlocklyWorkspace();
@@ -2483,7 +2503,7 @@ export default function App() {
       )}
 
       {/* 2. TOP MENU BAR (VS Code style 5-menu title bar) */}
-      <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between z-30 shadow-md">
+      <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between relative z-40 shadow-md overflow-x-auto no-scrollbar">
         {/* Left: Sidebar Toggle + Brand + 5 Menus */}
         <div className="flex items-center space-x-1.5">
           {/* Global Primary Sidebar Toggle Button */}
@@ -3262,7 +3282,7 @@ export default function App() {
         </div>
 
         {/* Center: Sleek Breadcrumb & Microservice Identifier */}
-        <div className="flex items-center space-x-1.5 px-3 py-1 bg-gray-900/60 hover:bg-gray-900 border border-gray-800/80 hover:border-gray-700/80 rounded-lg text-xs transition">
+        <div className="hidden lg:flex items-center space-x-1.5 px-3 py-1 bg-gray-900/60 hover:bg-gray-900 border border-gray-800/80 hover:border-gray-700/80 rounded-lg text-xs transition">
           <button
             onClick={() => setShowProjectsModal(true)}
             className="flex items-center space-x-1.5 text-gray-400 hover:text-sky-300 font-medium transition cursor-pointer"
@@ -3285,34 +3305,42 @@ export default function App() {
         {/* Far Right: Engine Status + Fully Right-Aligned PRO Badge + User Account Menu */}
         <div className="flex items-center space-x-2.5">
           {/* Local Engine Bridge Status Widget */}
-          <EngineStatusWidget status={engineStatus} onRecheck={checkEngine} showProBadge={false} />
+          <EngineStatusWidget
+            status={engineStatus}
+            onRecheck={checkEngine}
+            showProBadge={false}
+            onOpenModal={() => setShowEngineModal(true)}
+          />
 
           {/* Fully Right-Aligned PRO Badge */}
           {engineStatus.isPro && (
-            <LicenseProBadge status={engineStatus} onClick={() => {}} />
+            <LicenseProBadge
+              status={engineStatus}
+              onClick={() => setShowEngineModal(true)}
+            />
           )}
 
           <div className="h-5 w-px bg-gray-800" />
 
           {/* User Account Avatar & Profile Menu */}
-          <div className="relative user-menu-container">
+          <div className="relative user-menu-container z-[100]">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
-              title={`Cuenta de Usuario: ${currentUser?.name || "Usuario"} (${currentUser?.role || "Developer"})`}
+              title={`Perfil de Usuario: ${currentUser?.name || "Usuario"} (@${currentUser?.username || "dev"})`}
             >
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
                 style={{ backgroundColor: getUserColor(currentUser) }}
               >
-                {(currentUser?.name || "W")[0].toUpperCase()}
+                <User size={12} className="text-white" />
               </div>
               <div className="flex flex-col text-left leading-none">
                 <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[110px] truncate">
-                  {currentUser?.name || "Usuario"}
+                  {currentUser?.name || "Mi Cuenta"}
                 </span>
-                <span className="text-[9px] text-gray-400 font-mono max-w-[110px] truncate">
-                  {currentUser?.role || "Developer"}
+                <span className="text-[9px] text-sky-400 font-mono max-w-[110px] truncate">
+                  {currentUser?.role ? currentUser.role.toUpperCase() : "DEV"}
                 </span>
               </div>
               <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-200" />
@@ -3320,7 +3348,7 @@ export default function App() {
 
             {/* Dropdown Menu */}
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-[#0b0f19] border border-sky-800/80 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in duration-150">
+              <div className="absolute right-0 mt-2 w-64 bg-[#0b0f19] border border-sky-800/80 rounded-xl shadow-2xl py-2 z-[100] animate-in fade-in duration-150">
                 <div className="px-3.5 py-2.5 border-b border-gray-800/80">
                   <div className="flex items-center gap-2.5">
                     <div
@@ -4332,7 +4360,7 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden relative bg-[#1e1e1e]">
             {/* Unified Mode Switcher Bar */}
             <div className="h-9 bg-[#181818] border-b border-[#2b2b2b] flex items-center justify-between px-3 shrink-0 select-none z-20">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
                 <button
                   onClick={() => switchMainTab("code")}
                   className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
@@ -4405,7 +4433,7 @@ export default function App() {
             {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE (Permanently Mounted in DOM to preserve blocks) */}
             <div className={activeMainTab === "code" ? "flex-1 bg-[#07090e] relative overflow-hidden flex flex-col" : "hidden"}>
             {/* Floating Action Toolbar */}
-            <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-30">
+            <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-10">
               <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 font-medium border-r border-gray-800 mr-1 hidden sm:flex select-none">
                 <Move size={12} className="text-sky-400" />
                 <span>Arrastra el fondo para mover lienzo</span>
@@ -7465,6 +7493,14 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 15. LOCAL ENGINE STATUS & LICENSING MODAL */}
+      <ConnectEngineModal
+        isOpen={showEngineModal}
+        onClose={() => setShowEngineModal(false)}
+        status={engineStatus}
+        onRecheck={checkEngine}
+      />
     </div>
   );
 }

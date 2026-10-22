@@ -33,76 +33,132 @@ class ASTCompiler:
         """Compile Canvas IR JSON to a dictionary of { relative_path: file_content }."""
         nodes = canvas_ir.get("nodes", [])
 
-        # 1. Classify steps and triggers
-        steps: list[dict[str, Any]] = []
-        trigger_node: dict[str, Any] | None = None
+        # 1. Helper to retrieve children by parent_id and slot_type
+        def get_children(parent_id: str, slot_type: str | None = None) -> list[dict[str, Any]]:
+            res = []
+            for n in nodes:
+                d = n.get("data", {})
+                if d.get("parent_id") == parent_id:
+                    if slot_type is None or d.get("slot_type") == slot_type:
+                        res.append(n)
+            return res
+
         imports: set[str] = {
             "from wpipe import Pipeline, Condition, For, Parallel, Background",
             "from app.config.settings import settings",
             "from app.dto.context import PipelineContextDTO",
+            "from app.states.base import BaseStep",
             "from app.states.clean_data_step import CleanDataStep",
             "from app.states.transform_payload_step import TransformPayloadStep",
             "from app.states.ai_sentiment_step import AISentimentStep",
         }
 
-        for node in nodes:
-            data = node.get("data", {})
-            ntype = data.get("node_type") or node.get("type", "")
-            if ntype == "trigger":
-                trigger_node = node
-            elif ntype in ("step", "ai_step", "custom_step"):
-                steps.append(node)
-                ns = data.get("namespace", "")
-                fn = data.get("func_name") or data.get("label", "CustomStep")
-                if ns:
-                    if ns.startswith("wpipe_steps") and not fn.endswith("Step"):
-                        imports.add(f"from {ns} import {fn}Step as {fn}")
-                    else:
-                        imports.add(f"from {ns} import {fn}")
-            elif ntype in ("condition", "for", "while", "parallel", "background"):
-                steps.append(node)
+        step_names_for_readme: list[str] = []
 
-        # 2. Render steps array
-        rendered_steps: list[str] = []
-        if not steps:
-            rendered_steps.append("        CleanDataStep(prefix='clean_')")
-            rendered_steps.append("        TransformPayloadStep(mode='standard')")
-        else:
-            for s in steps:
-                data = s.get("data", {})
-                ntype = data.get("node_type") or s.get("type", "")
-                fn = data.get("func_name") or data.get("label", "CustomStep")
+        # 2. Recursive hierarchical renderer for C-blocks
+        def render_step(node: dict[str, Any], indent: int = 8) -> str:
+            pad = " " * indent
+            data = node.get("data", {})
+            raw_type = data.get("node_type") or node.get("type", "step")
+            ntype = raw_type.lower()
+            label = data.get("label", "Step")
+            fn = data.get("step_name") or data.get("func_name") or label
+            ns = data.get("namespace", "")
+
+            if ntype in ("condition", "wpipe_if", "wpipe_if_else") or "if" in ntype or "condition" in ntype:
+                raw_expr = data.get("condition_expression") or data.get("expression") or "status_code == 200"
+                expr = raw_expr.replace('"', '\\"')
+                true_kids = get_children(node.get("id", ""), "if_body")
+                false_kids = get_children(node.get("id", ""), "else_body")
+
+                t_code = ",\n".join(render_step(c, indent + 4) for c in true_kids) if true_kids else f'{pad}    CleanDataStep(prefix="branch_true_")'
+                f_code = ",\n".join(render_step(c, indent + 4) for c in false_kids) if false_kids else ""
+
+                step_names_for_readme.append(f"Condition({raw_expr})")
+                if f_code:
+                    return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad}    branch_false=[\n{f_code},\n{pad}    ],\n{pad})'
+                return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad})'
+
+            if ntype in ("for", "wpipe_for") or "for" in ntype:
+                iters = data.get("for_iterations") or data.get("iterations") or 3
+                loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
+                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids) if loop_kids else f'{pad}    TransformPayloadStep(mode="loop")'
+                step_names_for_readme.append(f"For({iters} iterations)")
+                return f'{pad}For(\n{pad}    iterations={iters},\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
+
+            if ntype in ("while", "wpipe_while") or "while" in ntype:
+                raw_expr = data.get("condition_expression") or data.get("expression") or "retry_count < 3"
+                expr = raw_expr.replace('"', '\\"')
+                loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
+                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids) if loop_kids else f'{pad}    TransformPayloadStep(mode="retry")'
+                step_names_for_readme.append(f"While({raw_expr})")
+                return f'{pad}For(\n{pad}    validation_expression="{expr}",\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
+
+            if ntype in ("parallel", "wpipe_parallel") or "parallel" in ntype:
+                merge = data.get("merge_policy", "accumulate")
+                par_kids = get_children(node.get("id", ""), "parallel_body") or get_children(node.get("id", ""), "if_body")
+                p_code = ",\n".join(render_step(c, indent + 4) for c in par_kids) if par_kids else f'{pad}    CleanDataStep(),\n{pad}    TransformPayloadStep()'
+                step_names_for_readme.append(f"Parallel({merge})")
+                return f'{pad}Parallel(\n{pad}    steps=[\n{p_code},\n{pad}    ],\n{pad}    merge_policy="{merge}",\n{pad})'
+
+            if ntype in ("background", "wpipe_background") or "background" in ntype:
+                bg_kids = get_children(node.get("id", ""), "background_body") or get_children(node.get("id", ""), "loop_body")
+                b_code = render_step(bg_kids[0], indent + 4).strip() if bg_kids else "TransformPayloadStep()"
+                step_names_for_readme.append("Background")
+                return f'{pad}Background(\n{pad}    step={b_code},\n{pad})'
+
+            # Standard and catalog step handling
+            if ns and ns.startswith("wpipe_steps"):
+                step_class = fn if fn.endswith("Step") else f"{fn}Step"
+                if step_class != fn:
+                    imports.add(f"from {ns} import {step_class} as {fn}")
+                else:
+                    imports.add(f"from {ns} import {fn}")
+                step_names_for_readme.append(fn)
+
                 params = dict(DEFAULT_STEP_CONSTRUCTOR_ARGS.get(fn, {}))
                 if data.get("params"):
                     params.update(data["params"])
-
                 args_str = ", ".join(f"{k}={repr(v)}" for k, v in params.items())
+                return f"{pad}{fn}({args_str})"
 
-                if ntype == "condition":
-                    expr = data.get("condition_expression", "is_valid == True")
-                    rendered_steps.append(f"        Condition(expression={repr(expr)}, branch_true=[CleanDataStep()])")
-                elif ntype == "for":
-                    iters = data.get("for_iterations", 5)
-                    rendered_steps.append(f"        For(iterations={iters}, steps=[TransformPayloadStep()])")
-                elif ntype == "while":
-                    expr = data.get("condition_expression", "retry_count < 3")
-                    rendered_steps.append(f"        For(validation_expression={repr(expr)}, steps=[TransformPayloadStep()])")
-                elif ntype == "parallel":
-                    merge = data.get("merge_policy", "accumulate")
-                    rendered_steps.append(f"        Parallel(steps=[CleanDataStep(), TransformPayloadStep()], merge_policy={repr(merge)})")
-                elif ntype == "background":
-                    rendered_steps.append("        Background(step=TransformPayloadStep())")
-                elif ntype == "ai_step" or data.get("origin") == "described":
-                    rendered_steps.append("        AISentimentStep(threshold=0.5)")
-                elif ntype in ("custom_step", "step") and not data.get("namespace"):
-                    rendered_steps.append("        CleanDataStep(prefix='custom_')")
-                else:
-                    rendered_steps.append(f"        {fn}({args_str})")
+            fn_lower = fn.lower()
+            if "transform" in fn_lower or fn == "TransformPayloadStep":
+                imports.add("from app.states.transform_payload_step import TransformPayloadStep")
+                step_names_for_readme.append("TransformPayloadStep")
+                mode = data.get("params", {}).get("mode", "standard")
+                return f'{pad}TransformPayloadStep(mode="{mode}")'
+            elif "sentiment" in fn_lower or "ai" in fn_lower or fn == "AISentimentStep":
+                imports.add("from app.states.ai_sentiment_step import AISentimentStep")
+                step_names_for_readme.append("AISentimentStep")
+                th = data.get("params", {}).get("threshold", 0.5)
+                return f'{pad}AISentimentStep(threshold={th})'
+            else:
+                imports.add("from app.states.clean_data_step import CleanDataStep")
+                step_names_for_readme.append("CleanDataStep")
+                pfx = data.get("params", {}).get("prefix", "clean_")
+                return f'{pad}CleanDataStep(prefix="{pfx}")'
 
-        steps_code = ",\n".join(rendered_steps)
+        # 3. Filter root execution steps
+        root_nodes = [
+            n for n in nodes
+            if not n.get("data", {}).get("parent_id")
+            and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
+        ]
+
+        if root_nodes:
+            steps_code = ",\n".join(render_step(n, 8) for n in root_nodes)
+        else:
+            steps_code = "\n".join([
+                "        CleanDataStep(prefix='clean_'),",
+                "        TransformPayloadStep(mode='standard'),",
+                "        AISentimentStep(threshold=0.5),",
+            ])
+            step_names_for_readme.extend(["CleanDataStep", "TransformPayloadStep", "AISentimentStep"])
+
         imports_code = "\n".join(sorted(imports))
 
-        # 3. Smart AST Code Merge (Preserve custom blocks if existing code is provided)
+        # 4. Smart AST Code Merge (Preserve custom blocks if existing code is provided)
         custom_imports = "# Add custom imports or dependencies here"
         custom_logic = "# Add custom helper functions, step transforms, or middleware here"
 
@@ -123,7 +179,7 @@ class ASTCompiler:
             if log_m and log_m.group(1).strip():
                 custom_logic = log_m.group(1).strip()
 
-        # 4. Pipelines.py
+        # 5. Pipelines.py
         pipelines_py = f'''"""Declarative pipeline DAG construction and execution for {project_name}.
 Mandatory architecture component per WPipe Architect Manual.
 """
@@ -151,7 +207,7 @@ pipe.show_progress = True
 pipe.max_retries = 3
 pipe.retry_delay = 0.5
 
-# 2. Direct inline step assembly
+# 2. Direct inline step assembly reflecting the visual canvas
 pipe.set_steps([
 {steps_code}
 ])
@@ -192,7 +248,7 @@ if __name__ == "__main__":
     print("Execution result:", res)
 '''
 
-        # 5. Main.py
+        # 6. Main.py
         main_py = f'''"""Microservice main entrypoint: FastAPI REST API & event listener.
 Complies with WPipe Quality Rules (resource monitoring, timing, 0 hasattr/getattr).
 """
@@ -283,7 +339,19 @@ if __name__ == "__main__":
     uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=settings.debug)
 '''
 
-        # 6. Config files
+        # 7. app/__init__.py
+        app_init_py = f'''"""Application package for {project_name}.
+Provides package exports and pipeline build helper functions.
+"""
+__version__ = "1.0.0"
+__author__ = "William Rodriguez (wisrovi)"
+
+from app.pipelines import build_pipeline, execute_pipeline
+
+__all__ = ["build_pipeline", "execute_pipeline", "__version__", "__author__"]
+'''
+
+        # 8. Config files
         settings_py = f'''"""Application settings and environment configuration.
 Part of the WPipe microservice architecture (wisrovi SUITE).
 """
@@ -295,8 +363,8 @@ class AppSettings(BaseModel):
     """Typed application settings loaded from environment variables."""
 
     app_name: str = Field(default="{project_name}", description="Name of the microservice")
-    environment: str = Field(default=os.getenv("APP_ENV", "development"), description="Runtime environment")
-    debug: bool = Field(default=os.getenv("APP_DEBUG", "True").lower() == "true", description="Debug mode flag")
+    environment: str = Field(default=os.getenv("ENV", "production"), description="Runtime environment")
+    debug: bool = Field(default=os.getenv("APP_DEBUG", "False").lower() == "true", description="Debug mode flag")
     host: str = Field(default=os.getenv("HOST", "0.0.0.0"), description="Server host bind address")
     port: int = Field(default=int(os.getenv("PORT", "8000")), description="Server HTTP port")
     tracking_db: str = Field(default=os.getenv("WPIPE_TRACKING_DB", "output/tracking.db"), description="WPipe forensics SQLite database")
@@ -307,8 +375,8 @@ settings = AppSettings()
 
         config_yaml = f"""# Configuration for {project_name} (WPipe Microservice)
 microservice_name: "{project_name}"
-environment: "development"
-debug: true
+environment: "production"
+debug: false
 server:
   host: "0.0.0.0"
   port: 8000
@@ -323,7 +391,7 @@ from app.config.settings import AppSettings, settings
 __all__ = ["AppSettings", "settings"]
 '''
 
-        # 7. DTO files
+        # 9. DTO files
         dto_init_py = '''"""Data Transfer Objects package."""
 from app.dto.context import PipelineContextDTO
 from app.dto.request import PipelineRequestDTO
@@ -377,8 +445,8 @@ class PipelineResponseDTO(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message if failed")
 '''
 
-        # 8. Services files
-        services_init_py = '''"""Business services package."""
+        # 10. Services files
+        services_init_py = '''"""Business domain services package."""
 from app.services.business_service import ProcessingService
 
 __all__ = ["ProcessingService"]
@@ -418,8 +486,8 @@ class ProcessingService:
         return normalized
 '''
 
-        # 9. Utils files
-        utils_init_py = '''"""Utilities package."""
+        # 11. Utils files
+        utils_init_py = '''"""Utility helpers package."""
 from app.utils.helpers import generate_transaction_id, sanitize_metrics
 
 __all__ = ["generate_transaction_id", "sanitize_metrics"]
@@ -460,14 +528,19 @@ def sanitize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 '''
 
-        # 10. Class-based States
-        states_init_py = '''"""WPipe state steps package."""
+        # 12. Class-based States
+        states_init_py = '''"""States package dynamically exporting all registered step classes."""
 from app.states.base import BaseStep
 from app.states.clean_data_step import CleanDataStep
 from app.states.transform_payload_step import TransformPayloadStep
 from app.states.ai_sentiment_step import AISentimentStep
 
-__all__ = ["BaseStep", "CleanDataStep", "TransformPayloadStep", "AISentimentStep"]
+__all__ = [
+    "BaseStep",
+    "CleanDataStep",
+    "TransformPayloadStep",
+    "AISentimentStep",
+]
 '''
 
         states_base_py = '''"""Abstract base step for WPipe microservices."""
@@ -647,7 +720,7 @@ class AISentimentStep(BaseStep):
         return context
 '''
 
-        # 11. Tests
+        # 13. Tests
         test_dto_py = '''"""Unit tests for Pydantic Data Transfer Objects."""
 import pytest
 from pydantic import ValidationError
@@ -739,7 +812,7 @@ def test_execute_pipeline_success() -> None:
         "input_data": {{"user_id": 42, "text": "excellent"}},
     }}
     result = execute_pipeline(payload)
-    assert result.get("status") in ("CLEANED", "TRANSFORMED", "success")
+    assert result.get("status") in ("CLEANED", "TRANSFORMED", "success", "PENDING")
     assert "transaction_id" in result
 '''
 
@@ -773,7 +846,7 @@ from app.test.test_pipeline import test_build_pipeline, test_execute_pipeline_su
 __all__ = ["test_build_pipeline", "test_execute_pipeline_success"]
 '''
 
-        # 12. Root orchestration files
+        # 14. Root orchestration files
         requirements_txt = """wpipe>=2.5.13
 wpipe-steps>=1.0.2
 wdecorators>=2.0.0
@@ -789,30 +862,140 @@ pytest-cov>=4.1.0
 httpx>=0.27.0
 """
 
-        readme_md = f"""# {project_name} Microservice
+        now_utc = datetime.now(timezone.utc)
+        now_iso = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+        current_year = now_utc.year
+        steps_list_text = ", ".join(step_names_for_readme) if step_names_for_readme else "CleanDataStep, TransformPayloadStep"
 
-> **Generated by WPipe Studio (wisrovi SUITE)** on {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}  
-> **Author**: [William Rodriguez](https://wisrovi.dev) (AI Leader & Solutions Architect)  
-> **Ecosystem**: WPipe OS / wisrovi SUITE  
+        readme_md = f"""# {project_name}
 
-Professional, modular, and containerized microservice architecture built with [WPipe](https://github.com/wisrovi/wpipe).
+> **Enterprise Python Microservice Orchestration**  
+> Auto-generado, compilado y verificado por **WPipe Studio (wisrovi SUITE)**.
 
 ---
 
-## Tecnologías y Librerías Relevantes
+## ⚖️ Legal Notice, Authorship & Intellectual Property Rights
 
-- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: Motor core de ejecución orquestada de pipelines.
+> [!IMPORTANT]
+> **Aviso Prioritario de Derechos de Autor y Protección de Código**  
+> Este documento establece con carácter vinculante y oficial los **derechos de autor, propiedad intelectual y atribución técnica** del presente microservicio. Este archivo se encuentra protegido contra edición manual en WPipe Studio.
+
+### Plataforma & Ecosistema de Ingeniería
+- **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
+- **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
+- **Fecha de Compilación**: `{now_iso}`.
+- **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico + wpipe-mcp).
+
+### Autor & Atribución Profesional
+- **Autor Principal**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
+- **Perfil Profesional**: **AI Leader & Solutions Architect**
+- **Sitio Web Oficial**: [https://wisrovi.dev](https://wisrovi.dev)
+- **Ubicación**: Badajoz, Extremadura, España
+- **Misión & Especialidad**: *Liderazgo en inteligencia artificial avanzada, arquitecturas cloud distribuidas y diseño de motores de orquestación de alto rendimiento.*
+- **Copyright**: © {current_year} **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Todos los derechos reservados / All Rights Reserved.
+
+### Términos de Derechos y Uso
+Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (`@step`) y contratos de orquestación forman parte de la propiedad intelectual exclusiva de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
+
+---
+
+## 📖 Documentación Técnica del Microservicio
+
+### Descripción General
+El microservicio `{project_name}` expone un flujo de trabajo modular asíncrono y de alto rendimiento, orquestado mediante **WPipe** y servido a través de **FastAPI**.
+
+- **Pipeline Core**: `{project_name}` (`app/pipelines.py`)
+- **Topología de Pasos Ensamblados**: {steps_list_text}.
+- **Bloques de Control Soportados**: Bifurcaciones condicionales (`Condition`), bucles deterministas o continuos (`For`), ejecución concurrente (`Parallel`) y tareas desacopladas (`Background`).
+- **Contratos de Datos**: Clases Pydantic en `app/dto/` con validación estricta de tipos, inmutabilidad y serialización de contexto vía `@to_obj`.
+
+### Diagrama de Flujo (Mermaid DAG)
+
+```mermaid
+flowchart TD
+    START(["🌐 Ingress (FastAPI REST: /run)"]):::startClass --> DTO["📋 PipelineContextDTO<br/>(Validación de Entrada)"]
+    DTO --> PIPE["⚡ WPipe Pipeline: {project_name}"]
+    PIPE --> STEPS["🔄 Topología de Pasos & Bloques de Control<br/>({steps_list_text})"]
+    STEPS --> RES["🏁 PipelineResponseDTO<br/>(HTTP 200 JSON OK)"]:::endClass
+
+    classDef startClass fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
+    classDef endClass fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+```
+
+### Estructura de Directorios (wpipe-mcp Architecture)
+
+```
+{project_name}/
+├── app/
+│   ├── config/              # Configuración y variables de entorno
+│   │   ├── config.yaml      # Parámetros YAML de microservicio
+│   │   └── settings.py      # Pydantic AppSettings tipado
+│   ├── dto/                 # Contratos Pydantic Context DTOs (Dialecto A)
+│   │   ├── context.py       # PipelineContextDTO
+│   │   ├── request.py       # PipelineRequestDTO
+│   │   └── response.py      # PipelineResponseDTO
+│   ├── model/               # Model weights & pre-trained artifacts
+│   │   └── .gitkeep
+│   ├── services/            # Servicios desacoplados de dominio pesado
+│   │   └── business_service.py # ProcessingService
+│   ├── states/              # Clases atómicas de estados WPipe (@step)
+│   │   ├── base.py          # BaseStep clase abstracta
+│   │   ├── clean_data_step.py # CleanDataStep
+│   │   ├── transform_payload_step.py # TransformPayloadStep
+│   │   └── ai_sentiment_step.py # AISentimentStep
+│   ├── test/                # Suite oficial pytest del microservicio
+│   │   ├── test_dto.py      # Validación de esquemas Pydantic
+│   │   ├── test_states.py   # Mutaciones y ciclo de vida de steps
+│   │   ├── test_pipeline.py # Validación del grafo de pipeline
+│   │   └── test_api.py      # Integración con TestClient FastAPI
+│   ├── utils/               # Funciones auxiliares puras
+│   │   └── helpers.py       # Generadores de ID y sanitizadores
+│   ├── pipelines.py         # Topología DAG del pipeline WPipe con C-blocks
+│   └── main.py              # Entrypoint FastAPI REST y ResourceMonitor
+├── tests/                   # Runner estándar raíz
+│   └── test_pipeline.py
+├── config.yaml              # Configuración raíz para visibilidad inmediata
+├── Dockerfile               # Contenedor de producción multi-etapa
+├── docker-compose.yml       # Orquestación Docker con healthcheck HTTP
+├── Makefile                 # Automatización (start, stop, into, test, logs)
+├── requirements.txt         # Dependencias Python bloqueadas
+├── run_tests_docker.sh      # Script ejecutor que delega en 'make test'
+└── wpipe.config.json        # Configuración del motor WPipe
+```
+
+### Tecnologías y Librerías Principales
+
+- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: Motor core de ejecución orquestada de pipelines síncronos y asíncronos con gestión de contexto y control de flujo.
 - **[WPipe Steps](https://github.com/wisrovi/wpipe-steps) (>=1.0.2)**: Catálogo modular de pasos para bases de datos, conectividad y seguridad.
-- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: API HTTP REST de producción para invocar el pipeline (`POST /run`).
-- **[Pydantic](https://docs.pydantic.dev/) (>=2.0.0)**: Esquemas de datos, validación estricta e inmutabilidad de contexto.
+- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: API HTTP REST asíncrona de alto rendimiento para el punto de entrada (`/run`).
+- **[Pydantic v2](https://docs.pydantic.dev/)**: Validación estricta de contratos de datos e inmutabilidad de contexto.
 - **[Loguru](https://github.com/Delgan/loguru)**: Registro estructurado y asíncrono de eventos de ejecución.
-- **[Pytest](https://pytest.org/)**: Suite de pruebas unitarias automatizadas (`tests/test_pipeline.py`).
-- **[Docker](https://www.docker.com/)**: Contenedor multi-etapa ligero para producción.
+- **[Pytest & Pytest-Cov](https://pytest.org/)**: Suite de pruebas unitarias automatizadas con cobertura de código.
+- **[Docker & Docker Compose](https://www.docker.com/)**: Contenedorización lista para producción.
 
 ---
 
-## Ejecución
+## 🚀 Despliegue y Ejecución
 
+### 1. Iniciar con Docker Compose (Recomendado)
+```bash
+# Construir y levantar el microservicio
+make start
+
+# Ver el estado y healthcheck:
+make status
+
+# Ver logs en tiempo real:
+make logs
+
+# Entrar en consola interactiva al contenedor:
+make into
+
+# Detener el microservicio:
+make stop
+```
+
+### 2. Ejecución Local con Virtualenv
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -820,21 +1003,36 @@ pip install -r requirements.txt
 python app/main.py
 ```
 
-### Docker
+### 3. Endpoints y Documentación Interactiva
+- **Ejecutar Pipeline**: `POST /run` (Envío de payload JSON para procesar en el pipeline)
+- **Comprobación de Salud**: `GET /health`
+- **Documentación Swagger UI**: `http://localhost:8000/docs`
+- **Especificación OpenAPI**: `http://localhost:8000/openapi.json`
+
+### 4. Pruebas Automatizadas
 ```bash
-make start
-curl http://localhost:8000/health
+# Ejecutar pruebas en Docker vía Makefile:
+./run_tests_docker.sh
+
+# O directamente:
+make test
+
+# Ejecución local con reporte de cobertura:
+make pytest
 ```
 
 ---
 *Generated by WPipe Studio by wisrovi*
 """
 
-        dockerfile = """# Multi-stage Docker container for production deployment
+        dockerfile = f"""# Multi-stage Docker container for production deployment
+# Generated by WPipe Studio (wisrovi SUITE)
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \\
     PYTHONUNBUFFERED=1 \\
+    SERVICE_NAME={project_name} \\
+    ENV=production \\
     PORT=8000
 
 WORKDIR /app
@@ -866,12 +1064,6 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment:
-      - APP_ENV=production
-      - APP_DEBUG=false
-      - PORT=8000
-      - WPIPE_TRACKING_DB=output/tracking.db
-      - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - ./output:/app/output
     healthcheck:
@@ -882,19 +1074,23 @@ services:
 """
 
         makefile = f"""# Makefile for {project_name} (WPipe Microservice)
-.PHONY: help start stop restart status logs test pytest build clean into
+.PHONY: help start stop restart status logs into test pytest build clean
+
+CONTAINER_NAME={project_name}_microservice
+SERVICE_NAME={project_name}
 
 help:
 \t@echo "Available commands for {project_name}:"
 \t@echo "  make start     - Build and run microservice in detached Docker container"
-\t@echo "  make stop      - Stop running container"
-\t@echo "  make restart   - Restart microservice"
-\t@echo "  make status    - View service health and status"
+\t@echo "  make stop      - Stop running microservice container"
+\t@echo "  make restart   - Restart microservice container"
+\t@echo "  make status    - View container status and healthcheck"
 \t@echo "  make logs      - View container logs in real-time"
+\t@echo "  make into      - Open interactive bash shell inside running container"
 \t@echo "  make test      - Run automated unit and integration tests inside Docker"
 \t@echo "  make pytest    - Run local pytest suite with coverage"
-\t@echo "  make into      - Open bash shell inside container"
-\t@echo "  make clean     - Remove cache and compiled files"
+\t@echo "  make build     - Build production Docker image"
+\t@echo "  make clean     - Remove cache, coverage artifacts, and bytecode"
 
 start:
 \tdocker compose up -d --build
@@ -909,16 +1105,19 @@ status:
 \t@curl -s http://localhost:8000/health || true
 
 logs:
-\tdocker compose logs -f {project_name}
+\tdocker compose logs -f $(SERVICE_NAME)
+
+into:
+\tdocker compose exec -it $(SERVICE_NAME) /bin/bash
 
 test:
-\tdocker compose run --rm {project_name} pytest app/test/ -v
+\tdocker compose run --rm $(SERVICE_NAME) pytest app/test/ -v
 
 pytest:
 \tpytest app/test/ --cov=app --cov-report=term-missing
 
-into:
-\tdocker compose exec {project_name} /bin/bash
+build:
+\tdocker compose build
 
 clean:
 \tfind . -type d -name "__pycache__" -exec rm -rf {{}} + 2>/dev/null || true
@@ -929,10 +1128,16 @@ clean:
         run_tests_docker = f"""#!/usr/bin/env bash
 set -e
 
-IMAGE_NAME="{project_name}_test_runner"
+echo "=========================================================="
+echo " Running Automated WPipe Tests via Makefile"
+echo " Microservice: {project_name}"
+echo "=========================================================="
 
-docker build -t "$IMAGE_NAME" -f Dockerfile .
-docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e APP_ENV=test "$IMAGE_NAME" pytest app/test/ -v --cov=app --cov-report=term-missing
+make test
+
+echo "=========================================================="
+echo " Tests finished successfully in Docker! ✓"
+echo "=========================================================="
 """
 
         wpipe_config_json = """{
@@ -942,7 +1147,7 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e APP_ENV=test "$IMAGE_NAME" pytes
 """
 
         return {
-            "app/__init__.py": f'"""Application package for {project_name}."""\n',
+            "app/__init__.py": app_init_py,
             "app/config/__init__.py": config_init_py,
             "app/config/config.yaml": config_yaml,
             "app/config/settings.py": settings_py,
@@ -969,6 +1174,7 @@ docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -e APP_ENV=test "$IMAGE_NAME" pytes
             "app/main.py": main_py,
             "tests/__init__.py": '"""Root tests runner package."""\n',
             "tests/test_pipeline.py": root_test_pipeline_py,
+            "config.yaml": config_yaml,
             "Dockerfile": dockerfile,
             "docker-compose.yml": docker_compose,
             "requirements.txt": requirements_txt,

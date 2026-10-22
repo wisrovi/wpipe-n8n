@@ -102,7 +102,7 @@ import {
   StepForward,
   FastForward,
 } from "lucide-react";
-import { EngineStatusWidget, LicenseProBadge, ConnectEngineModal } from "./components/EngineStatusWidget";
+import { EngineStatusWidget, LicenseProBadge, ConnectEngineModal, ProLicenseModal } from "./components/EngineStatusWidget";
 import {
   probeEngineStatus,
   EngineStatus,
@@ -588,6 +588,7 @@ export default function App() {
     message: "Detectando motor local...",
   });
   const [showEngineModal, setShowEngineModal] = useState<boolean>(false);
+  const [showProModal, setShowProModal] = useState<boolean>(false);
 
   const checkEngine = async (preferredPort?: number) => {
     const status = await probeEngineStatus(preferredPort || engineStatus.port);
@@ -1991,6 +1992,20 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [readmePreviewMode, activeMainTab, githubViewingFile, generatedFiles]);
 
+  // Synchronize Blockly SVG canvas whenever Split View, Bottom Panel (Terminal), or Sidebar toggles
+  useEffect(() => {
+    const triggerResize = () => {
+      window.dispatchEvent(new Event("resize"));
+    };
+    triggerResize();
+    const t1 = setTimeout(triggerResize, 30);
+    const t2 = setTimeout(triggerResize, 150);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isSplitView, bottomPanelOpen, bottomPanelMaximized, showSidebar, activeMainTab]);
+
   // Switch to Flowchart view
   const handleOpenFlowchart = () => {
     const code = getMermaidFromBlocklyWorkspace();
@@ -2506,13 +2521,13 @@ export default function App() {
       )}
 
       {/* 2. TOP MENU BAR (VS Code style 5-menu title bar) */}
-      <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between relative z-40 shadow-md overflow-x-auto no-scrollbar">
+      <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between relative z-40 shadow-md">
         {/* Left: Sidebar Toggle + Brand + 5 Menus */}
         <div className="flex items-center space-x-1.5">
           {/* Global Primary Sidebar Toggle Button */}
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            title={showSidebar ? "Ocultar panel lateral (Ctrl+B)" : "Mostrar panel lateral (Ctrl+B)"}
+            title={showSidebar ? "Hide primary sidebar (Ctrl+B)" : "Show primary sidebar (Ctrl+B)"}
             className={`p-1.5 rounded-md transition mr-1 cursor-pointer ${
               showSidebar
                 ? "text-sky-400 bg-sky-950/80 border border-sky-800/80 hover:bg-sky-900/80"
@@ -2543,19 +2558,19 @@ export default function App() {
                 activeMenu === "file" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Archivo</span>
+              <span>File</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "file" && (
-              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 <button
                   onClick={() => {
-                    if (window.confirm("¿Crear un nuevo pipeline y reiniciar el lienzo?")) {
+                    if (window.confirm("Create a new pipeline and reset the canvas?")) {
                       clearWorkspace();
                       addTriggerBlockToWorkspace("api", "/run");
                       addStepBlockToWorkspace("HttpRequest", "wpipe_steps.connectivity");
                       addResponseBlockToWorkspace("http_json", '{"status": "success", "data": context}');
-                      setStatusMessage("Nuevo pipeline iniciado con Disparador API REST y Cierre HTTP");
+                      setStatusMessage("New pipeline initialized with REST API Trigger and HTTP Response");
                     }
                     setActiveMenu(null);
                   }}
@@ -2563,16 +2578,16 @@ export default function App() {
                 >
                   <FileCode size={15} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Nuevo Pipeline</div>
-                    <div className="text-[10px] text-gray-400">Reinicia con disparador por defecto</div>
+                    <div className="font-semibold">New Pipeline</div>
+                    <div className="text-[10px] text-gray-400">Reset canvas with default trigger & response</div>
                   </div>
                 </button>
 
                 <label className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer">
                   <FolderOpen size={15} className="text-amber-400" />
                   <div>
-                    <div className="font-semibold">Abrir Pipeline (.json)</div>
-                    <div className="text-[10px] text-gray-400">Importar archivo desde tu equipo</div>
+                    <div className="font-semibold">Open Pipeline (.json)...</div>
+                    <div className="text-[10px] text-gray-400">Import workflow file from disk</div>
                   </div>
                   <input type="file" accept=".json,.wpipe.json" onChange={handleLoadJson} className="hidden" />
                 </label>
@@ -2589,8 +2604,8 @@ export default function App() {
                   <div className="flex items-center gap-2.5">
                     <Save size={15} className="text-emerald-400" />
                     <div>
-                      <div className="font-semibold">Guardar Microservicio</div>
-                      <div className="text-[10px] text-gray-400">Persiste lienzo y código en tu espacio</div>
+                      <div className="font-semibold">Save Microservice</div>
+                      <div className="text-[10px] text-gray-400">Persist canvas and source files</div>
                     </div>
                   </div>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+S</span>
@@ -2605,8 +2620,8 @@ export default function App() {
                 >
                   <Edit3 size={15} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Renombrar Pipeline...</div>
-                    <div className="text-[10px] text-gray-400">Modificar nombre de este microservicio</div>
+                    <div className="font-semibold">Rename Pipeline...</div>
+                    <div className="text-[10px] text-gray-400">Change service and identifier name</div>
                   </div>
                 </button>
 
@@ -2618,8 +2633,8 @@ export default function App() {
                 >
                   <Save size={15} className="text-emerald-400" />
                   <div>
-                    <div className="font-semibold">Guardar en Navegador</div>
-                    <div className="text-[10px] text-gray-400">Almacenamiento local rápido</div>
+                    <div className="font-semibold">Save to Browser</div>
+                    <div className="text-[10px] text-gray-400">Fast local browser storage</div>
                   </div>
                 </button>
 
@@ -2629,8 +2644,8 @@ export default function App() {
                 >
                   <RefreshCw size={15} className="text-teal-400" />
                   <div>
-                    <div className="font-semibold">Restaurar de Navegador</div>
-                    <div className="text-[10px] text-gray-400">Recuperar último guardado local</div>
+                    <div className="font-semibold">Restore from Browser</div>
+                    <div className="text-[10px] text-gray-400">Recover last browser saved state</div>
                   </div>
                 </button>
 
@@ -2642,8 +2657,8 @@ export default function App() {
                 >
                   <Download size={15} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Exportar Archivo (.wpipe)</div>
-                    <div className="text-[10px] text-gray-400">Compatible con VS Code y Web</div>
+                    <div className="font-semibold">Export File (.wpipe)</div>
+                    <div className="text-[10px] text-gray-400">Compatible with VS Code and Web</div>
                   </div>
                 </button>
 
@@ -2653,8 +2668,8 @@ export default function App() {
                 >
                   <Download size={15} className="text-indigo-400" />
                   <div>
-                    <div className="font-semibold">Exportar Canvas (.wpipe.json)</div>
-                    <div className="text-[10px] text-gray-400">Descarga la definición del grafo</div>
+                    <div className="font-semibold">Export Canvas (.wpipe.json)</div>
+                    <div className="text-[10px] text-gray-400">Download graph schema definition</div>
                   </div>
                 </button>
 
@@ -2664,8 +2679,8 @@ export default function App() {
                 >
                   <Download size={15} className="text-emerald-400" />
                   <div>
-                    <div className="font-semibold">Descargar Microservicio (.zip)</div>
-                    <div className="text-[10px] text-gray-400">Código Python listo para producción</div>
+                    <div className="font-semibold">Download Microservice (.zip)</div>
+                    <div className="text-[10px] text-gray-400">Production Python package ready to run</div>
                   </div>
                 </button>
 
@@ -2675,8 +2690,38 @@ export default function App() {
                 >
                   <Copy size={15} className="text-purple-400" />
                   <div>
-                    <div className="font-semibold">Copiar Código Python</div>
-                    <div className="text-[10px] text-gray-400">Copia app/main.py al portapapeles</div>
+                    <div className="font-semibold">Copy Python Code</div>
+                    <div className="text-[10px] text-gray-400">Copy app/main.py to clipboard</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={() => {
+                    handleRunTests();
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-purple-950/60 flex items-center gap-2.5 text-purple-300 hover:text-purple-200 cursor-pointer"
+                >
+                  <FlaskConical size={15} className="text-purple-400" />
+                  <div>
+                    <div className="font-semibold">Run Unit Tests (pytest)</div>
+                    <div className="text-[10px] text-gray-400">Execute regression test suite</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowProjectsModal(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Folder size={15} className="text-amber-400" />
+                  <div>
+                    <div className="font-semibold">My Microservices...</div>
+                    <div className="text-[10px] text-gray-400">Explore saved projects & workspaces</div>
                   </div>
                 </button>
 
@@ -2691,15 +2736,15 @@ export default function App() {
                 >
                   <Settings size={15} className="text-emerald-400" />
                   <div>
-                    <div className="font-semibold">Variables de Entorno (.env)</div>
-                    <div className="text-[10px] text-gray-400">Configurar credenciales y secretos</div>
+                    <div className="font-semibold">Environment Variables (.env)</div>
+                    <div className="text-[10px] text-gray-400">Configure credentials and secrets</div>
                   </div>
                 </button>
               </div>
             )}
           </div>
 
-          {/* 2. Microservicios Menu Dropdown (Nuevo Menú junto a Archivo) */}
+          {/* 2. Microservices Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "microservices" ? null : "microservices")}
@@ -2707,11 +2752,11 @@ export default function App() {
                 activeMenu === "microservices" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Microservicios</span>
+              <span>Microservices</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "microservices" && (
-              <div className="absolute left-0 mt-1 w-72 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-72 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 <button
                   onClick={() => {
                     setShowProjectsModal(true);
@@ -2722,8 +2767,8 @@ export default function App() {
                 >
                   <Folder size={15} className="text-amber-400" />
                   <div>
-                    <div className="font-semibold">Gestor de Microservicios...</div>
-                    <div className="text-[10px] text-gray-400">Administrar y explorar todos tus proyectos</div>
+                    <div className="font-semibold">Microservice Manager...</div>
+                    <div className="text-[10px] text-gray-400">Manage and browse all your projects</div>
                   </div>
                 </button>
 
@@ -2737,8 +2782,8 @@ export default function App() {
                 >
                   <FolderPlus size={15} className="text-emerald-400" />
                   <div>
-                    <div className="font-semibold">Nuevo Microservicio...</div>
-                    <div className="text-[10px] text-gray-400">Crear un proyecto con entorno aislado</div>
+                    <div className="font-semibold">New Microservice...</div>
+                    <div className="text-[10px] text-gray-400">Create a project with an isolated environment</div>
                   </div>
                 </button>
 
@@ -2752,20 +2797,20 @@ export default function App() {
                   >
                     <Copy size={15} className="text-sky-400" />
                     <div>
-                      <div className="font-semibold">Duplicar Microservicio Actual</div>
-                      <div className="text-[10px] text-gray-400">Copia idéntica para experimentación</div>
+                      <div className="font-semibold">Duplicate Current Microservice</div>
+                      <div className="text-[10px] text-gray-400">Identical copy for experimentation</div>
                     </div>
                   </button>
                 )}
 
                 <div className="my-1 border-t border-gray-800" />
                 <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  Proyectos Recientes ({userProjects.length})
+                  Recent Projects ({userProjects.length})
                 </div>
 
                 {userProjects.length === 0 ? (
                   <div className="px-3 py-2 text-[11px] text-gray-500 italic">
-                    No hay proyectos guardados todavía
+                    No saved projects yet
                   </div>
                 ) : (
                   <div className="max-h-48 overflow-y-auto space-y-0.5 px-1">
@@ -2787,7 +2832,7 @@ export default function App() {
                           <span className="font-medium truncate max-w-[170px]">{proj.name}</span>
                         </div>
                         {activeProjectId === proj.id && (
-                          <span className="text-[9px] font-bold text-sky-400 uppercase">Activo</span>
+                          <span className="text-[9px] font-bold text-sky-400 uppercase">Active</span>
                         )}
                       </button>
                     ))}
@@ -2805,22 +2850,22 @@ export default function App() {
                 activeMenu === "edit" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Editar</span>
+              <span>Edit</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "edit" && (
-              <div className="absolute left-0 mt-1 w-60 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-60 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 <button
                   onClick={() => {
                     undoWorkspace(false);
-                    setStatusMessage("Deshacer acción (Undo)");
+                    setStatusMessage("Undo action");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <Undo size={14} className="text-sky-400" />
-                    <span>Deshacer (Undo)</span>
+                    <span>Undo</span>
                   </span>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+Z</span>
                 </button>
@@ -2828,14 +2873,14 @@ export default function App() {
                 <button
                   onClick={() => {
                     undoWorkspace(true);
-                    setStatusMessage("Rehacer acción (Redo)");
+                    setStatusMessage("Redo action");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <Redo size={14} className="text-sky-400" />
-                    <span>Rehacer (Redo)</span>
+                    <span>Redo</span>
                   </span>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+Y</span>
                 </button>
@@ -2845,59 +2890,59 @@ export default function App() {
                 <button
                   onClick={() => {
                     collapseAllBlocksInWorkspace();
-                    setStatusMessage("Todos los bloques colapsados");
+                    setStatusMessage("All blocks collapsed");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Minimize2 size={14} className="text-amber-400" />
-                  <span>Colapsar Todos los Bloques</span>
+                  <span>Collapse All Blocks</span>
                 </button>
 
                 <button
                   onClick={() => {
                     expandAllBlocksInWorkspace();
-                    setStatusMessage("Todos los bloques expandidos");
+                    setStatusMessage("All blocks expanded");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Maximize2 size={14} className="text-amber-400" />
-                  <span>Expandir Todos los Bloques</span>
+                  <span>Expand All Blocks</span>
                 </button>
 
                 <button
                   onClick={() => {
                     zoomFitWorkspace();
-                    setStatusMessage("Lienzo centrado (Zoom to fit)");
+                    setStatusMessage("Canvas centered (Zoom to fit)");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <ZoomIn size={14} className="text-teal-400" />
-                  <span>Centrar Lienzo (Fit)</span>
+                  <span>Fit Canvas</span>
                 </button>
 
                 <div className="my-1 border-t border-gray-800" />
 
                 <button
                   onClick={() => {
-                    if (window.confirm("¿Estás seguro de que deseas vaciar el lienzo por completo?")) {
+                    if (window.confirm("Are you sure you want to clear the canvas completely?")) {
                       clearWorkspace();
-                      setStatusMessage("Lienzo vaciado por completo");
+                      setStatusMessage("Canvas cleared completely");
                     }
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-rose-950/60 text-rose-300 hover:text-rose-200 flex items-center gap-2 cursor-pointer"
                 >
                   <Trash2 size={14} />
-                  <span>Limpiar Lienzo Completo</span>
+                  <span>Clear Canvas</span>
                 </button>
               </div>
             )}
           </div>
 
-          {/* 3. View Menu Dropdown */}
+          {/* 4. View Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "view" ? null : "view")}
@@ -2905,11 +2950,11 @@ export default function App() {
                 activeMenu === "view" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Ver</span>
+              <span>View</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "view" && (
-              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 <button
                   onClick={() => {
                     switchMainTab("code");
@@ -2919,7 +2964,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <span>🧩</span>
-                    <span className="font-semibold">Diseño (Canvas de Bloques)</span>
+                    <span className="font-semibold">Blockly Canvas</span>
                   </span>
                   {activeMainTab === "code" && <Check size={13} className="text-sky-400" />}
                 </button>
@@ -2933,7 +2978,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <Code size={14} className="text-purple-400" />
-                    <span className="font-semibold">Microservicio Python</span>
+                    <span className="font-semibold">Python Microservice Code</span>
                   </span>
                   {activeMainTab === "python" && <Check size={13} className="text-purple-400" />}
                 </button>
@@ -2947,7 +2992,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <span>🎮</span>
-                    <span className="font-semibold">Simulación & Depuración</span>
+                    <span className="font-semibold">Simulation & Debugging</span>
                   </span>
                   {activeMainTab === "simulation" && <Check size={13} className="text-emerald-400" />}
                 </button>
@@ -2961,7 +3006,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <GitMerge size={14} className="text-indigo-400" />
-                    <span className="font-semibold">Flujo Mermaid DAG</span>
+                    <span className="font-semibold">Mermaid Flowchart DAG</span>
                   </span>
                   {activeMainTab === "flowchart" && <Check size={13} className="text-indigo-400" />}
                 </button>
@@ -2977,7 +3022,7 @@ export default function App() {
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <Search size={14} className="text-sky-400" />
-                  <span>Buscar en Archivos</span>
+                  <span>Search in Files</span>
                 </button>
 
                 <button
@@ -2989,7 +3034,7 @@ export default function App() {
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <GitBranch size={14} className="text-amber-400" />
-                  <span>Control de Versiones (Git)</span>
+                  <span>Version Control (Git)</span>
                 </button>
 
                 <div className="my-1 border-t border-gray-800" />
@@ -3003,7 +3048,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <Split size={14} className="text-sky-400" />
-                    <span>Vista Dividida (Lienzo + Código)</span>
+                    <span>Split View (Canvas + Code)</span>
                   </span>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+\</span>
                 </button>
@@ -3017,7 +3062,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <Terminal size={14} className="text-emerald-400" />
-                    <span>Panel Inferior / Terminal</span>
+                    <span>Bottom Panel / Terminal</span>
                   </span>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+`</span>
                 </button>
@@ -3031,7 +3076,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <Sliders size={14} className="text-purple-400" />
-                    <span>Inspector de Propiedades</span>
+                    <span>Properties Inspector</span>
                   </span>
                   {inspectorOpen && <Check size={13} className="text-purple-400" />}
                 </button>
@@ -3047,7 +3092,7 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2">
                     <PanelLeft size={14} className="text-sky-400" />
-                    <span>Alternar Panel Lateral</span>
+                    <span>Toggle Primary Sidebar</span>
                   </span>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+B</span>
                 </button>
@@ -3060,13 +3105,13 @@ export default function App() {
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <ZoomIn size={14} className="text-teal-400" />
-                  <span>Centrar Lienzo de Trabajo</span>
+                  <span>Fit Canvas</span>
                 </button>
               </div>
             )}
           </div>
 
-          {/* 4. Run Menu Dropdown */}
+          {/* 5. Run Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "run" ? null : "run")}
@@ -3074,11 +3119,11 @@ export default function App() {
                 activeMenu === "run" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Ejecutar</span>
+              <span>Run</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "run" && (
-              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 {!isSimulating ? (
                   <button
                     onClick={() => {
@@ -3089,8 +3134,8 @@ export default function App() {
                   >
                     <Play size={14} className="fill-current text-emerald-400" />
                     <div>
-                      <div className="font-bold">Iniciar Simulación (🏁)</div>
-                      <div className="text-[10px] text-gray-400">Ejecuta pipeline paso a paso</div>
+                      <div className="font-bold">Start Simulation (🏁)</div>
+                      <div className="text-[10px] text-gray-400">Step-by-step pipeline execution</div>
                     </div>
                   </button>
                 ) : (
@@ -3103,8 +3148,8 @@ export default function App() {
                   >
                     <Square size={14} className="fill-current text-rose-400" />
                     <div>
-                      <div className="font-bold">Detener Simulación (🛑)</div>
-                      <div className="text-[10px] text-gray-400">Interrumpe ejecución activa</div>
+                      <div className="font-bold">Stop Simulation (🛑)</div>
+                      <div className="text-[10px] text-gray-400">Interrupt active execution</div>
                     </div>
                   </button>
                 )}
@@ -3115,15 +3160,15 @@ export default function App() {
                     setSimContext({});
                     setSimSteps([]);
                     setSimLogs([]);
-                    setStatusMessage("Simulación reiniciada");
+                    setStatusMessage("Simulation reset");
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
                 >
                   <RefreshCw size={14} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Reiniciar Simulación</div>
-                    <div className="text-[10px] text-gray-400">Limpia estado y variables</div>
+                    <div className="font-semibold">Reset Simulation</div>
+                    <div className="text-[10px] text-gray-400">Clear state and variables</div>
                   </div>
                 </button>
 
@@ -3139,8 +3184,8 @@ export default function App() {
                 >
                   <CheckCircle size={14} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Verificar Sintaxis (Dry-Run AST)</div>
-                    <div className="text-[10px] text-gray-400">Valida conectividad y contratos</div>
+                    <div className="font-semibold">Verify Syntax (Dry-Run AST)</div>
+                    <div className="text-[10px] text-gray-400">Validate connectivity and contracts</div>
                   </div>
                 </button>
 
@@ -3153,10 +3198,10 @@ export default function App() {
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-purple-950/60 flex items-center gap-2.5 text-purple-300 hover:text-purple-200 cursor-pointer"
                 >
-                  <FlaskConical size={14} className="text-purple-400" />
+                  <FlaskConical size={15} className="text-purple-400" />
                   <div>
-                    <div className="font-semibold">Ejecutar Tests Unitarios (pytest)</div>
-                    <div className="text-[10px] text-gray-400">Verifica la suite tests/ en workspace</div>
+                    <div className="font-semibold">Run Unit Tests (pytest)</div>
+                    <div className="text-[10px] text-gray-400">Execute regression test suite</div>
                   </div>
                 </button>
 
@@ -3171,8 +3216,8 @@ export default function App() {
                 >
                   <History size={14} className="text-teal-400" />
                   <div>
-                    <div className="font-semibold">Historial de Ejecuciones ({simulationHistory.length})</div>
-                    <div className="text-[10px] text-gray-400">Registros persistidos en PostgreSQL</div>
+                    <div className="font-semibold">Execution History ({simulationHistory.length})</div>
+                    <div className="text-[10px] text-gray-400">Records persisted in SQLite / PostgreSQL</div>
                   </div>
                 </button>
 
@@ -3181,17 +3226,17 @@ export default function App() {
                 <button
                   onClick={() => {
                     setTurboMode(!turboMode);
-                    setStatusMessage(`Modo Turbo: ${!turboMode ? "Activado ⚡" : "Desactivado"}`);
+                    setStatusMessage(`Turbo Mode: ${!turboMode ? "Enabled ⚡" : "Disabled"}`);
                     setActiveMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center justify-between text-gray-200 hover:text-white cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <Sparkles size={14} className="text-yellow-400" />
-                    <span className="font-semibold">Modo Turbo</span>
+                    <span className="font-semibold">Turbo Mode</span>
                   </span>
                   {turboMode ? (
-                    <span className="text-[10px] text-emerald-400 font-bold font-mono">ACTIVO</span>
+                    <span className="text-[10px] text-emerald-400 font-bold font-mono">ACTIVE</span>
                   ) : (
                     <span className="text-[10px] text-gray-500 font-mono">OFF</span>
                   )}
@@ -3200,7 +3245,7 @@ export default function App() {
             )}
           </div>
 
-          {/* 5. Help Menu Dropdown */}
+          {/* 6. Help Menu Dropdown */}
           <div className="relative menu-dropdown-container">
             <button
               onClick={() => setActiveMenu(activeMenu === "help" ? null : "help")}
@@ -3208,11 +3253,11 @@ export default function App() {
                 activeMenu === "help" ? "bg-gray-800 text-white" : "text-gray-300 hover:text-white hover:bg-gray-800/60"
               }`}
             >
-              <span>Ayuda</span>
+              <span>Help</span>
               <ChevronDown size={12} className="text-gray-400" />
             </button>
             {activeMenu === "help" && (
-              <div className="absolute left-0 mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700/80 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
                 <button
                   onClick={() => {
                     setCommandPaletteOpen(true);
@@ -3225,8 +3270,8 @@ export default function App() {
                   <div className="flex items-center gap-2.5">
                     <Search size={14} className="text-sky-400" />
                     <div>
-                      <div className="font-semibold">Buscar Comandos...</div>
-                      <div className="text-[10px] text-gray-400">Paleta de acciones y atajos</div>
+                      <div className="font-semibold">Command Palette...</div>
+                      <div className="text-[10px] text-gray-400">Quick action palette and shortcuts</div>
                     </div>
                   </div>
                   <span className="text-[10px] text-gray-500 font-mono">Ctrl+P</span>
@@ -3243,8 +3288,8 @@ export default function App() {
                 >
                   <BookOpen size={14} className="text-purple-400" />
                   <div>
-                    <div className="font-semibold">Tutoriales & Guía FAQ</div>
-                    <div className="text-[10px] text-gray-400">Preguntas frecuentes y ejemplos</div>
+                    <div className="font-semibold">Tutorials & FAQ Guide</div>
+                    <div className="text-[10px] text-gray-400">Frequently asked questions and guides</div>
                   </div>
                 </button>
 
@@ -3259,8 +3304,8 @@ export default function App() {
                 >
                   <Layers size={14} className="text-sky-400" />
                   <div>
-                    <div className="font-semibold">Catálogo de Pasos WPipe</div>
-                    <div className="text-[10px] text-gray-400">196 pasos oficiales y plugins</div>
+                    <div className="font-semibold">WPipe Step Catalog</div>
+                    <div className="text-[10px] text-gray-400">196 official steps & plugins</div>
                   </div>
                 </button>
 
@@ -3275,8 +3320,8 @@ export default function App() {
                 >
                   <Info size={14} className="text-teal-400" />
                   <div>
-                    <div className="font-semibold">Acerca de WPipe Studio</div>
-                    <div className="text-[10px] text-gray-400">wisrovi SUITE, versión y créditos</div>
+                    <div className="font-semibold">About WPipe Studio</div>
+                    <div className="text-[10px] text-gray-400">wisrovi SUITE, version and credits</div>
                   </div>
                 </button>
               </div>
@@ -3289,16 +3334,16 @@ export default function App() {
           <button
             onClick={() => setShowProjectsModal(true)}
             className="flex items-center space-x-1.5 text-gray-400 hover:text-sky-300 font-medium transition cursor-pointer"
-            title="Abrir Gestor de Microservicios"
+            title="Open Microservice Manager"
           >
             <Folder size={13} className="text-amber-400" />
-            <span className="hidden md:inline">microservicios</span>
+            <span className="hidden md:inline">microservices</span>
           </button>
           <span className="text-gray-600">/</span>
           <button
             onClick={handleRenamePipeline}
             className="flex items-center space-x-1.5 text-sky-300 hover:text-white font-mono font-bold transition cursor-pointer group"
-            title="Click para renombrar este microservicio"
+            title="Click to rename this microservice"
           >
             <span className="max-w-[200px] truncate">{projectName || "my_wpipe_pipeline"}</span>
             <Edit3 size={11} className="text-gray-500 group-hover:text-sky-400 transition" />
@@ -3315,13 +3360,11 @@ export default function App() {
             onOpenModal={() => setShowEngineModal(true)}
           />
 
-          {/* Fully Right-Aligned PRO Badge */}
-          {engineStatus.isPro && (
-            <LicenseProBadge
-              status={engineStatus}
-              onClick={() => setShowEngineModal(true)}
-            />
-          )}
+          {/* Fully Right-Aligned PRO Badge (Opens Dedicated PRO License Modal) */}
+          <LicenseProBadge
+            status={engineStatus}
+            onClick={() => setShowProModal(true)}
+          />
 
           <div className="h-5 w-px bg-gray-800" />
 
@@ -3330,7 +3373,7 @@ export default function App() {
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
-              title={`Perfil de Usuario: ${currentUser?.name || "Usuario"} (@${currentUser?.username || "dev"})`}
+              title={`Account: ${currentUser?.name || "Developer"} (@${currentUser?.username || "dev"})`}
             >
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
@@ -3340,7 +3383,7 @@ export default function App() {
               </div>
               <div className="hidden md:flex flex-col text-left leading-none">
                 <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[110px] truncate">
-                  {currentUser?.name || "Mi Cuenta"}
+                  Account
                 </span>
                 <span className="text-[9px] text-sky-400 font-mono max-w-[110px] truncate">
                   {currentUser?.role ? currentUser.role.toUpperCase() : "DEV"}
@@ -3351,7 +3394,7 @@ export default function App() {
 
             {/* Dropdown Menu */}
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-64 bg-[#0b0f19] border border-sky-800/80 rounded-xl shadow-2xl py-2 z-[100] animate-in fade-in duration-150">
+              <div className="absolute right-0 top-full mt-2 w-64 bg-[#0b0f19] border border-sky-800/80 rounded-xl shadow-2xl py-2 z-[100] animate-in fade-in duration-150">
                 <div className="px-3.5 py-2.5 border-b border-gray-800/80">
                   <div className="flex items-center gap-2.5">
                     <div
@@ -3361,9 +3404,9 @@ export default function App() {
                       {(currentUser?.name || "W")[0].toUpperCase()}
                     </div>
                     <div className="overflow-hidden">
-                      <div className="font-bold text-xs text-white truncate">{currentUser?.name}</div>
-                      <div className="text-[10px] font-mono text-sky-400 truncate">@{currentUser?.username}</div>
-                      <div className="text-[10px] text-gray-400 truncate">{currentUser?.role}</div>
+                      <div className="font-bold text-xs text-white truncate">{currentUser?.name || "Developer"}</div>
+                      <div className="text-[10px] font-mono text-sky-400 truncate">@{currentUser?.username || "dev"}</div>
+                      <div className="text-[10px] text-gray-400 truncate">{currentUser?.role || "Developer"}</div>
                     </div>
                   </div>
                   <div className="mt-2 text-[10px] font-mono text-gray-400 bg-gray-950 px-2 py-1 rounded border border-gray-800/80 truncate">
@@ -3380,7 +3423,7 @@ export default function App() {
                     className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
                   >
                     <Folder size={14} className="text-amber-400" />
-                    <span>Mis Microservicios ({userProjects.length})</span>
+                    <span>My Microservices ({userProjects.length})</span>
                   </button>
 
                   <button
@@ -3392,7 +3435,7 @@ export default function App() {
                     className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
                   >
                     <FolderPlus size={14} className="text-sky-400" />
-                    <span>Nuevo Microservicio</span>
+                    <span>New Microservice</span>
                   </button>
 
                   <button
@@ -3403,7 +3446,7 @@ export default function App() {
                     className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
                   >
                     <User size={14} className="text-sky-400" />
-                    <span>Conectar Servidor Central / Login</span>
+                    <span>Connect Central Server / Login</span>
                   </button>
 
                   <div className="h-px bg-gray-800/80 my-1" />
@@ -3416,7 +3459,7 @@ export default function App() {
                     className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-rose-400 hover:text-rose-200 hover:bg-rose-950/60 flex items-center gap-2 transition cursor-pointer"
                   >
                     <LogOut size={14} />
-                    <span>Cerrar Sesión</span>
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>
@@ -4380,7 +4423,7 @@ export default function App() {
                   }`}
                 >
                   <span>🧩</span>
-                  <span>Lienzo de Bloques</span>
+                  <span>Blockly Canvas</span>
                 </button>
 
                 <button
@@ -4395,7 +4438,7 @@ export default function App() {
                   }`}
                 >
                   <Code size={13} className="text-purple-400" />
-                  <span>Código & Archivos</span>
+                  <span>Code & Files</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#2b2b2b] text-gray-300 font-mono">
                     {generatedFiles.length > 0 ? generatedFiles.length : 35}
                   </span>
@@ -4410,7 +4453,7 @@ export default function App() {
                   }`}
                 >
                   <span>🎮</span>
-                  <span>Simulación Interactiva</span>
+                  <span>Live Simulation</span>
                   {isSimulating && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
                 </button>
 
@@ -4426,14 +4469,14 @@ export default function App() {
                   }`}
                 >
                   <GitMerge size={13} className="text-indigo-400" />
-                  <span>Flujo (Mermaid DAG)</span>
+                  <span>Flow (Mermaid DAG)</span>
                 </button>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowSidebar(!showSidebar)}
-                  title={showSidebar ? "Ocultar panel lateral (Ctrl+B)" : "Mostrar panel lateral (Ctrl+B)"}
+                  title={showSidebar ? "Hide sidebar (Ctrl+B)" : "Show sidebar (Ctrl+B)"}
                   className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2a2d2e] transition cursor-pointer"
                 >
                   <PanelLeft size={14} />
@@ -4446,50 +4489,50 @@ export default function App() {
             <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-10 max-w-[calc(100%-2rem)] overflow-x-auto no-scrollbar">
               <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 font-medium border-r border-gray-800 mr-1 hidden sm:flex select-none">
                 <Move size={12} className="text-sky-400" />
-                <span>Arrastra el fondo para mover lienzo</span>
+                <span>Drag canvas to pan</span>
               </div>
 
               <button
                 onClick={centerWorkspace}
-                title="Centrar lienzo en el origen de los bloques"
+                title="Center canvas on blocks origin"
                 className="px-2.5 py-1.5 hover:bg-gray-800 text-sky-400 hover:text-sky-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <Maximize2 size={13} />
-                <span>Centrar</span>
+                <span>Center</span>
               </button>
 
               <button
                 onClick={zoomFitWorkspace}
-                title="Ajustar zoom al tamaño de los bloques"
+                title="Zoom to fit blocks"
                 className="px-2.5 py-1.5 hover:bg-gray-800 text-teal-400 hover:text-teal-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <Search size={13} />
-                <span>Ajustar</span>
+                <span>Fit</span>
               </button>
 
               <button
                 onClick={collapseAllBlocksInWorkspace}
-                title="Colapsar todos los bloques del lienzo para visualización compacta"
+                title="Collapse all blocks on canvas"
                 className="px-2.5 py-1.5 hover:bg-gray-800 text-amber-400 hover:text-amber-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <Minimize2 size={13} />
-                <span>Colapsar</span>
+                <span>Collapse</span>
               </button>
 
               <button
                 onClick={expandAllBlocksInWorkspace}
-                title="Expandir todos los bloques del lienzo"
+                title="Expand all blocks on canvas"
                 className="px-2.5 py-1.5 hover:bg-gray-800 text-emerald-400 hover:text-emerald-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <ChevronDown size={13} />
-                <span>Expandir</span>
+                <span>Expand</span>
               </button>
 
               <div className="w-[1px] h-4 bg-gray-800 mx-0.5" />
 
               <button
                 onClick={() => undoWorkspace(false)}
-                title="Deshacer última acción (Ctrl+Z)"
+                title="Undo last action (Ctrl+Z)"
                 className="p-1.5 hover:bg-gray-800 text-gray-300 hover:text-white rounded-lg transition cursor-pointer"
               >
                 <Undo size={14} />
@@ -4497,7 +4540,7 @@ export default function App() {
 
               <button
                 onClick={clearWorkspace}
-                title="Limpiar todo el lienzo"
+                title="Clear entire canvas"
                 className="p-1.5 hover:bg-rose-950 text-rose-400 hover:text-rose-300 rounded-lg transition cursor-pointer"
               >
                 <Trash2 size={14} />
@@ -4507,18 +4550,18 @@ export default function App() {
 
               <button
                 onClick={() => setShowFaqModal(true)}
-                title="Guía de Arquitectura y FAQ"
+                title="Architecture Guide & FAQ"
                 className="px-2.5 py-1.5 hover:bg-purple-950/70 text-purple-400 hover:text-purple-300 rounded-lg flex items-center gap-1 text-xs font-semibold transition cursor-pointer"
               >
                 <BookOpen size={13} />
-                <span>Guía</span>
+                <span>Guide</span>
               </button>
             </div>
 
             {/* Blockly Workspace + Live Split View + Inspector Component */}
             <div className="flex-1 w-full h-full flex overflow-hidden relative">
               {/* Workspace Container */}
-              <div className={`h-full flex flex-col relative transition-all duration-200 ${isSplitView ? "w-1/2 border-r border-[#2d2d2d]" : "flex-1"}`}>
+              <div className={`h-full flex flex-col relative ${isSplitView ? "w-1/2 border-r border-[#2d2d2d]" : "w-full flex-1"}`}>
                 <BlocklyComponent
                   onBlockSelected={handleBlockSelected}
                   onWorkspaceChange={handleWorkspaceChanged}
@@ -5128,10 +5171,10 @@ export default function App() {
                         <button
                           onClick={() => setReadmePreviewMode(!readmePreviewMode)}
                           className="px-2 py-0.5 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-mono flex items-center gap-1.5 transition cursor-pointer"
-                          title="Alternar entre editor de código y vista previa renderizada"
+                          title={readmePreviewMode ? "Switch to Monaco Code Editor" : "Switch to Rendered Markdown Preview"}
                         >
                           {readmePreviewMode ? <Code size={12} /> : <Eye size={12} />}
-                          <span>{readmePreviewMode ? "Código" : "Vista Previa"}</span>
+                          <span>{readmePreviewMode ? "Code" : "Preview"}</span>
                         </button>
                       )}
 
@@ -5139,10 +5182,10 @@ export default function App() {
                         <button
                           onClick={handleStartEditingFile}
                           className="px-2.5 py-0.5 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-                          title="Editar este archivo"
+                          title="Edit this file"
                         >
                           <Edit3 size={12} />
-                          <span>Editar</span>
+                          <span>Edit</span>
                         </button>
                       )}
 
@@ -5290,14 +5333,14 @@ export default function App() {
                             <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl px-4 py-2.5 flex items-center justify-between text-xs">
                               <span className="font-bold text-sky-400 flex items-center gap-2">
                                 <BookOpen size={14} />
-                                <span>Vista Previa de {githubViewingFile.path}</span>
+                                <span>Preview of {githubViewingFile.path}</span>
                               </span>
                               <button
                                 onClick={() => setReadmePreviewMode(false)}
                                 className="text-xs text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
                               >
                                 <Code size={12} />
-                                <span>Volver al editor de código</span>
+                                <span>Back to code editor</span>
                               </button>
                             </div>
                             <div className="bg-[#1e1e1e] border border-[#3c3c3c] border-t-0 rounded-b-xl p-8 shadow-2xl text-gray-200">
@@ -5576,7 +5619,7 @@ export default function App() {
                       }`}
                     >
                       <FileText size={12} className="text-sky-400" />
-                      <span>SALIDA</span>
+                      <span>OUTPUT</span>
                     </button>
 
                     <button
@@ -5588,7 +5631,7 @@ export default function App() {
                       }`}
                     >
                       <AlertTriangle size={12} className="text-amber-400" />
-                      <span>PROBLEMAS</span>
+                      <span>PROBLEMS</span>
                       <span className="text-[10px] bg-gray-800 text-gray-300 px-1 rounded">0</span>
                     </button>
 
@@ -5601,7 +5644,7 @@ export default function App() {
                       }`}
                     >
                       <Bug size={12} className="text-rose-400" />
-                      <span>DEPURACIÓN</span>
+                      <span>DEBUGGER</span>
                       {breakpoints.size > 0 && (
                         <span className="text-[10px] bg-rose-950 text-rose-300 border border-rose-800 px-1 rounded">
                           {breakpoints.size} 🔴
@@ -5644,7 +5687,7 @@ export default function App() {
                       }`}
                     >
                       <History size={12} className="text-teal-400" />
-                      <span>HISTORIAL</span>
+                      <span>HISTORY</span>
                       <span className="text-[10px] bg-teal-950/70 text-teal-300 border border-teal-800 px-1 rounded">
                         {simulationHistory.length}
                       </span>
@@ -6117,7 +6160,7 @@ export default function App() {
               <button
                 onClick={() => setBottomPanelOpen(!bottomPanelOpen)}
                 className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
-                title="Alternar Panel Inferior (Ctrl+`)"
+                title="Toggle Bottom Panel (Ctrl+`)"
               >
                 <Terminal size={12} />
                 <span>Terminal</span>
@@ -6125,15 +6168,15 @@ export default function App() {
               <button
                 onClick={() => setIsSplitView(!isSplitView)}
                 className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
-                title="Alternar Vista Dividida (Ctrl+\)"
+                title="Toggle Split View (Ctrl+\)"
               >
                 <Split size={12} />
-                <span>Dividir</span>
+                <span>Split</span>
               </button>
               <button
                 onClick={() => setShowEnvModal(true)}
                 className="flex items-center gap-1 hover:bg-[#005999] px-1.5 py-0.5 rounded cursor-pointer"
-                title="Variables de Entorno (.env)"
+                title="Environment Variables (.env)"
               >
                 <Settings size={12} />
                 <span>.env</span>
@@ -6151,23 +6194,23 @@ export default function App() {
                 </>
               ) : activeMainTab === "python" ? (
                 <>
-                  <span>{getGitHubDirectoryItems(generatedFiles, githubCurrentDir).length} elementos</span>
-                  <span>Espacio de Trabajo Activo</span>
+                  <span>{getGitHubDirectoryItems(generatedFiles, githubCurrentDir).length} items</span>
+                  <span>Active Workspace</span>
                 </>
               ) : activeMainTab === "code" ? (
                 <>
-                  <span>Lienzo Blockly</span>
-                  <span>Dialecto A</span>
+                  <span>Blockly Canvas</span>
+                  <span>Dialect A</span>
                   <span>WPipe v2.5.13</span>
                 </>
               ) : activeMainTab === "simulation" ? (
                 <>
-                  <span>{isSimulating ? "Simulación en Curso (⚡)" : "Simulación en Reposo (🏁)"}</span>
-                  <span>{simSteps.length} Pasos</span>
+                  <span>{isSimulating ? "Simulation Running (⚡)" : "Simulation Idle (🏁)"}</span>
+                  <span>{simSteps.length} Steps</span>
                 </>
               ) : (
                 <>
-                  <span>Diagrama DAG Mermaid</span>
+                  <span>Mermaid DAG Flowchart</span>
                   <span>Zoom: {Math.round(mermaidZoom * 100)}%</span>
                 </>
               )}
@@ -7580,12 +7623,19 @@ export default function App() {
         </div>
       )}
 
-      {/* 15. LOCAL ENGINE STATUS & LICENSING MODAL */}
+      {/* 15. LOCAL ENGINE STATUS MODAL */}
       <ConnectEngineModal
         isOpen={showEngineModal}
         onClose={() => setShowEngineModal(false)}
         status={engineStatus}
         onRecheck={checkEngine}
+      />
+
+      {/* 16. DEDICATED PRO LICENSE & CAPABILITIES MODAL */}
+      <ProLicenseModal
+        isOpen={showProModal}
+        onClose={() => setShowProModal(false)}
+        status={engineStatus}
       />
     </div>
   );

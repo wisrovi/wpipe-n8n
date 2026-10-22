@@ -792,6 +792,9 @@ export default function App() {
   const [openFaqId, setOpenFaqId] = useState<string | null>("faq_1");
   const [faqSearch, setFaqSearch] = useState<string>("");
 
+  // Work Plan Modal
+  const [showWorkPlanModal, setShowWorkPlanModal] = useState<boolean>(false);
+
   // Flowchart View state (Interactive Pan & Zoom)
   const [mermaidCode, setMermaidCode] = useState<string>("");
   const [mermaidZoom, setMermaidZoom] = useState<number>(1.0);
@@ -4206,8 +4209,15 @@ export default function App() {
                       <span>Copiar Mermaid</span>
                     </button>
                     <button
+                      onClick={() => setShowWorkPlanModal(true)}
+                      className="w-full py-1.5 bg-blue-950/80 hover:bg-blue-900 border border-blue-800 text-blue-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                    >
+                      <FileText size={13} />
+                      <span>Ver Plan</span>
+                    </button>
+                    <button
                       onClick={() => {
-                        const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog);
+                        const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog, projectName || "main_pipeline");
                         const mdBlob = new Blob([mdPlan], { type: "text/markdown;charset=utf-8" });
                         const mdUrl = URL.createObjectURL(mdBlob);
                         const a = document.createElement("a");
@@ -4980,8 +4990,17 @@ export default function App() {
                 </button>
 
                 <button
+                  onClick={() => setShowWorkPlanModal(true)}
+                  title="Visualizar plan de ejecución y especificación de arquitectura"
+                  className="px-3 py-1.5 bg-blue-950 hover:bg-blue-900 border border-blue-800/80 text-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
+                >
+                  <FileText size={13} />
+                  <span>Ver Plan</span>
+                </button>
+
+                <button
                   onClick={() => {
-                    const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog);
+                    const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog, projectName || "main_pipeline");
                     const mdBlob = new Blob([mdPlan], { type: "text/markdown;charset=utf-8" });
                     const mdUrl = URL.createObjectURL(mdBlob);
                     const a = document.createElement("a");
@@ -6691,6 +6710,73 @@ export default function App() {
             {/* Persistence Footer */}
             <div className="text-[10px] text-gray-500 font-mono text-center pt-2 border-t border-gray-800/80">
               🔒 Workspace Aislado: ./media/workspaces/{currentUser ? (currentUser as any).id : "usuario"} • Docker Compose
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4.5 WORK PLAN & ARCHITECTURE SPECIFICATION MODAL */}
+      {showWorkPlanModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-[#0b0f19] border border-blue-800/80 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl glass-panel max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <FileText size={20} className="text-blue-400" />
+                <div>
+                  <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300 font-heading">
+                    Plan de Ejecución y Arquitectura — {projectName}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Especificación jerárquica de la máquina de estados según el diseño del lienzo visual.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog, projectName || "main_pipeline");
+                    navigator.clipboard.writeText(mdPlan);
+                    setStatusMessage("Plan de trabajo copiado al portapapeles ✓");
+                  }}
+                  className="px-3 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 hover:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Copy size={12} />
+                  <span>Copiar Markdown</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const mdPlan = getWorkPlanFromBlocklyWorkspace(catalog, projectName || "main_pipeline");
+                    const mdBlob = new Blob([mdPlan], { type: "text/markdown;charset=utf-8" });
+                    const mdUrl = URL.createObjectURL(mdBlob);
+                    const a = document.createElement("a");
+                    a.href = mdUrl;
+                    a.download = `${projectName}_work_plan.md`;
+                    a.click();
+                    setStatusMessage("Plan de trabajo (.md) descargado ✓");
+                  }}
+                  className="px-3 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Download size={12} />
+                  <span>Descargar .md</span>
+                </button>
+                <button
+                  onClick={() => setShowWorkPlanModal(false)}
+                  className="text-gray-400 hover:text-white font-bold p-1 text-lg ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4 text-xs text-gray-200">
+              <div
+                className="prose prose-invert max-w-none space-y-3 leading-relaxed"
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(
+                    getWorkPlanFromBlocklyWorkspace(catalog, projectName || "main_pipeline")
+                  ),
+                }}
+              />
             </div>
           </div>
         </div>

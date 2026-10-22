@@ -44,12 +44,12 @@ export function generateMicroserviceFiles(
 
   const imports = new Set<string>([
     "from wpipe import Pipeline, Condition, For, Parallel, Background",
-    "from app.config.settings import settings",
-    "from app.dto.context import PipelineContextDTO",
-    "from app.states.base import BaseStep",
-    "from app.states.clean_data_step import CleanDataStep",
-    "from app.states.transform_payload_step import TransformPayloadStep",
-    "from app.states.ai_sentiment_step import AISentimentStep",
+    "from config.settings import settings",
+    "from dto.context import PipelineContextDTO",
+    "from states.base import BaseStep",
+    "from states.clean_data_step import CleanDataStep",
+    "from states.transform_payload_step import TransformPayloadStep",
+    "from states.ai_sentiment_step import AISentimentStep",
   ]);
 
   const stepNamesForReadme: string[] = [];
@@ -132,17 +132,17 @@ export function generateMicroserviceFiles(
 
     const fnLower = fn.toLowerCase();
     if (fnLower.includes("transform") || fn === "TransformPayloadStep") {
-      imports.add("from app.states.transform_payload_step import TransformPayloadStep");
+      imports.add("from states.transform_payload_step import TransformPayloadStep");
       stepNamesForReadme.push("TransformPayloadStep");
       const mode = data.params?.mode || "standard";
       return `${pad}TransformPayloadStep(mode="${mode}")`;
     } else if (fnLower.includes("sentiment") || fnLower.includes("ai") || fn === "AISentimentStep") {
-      imports.add("from app.states.ai_sentiment_step import AISentimentStep");
+      imports.add("from states.ai_sentiment_step import AISentimentStep");
       stepNamesForReadme.push("AISentimentStep");
       const th = data.params?.threshold ?? 0.5;
       return `${pad}AISentimentStep(threshold=${th})`;
     } else {
-      imports.add("from app.states.clean_data_step import CleanDataStep");
+      imports.add("from states.clean_data_step import CleanDataStep");
       stepNamesForReadme.push("CleanDataStep");
       const pfx = data.params?.prefix || "clean_";
       return `${pad}CleanDataStep(prefix="${pfx}")`;
@@ -310,7 +310,7 @@ tracking:
 
   // 3. app/config/__init__.py
   const configInitPy = `"""Configuration package for ${projectName}."""
-from app.config.settings import AppSettings, settings
+from config.settings import AppSettings, settings
 
 __all__ = ["AppSettings", "settings"]
 `;
@@ -411,9 +411,9 @@ class PipelineResponseDTO(BaseModel):
   // 7. app/dto/__init__.py
   const dtoInitPy = `"""Data Transfer Objects package."""
 
-from app.dto.context import PipelineContextDTO
-from app.dto.request import PipelineRequestDTO
-from app.dto.response import PipelineResponseDTO
+from dto.context import PipelineContextDTO
+from dto.request import PipelineRequestDTO
+from dto.response import PipelineResponseDTO
 
 __all__ = ["PipelineContextDTO", "PipelineRequestDTO", "PipelineResponseDTO"]
 `;
@@ -470,7 +470,7 @@ class ProcessingService:
   // 9. app/services/__init__.py
   const servicesInitPy = `"""Business domain services package."""
 
-from app.services.business_service import ProcessingService
+from services.business_service import ProcessingService
 
 __all__ = ["ProcessingService"]
 `;
@@ -516,7 +516,7 @@ def sanitize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
   // 11. app/utils/__init__.py
   const utilsInitPy = `"""Utility helpers package."""
 
-from app.utils.helpers import generate_transaction_id, sanitize_metrics
+from utils.helpers import generate_transaction_id, sanitize_metrics
 
 __all__ = ["generate_transaction_id", "sanitize_metrics"]
 `;
@@ -557,8 +557,8 @@ from wpipe import step, to_obj  # type: ignore[import-untyped]
 from wpipe.timeout import timeout_sync  # type: ignore[import-untyped]
 from wpipe.util import object_to_dict  # type: ignore[import-untyped]
 
-from app.dto.context import PipelineContextDTO
-from app.states.base import BaseStep
+from dto.context import PipelineContextDTO
+from states.base import BaseStep
 
 
 @step(
@@ -621,9 +621,9 @@ from wpipe import step, to_obj  # type: ignore[import-untyped]
 from wpipe.timeout import timeout_sync  # type: ignore[import-untyped]
 from wpipe.util import object_to_dict  # type: ignore[import-untyped]
 
-from app.dto.context import PipelineContextDTO
-from app.services.business_service import ProcessingService
-from app.states.base import BaseStep
+from dto.context import PipelineContextDTO
+from services.business_service import ProcessingService
+from states.base import BaseStep
 
 
 @step(
@@ -682,8 +682,8 @@ from wpipe import step, to_obj  # type: ignore[import-untyped]
 from wpipe.timeout import timeout_sync  # type: ignore[import-untyped]
 from wpipe.util import object_to_dict  # type: ignore[import-untyped]
 
-from app.dto.context import PipelineContextDTO
-from app.states.base import BaseStep
+from dto.context import PipelineContextDTO
+from states.base import BaseStep
 
 
 @step(
@@ -741,10 +741,10 @@ class AISentimentStep(BaseStep):
   // 16. app/states/__init__.py
   const statesInitPy = `"""States package dynamically exporting all registered step classes."""
 
-from app.states.ai_sentiment_step import AISentimentStep
-from app.states.base import BaseStep
-from app.states.clean_data_step import CleanDataStep
-from app.states.transform_payload_step import TransformPayloadStep
+from states.ai_sentiment_step import AISentimentStep
+from states.base import BaseStep
+from states.clean_data_step import CleanDataStep
+from states.transform_payload_step import TransformPayloadStep
 
 __all__ = [
     "AISentimentStep",
@@ -766,21 +766,12 @@ from typing import Any
 from loguru import logger
 from wpipe import Background, Condition, For, Parallel, Pipeline  # type: ignore[import-untyped]
 
-from app.config.settings import settings
-from app.dto.context import PipelineContextDTO
-from app.states.ai_sentiment_step import AISentimentStep
-from app.states.base import BaseStep
-from app.states.clean_data_step import CleanDataStep
-from app.states.transform_payload_step import TransformPayloadStep
-
-# >>> [WPIPE:CUSTOM_IMPORTS:START]
-# Add custom imports or dependencies here
-# <<< [WPIPE:CUSTOM_IMPORTS:END]
-
-
-# >>> [WPIPE:CUSTOM_LOGIC:START]
-# Add custom helper functions, step transforms, or middleware here
-# <<< [WPIPE:CUSTOM_LOGIC:END]
+from config.settings import settings
+from dto.context import PipelineContextDTO
+from states.ai_sentiment_step import AISentimentStep
+from states.base import BaseStep
+from states.clean_data_step import CleanDataStep
+from states.transform_payload_step import TransformPayloadStep
 
 os.makedirs("output", exist_ok=True)
 
@@ -847,11 +838,11 @@ from wdecorators import time_execution  # type: ignore[import-untyped]
 from wpipe import ResourceMonitor, TaskTimer  # type: ignore[import-untyped]
 from wpipe.exception.api_error import ProcessError  # type: ignore[import-untyped]
 
-from app.config.settings import settings
-from app.dto.request import PipelineRequestDTO
-from app.dto.response import PipelineResponseDTO
-from app.pipelines import build_pipeline
-from app.utils.helpers import generate_transaction_id, sanitize_metrics
+from config.settings import settings
+from dto.request import PipelineRequestDTO
+from dto.response import PipelineResponseDTO
+from pipelines import build_pipeline
+from utils.helpers import generate_transaction_id, sanitize_metrics
 
 app: FastAPI = FastAPI(
     title=settings.app_name,
@@ -960,7 +951,7 @@ Provides package exports and pipeline build helper functions.
 __version__ = "1.0.0"
 __author__ = "William Rodriguez (wisrovi)"
 
-from app.pipelines import build_pipeline, execute_pipeline
+from pipelines import build_pipeline, execute_pipeline
 
 __all__ = ["build_pipeline", "execute_pipeline", "__version__", "__author__"]
 `;
@@ -971,9 +962,9 @@ __all__ = ["build_pipeline", "execute_pipeline", "__version__", "__author__"]
 import pytest
 from pydantic import ValidationError
 
-from app.dto.context import PipelineContextDTO
-from app.dto.request import PipelineRequestDTO
-from app.dto.response import PipelineResponseDTO
+from dto.context import PipelineContextDTO
+from dto.request import PipelineRequestDTO
+from dto.response import PipelineResponseDTO
 
 
 def test_context_validation() -> None:
@@ -1006,10 +997,10 @@ def test_request_response_dtos() -> None:
   // 21. app/test/test_states.py
   const testStatesPy = `"""Unit tests for WPipe Step classes."""
 
-from app.dto.context import PipelineContextDTO
-from app.states.ai_sentiment_step import AISentimentStep
-from app.states.clean_data_step import CleanDataStep
-from app.states.transform_payload_step import TransformPayloadStep
+from dto.context import PipelineContextDTO
+from states.ai_sentiment_step import AISentimentStep
+from states.clean_data_step import CleanDataStep
+from states.transform_payload_step import TransformPayloadStep
 
 
 def test_clean_data_step_mutation() -> None:
@@ -1052,7 +1043,7 @@ def test_ai_sentiment_step_execution() -> None:
   // 22. app/test/test_pipeline.py
   const testPipelinePy = `"""Integration test for declarative pipeline execution."""
 
-from app.pipelines import build_pipeline, execute_pipeline
+from pipelines import build_pipeline, execute_pipeline
 
 
 def test_build_pipeline() -> None:
@@ -1084,8 +1075,8 @@ def test_execute_pipeline_success() -> None:
 
 from fastapi.testclient import TestClient
 
-from app.config.settings import settings
-from app.main import app
+from config.settings import settings
+from main import app
 
 client: TestClient = TestClient(app)
 
@@ -1116,10 +1107,7 @@ def test_run_endpoint() -> None:
   // 24. Root tests/test_pipeline.py (Standard root runner compatibility)
   const rootTestPipelinePy = `"""Root runner for pipeline tests."""
 
-from app.test.test_pipeline import (
-    test_build_pipeline,
-    test_execute_pipeline_success,
-)
+from pipelines import build_pipeline, execute_pipeline
 
 __all__ = ["test_build_pipeline", "test_execute_pipeline_success"]
 `;
@@ -1131,6 +1119,7 @@ FROM ${dockerImage} AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \\
     PYTHONUNBUFFERED=1 \\
+    PYTHONPATH=/app/app:/app \\
     SERVICE_NAME=${projectName} \\
     SERVICE_VERSION=1.0.0 \\
     ROOT_PATH="${defaultRootPath}" \\
@@ -1344,7 +1333,8 @@ ${projectName}/
 │   └── main.py              # Entrypoint FastAPI REST y ResourceMonitor
 ├── tests/                   # Runner estándar raíz
 │   └── test_pipeline.py
-├── config.yaml              # Configuración raíz para visibilidad inmediata
+├── pytest.ini               # Configuración de runner pytest y pythonpath
+├── pyproject.toml           # Configuración estándar para Black, isort y mypy
 ├── Dockerfile               # Contenedor de producción multi-etapa
 ├── docker-compose.yml       # Orquestación Docker con healthcheck HTTP
 ├── Makefile                 # Automatización (start, stop, into, test, logs)
@@ -1431,7 +1421,27 @@ echo " Tests finished successfully in Docker! ✓"
 echo "=========================================================="
 `;
 
-  // 31. wpipe.config.json
+  // 31. pytest.ini
+  const pytestIni = `[pytest]
+pythonpath = app .
+testpaths = app/test tests
+`;
+
+  // 32. pyproject.toml
+  const pyprojectToml = `[tool.pytest.ini_options]
+pythonpath = ["app", "."]
+testpaths = ["app/test", "tests"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["config", "dto", "services", "states", "utils", "pipelines", "main", "app"]
+
+[tool.mypy]
+mypy_path = ["app"]
+explicit_package_bases = true
+`;
+
+  // 33. wpipe.config.json
   const wpipeConfigJson = `{
   "enableBackupFile": true,
   "maxSearchFiles": 500
@@ -1466,7 +1476,8 @@ echo "=========================================================="
     { path: "app/main.py", content: mainPy },
     { path: "tests/__init__.py", content: `"""Root tests runner package."""\n` },
     { path: "tests/test_pipeline.py", content: rootTestPipelinePy },
-    { path: "config.yaml", content: configYaml },
+    { path: "pytest.ini", content: pytestIni },
+    { path: "pyproject.toml", content: pyprojectToml },
     { path: "Dockerfile", content: dockerfile },
     { path: "docker-compose.yml", content: dockerCompose },
     { path: "requirements.txt", content: requirementsTxt },

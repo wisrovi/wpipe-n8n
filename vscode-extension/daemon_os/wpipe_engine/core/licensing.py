@@ -312,6 +312,8 @@ class LicenseManager:
                     "lease_expires_at": exp_dt.isoformat(),
                     "activated_at": data.get("activated_at"),
                     "is_floating": data.get("is_floating", True),
+                    "signed_token": lease_token,
+                    "public_key_hex": self.public_key_hex,
                     "message": f"Plan {plan.capitalize()} Activo — {msg}",
                 }
             else:

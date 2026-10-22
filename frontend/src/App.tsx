@@ -155,6 +155,16 @@ export interface ProjectDetail {
   updated_at: string;
 }
 
+export const DEFAULT_DEV_USER: UserProfile = {
+  id: "local_dev",
+  username: "william.rodriguez",
+  name: "William Rodriguez",
+  role: "admin",
+  avatar: "",
+  avatar_color: "#0284c7",
+  created_at: "2026-01-01T00:00:00.000Z",
+};
+
 interface ParamSpec {
   name: string;
   annotation?: string;
@@ -734,9 +744,9 @@ export default function App() {
   const [categorySearch, setCategorySearch] = useState<string>("");
 
   // Multi-Tenant User & Projects State
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(DEFAULT_DEV_USER);
   const [sessionToken, setSessionToken] = useState<string | null>(() => localStorage.getItem("studio_session_token"));
-  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(false);
   const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
   const [userProjects, setUserProjects] = useState<ProjectSummary[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -744,6 +754,7 @@ export default function App() {
   const [storageSource, setStorageSource] = useState<"engine" | "browser" | "cloud">("engine");
 
   // Natural Login / Register Form State
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [loginUsername, setLoginUsername] = useState<string>("");
   const [loginPassword, setLoginPassword] = useState<string>("");
@@ -1146,17 +1157,11 @@ export default function App() {
     const token = localStorage.getItem("studio_session_token");
 
     if (!token) {
-      if (isVSCode) {
-        // Transparent auto-authentication in VS Code context: developer lands directly on interactive canvas
-        const defaultDevUser: UserProfile = {
-          id: "local_dev",
-          username: "william.rodriguez",
-          name: "William Rodriguez",
-          role: "admin",
-          avatar: "",
-          created_at: new Date().toISOString(),
-        };
+      setCurrentUser(DEFAULT_DEV_USER);
+      setIsCheckingAuth(false);
+      fetchUserProjects();
 
+      if (isVSCode) {
         fetch("/api/v1/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1170,26 +1175,15 @@ export default function App() {
               setSessionToken(data.token);
               setCurrentUser(data.user);
               fetchUserProjects(data.user.id, data.token);
-            } else {
-              setCurrentUser(defaultDevUser);
             }
           })
-          .catch(() => {
-            setCurrentUser(defaultDevUser);
-          })
-          .finally(() => {
-            setIsCheckingAuth(false);
-          });
-        return;
+          .catch(() => {});
       }
 
-      setIsCheckingAuth(false);
-      setCurrentUser(null);
-      // Fetch public users list for quick demo presets
       fetch("/api/v1/auth/users")
         .then((res) => (res.ok ? res.json() : []))
         .then((users: UserProfile[]) => {
-          if (Array.isArray(users)) setAvailableUsers(users);
+          if (Array.isArray(users) && users.length > 0) setAvailableUsers(users);
         })
         .catch(() => {});
       return;
@@ -1212,17 +1206,18 @@ export default function App() {
         fetchUserProjects(user.id, token);
       })
       .catch(() => {
-        // Token was invalid or expired
+        // Token was invalid or server offline: fallback smoothly to default local dev profile
         localStorage.removeItem("studio_session_token");
         setSessionToken(null);
-        setCurrentUser(null);
+        setCurrentUser(DEFAULT_DEV_USER);
+        fetchUserProjects();
       })
       .finally(() => {
         setIsCheckingAuth(false);
         fetch("/api/v1/auth/users")
           .then((res) => (res.ok ? res.json() : []))
           .then((users: UserProfile[]) => {
-            if (Array.isArray(users)) setAvailableUsers(users);
+            if (Array.isArray(users) && users.length > 0) setAvailableUsers(users);
           })
           .catch(() => {});
       });
@@ -1625,6 +1620,7 @@ export default function App() {
       localStorage.setItem("studio_user_id", data.user.id);
       setSessionToken(data.token);
       setCurrentUser(data.user);
+      setShowAuthModal(false);
       setLoginPassword("");
       setStatusMessage(`Bienvenido de nuevo, ${data.user.name} ✓`);
 
@@ -1674,6 +1670,7 @@ export default function App() {
       localStorage.setItem("studio_user_id", data.user.id);
       setSessionToken(data.token);
       setCurrentUser(data.user);
+      setShowAuthModal(false);
       setRegisterUsername("");
       setRegisterPassword("");
       setRegisterName("");
@@ -1716,12 +1713,12 @@ export default function App() {
     localStorage.removeItem("studio_session_token");
     localStorage.removeItem("studio_user_id");
     setSessionToken(null);
-    setCurrentUser(null);
+    setCurrentUser(DEFAULT_DEV_USER);
     setActiveProjectId(null);
-    setUserProjects([]);
+    fetchUserProjects();
     setShowUserMenu(false);
     setShowProjectsModal(false);
-    setStatusMessage("Sesión finalizada. Hasta pronto.");
+    setStatusMessage("Sesión local restaurada ✓");
   };
 
   // Load Python Preview when switching to python tab
@@ -3183,6 +3180,17 @@ export default function App() {
                   >
                     <FolderPlus size={14} className="text-sky-400" />
                     <span>Nuevo Microservicio</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      setShowAuthModal(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-200 hover:text-white hover:bg-sky-950/60 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <User size={14} className="text-sky-400" />
+                    <span>Conectar Servidor Central / Login</span>
                   </button>
 
                   <div className="h-px bg-gray-800/80 my-1" />
@@ -6144,14 +6152,27 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. NATURAL FULL-SCREEN LOGIN / REGISTRATION OVERLAY */}
-      {!currentUser && window.self === window.top && !window.location.search.includes("mode=vscode") && (
-        <div className="fixed inset-0 z-[9999] bg-[#07090e] flex flex-col items-center justify-center p-4 select-none animate-in fade-in duration-200 overflow-y-auto w-screen h-screen">
+      {/* 5. NATURAL LOGIN / REGISTRATION MODAL */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-4 select-none animate-in fade-in duration-200 overflow-y-auto">
           {/* Subtle glowing backdrops */}
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="w-full max-w-md bg-[#0b0f19]/95 border border-sky-800/70 rounded-2xl p-7 shadow-2xl backdrop-blur-xl relative z-10 flex flex-col space-y-4 my-auto">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAuthModal(false);
+                setAuthError(null);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white font-bold p-1.5 text-sm rounded-lg hover:bg-gray-800/80 transition cursor-pointer"
+              title="Cerrar modal"
+            >
+              ✕
+            </button>
+
             {/* Brand Header */}
             <div className="text-center space-y-1.5">
               <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-sky-500/25 mb-2">

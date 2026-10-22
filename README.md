@@ -38,6 +38,10 @@ Si algo falla, no hay ZIP.
 - **PrismJS (`prismjs`)**: Motor de resaltado de sintaxis en tiempo real para Python, YAML, Dockerfile, Makefile, Bash y JSON con tema Tomorrow Night y editor superpuesto (live overlay).
 - **Zod**: Validación de esquemas del IR en el frontend espejo de Pydantic.
 - **Vite & Tailwind CSS**: Bundler ultrarrápido, utilidades CSS y componentes con tema oscuro profesional estilo Scratch 3.0 / Scratux.
+- **Progressive Web App (PWA) & Service Worker**: Manifiesto web estandarizado (`manifest.webmanifest`) e iconos vectoriales/rasterizados para instalación nativa como aplicación independiente de escritorio y móvil. Service Worker dedicado (`sw.js`) para cacheo y carga offline instantánea del lienzo de diseño visual.
+- **WebCrypto API & Ed25519 Criptográfico**: Verificación criptográfica en el navegador con algoritmos asimétricos nativos (`window.crypto.subtle.verify`) de tokens JWS firmados con curva Ed25519 por la clave pública soberana de wisrovi.dev, evitando manipulaciones y garantizando el nivel de licencia (Free / Pro).
+- **Puente Web-to-Local & W3C Private Network Access (PNA)**: Protocolo de comunicación seguro entre la PWA alojada en HTTPS y el daemon local de sistema `wpipe-engine` (`http://127.0.0.1:49152`) con cabeceras `Access-Control-Allow-Private-Network: true`, deep links a VS Code (`vscode://...`) y widgets reactivos de telemetría local.
+- **Cloudflare Pages**: Despliegue global serverless de alta disponibilidad en el edge (`https://studio.wisrovi.dev` y `https://wpipe-studio.pages.dev`) con coste 0 €/mes y latencias ultrabajas.
 - **Pytest & Pytest-Cov**: Suite de pruebas automatizadas con validación de cobertura de código (>80%).
 - **Docker Sandbox**: Entorno aislado y efímero para la ejecución de pruebas y verificación de calidad.
 
@@ -146,9 +150,20 @@ El ecosistema de **WPipe Studio** integra tecnologías modernas orientadas a ren
 
 | Capa | Tecnologías y Librerías Clave |
 |------|--------------------------------|
-| **Frontend** | **React 18** (SPA reactiva), **TypeScript** (tipado estricto), **Vite** (bundler de alto rendimiento), **Tailwind CSS** (sistema de diseño atómico), **Google Blockly** (motor de lienzo de bloques Scratch), **Mermaid JS** (renderizado de DAG con pan & zoom), **PrismJS** (coloreado sintáctico en vivo), **Marked** (motor de renderizado GFM de READMEs y alertas), **Lucide React** (iconografía VS Code). |
-| **Backend & Orquestación** | **FastAPI** (framework API asíncrono Python 3.11), **Uvicorn** (servidor ASGI), **WPipe** (`>=2.5.13`, motor de pipelines core), **WPipe Steps** (`>=1.0.2`, catálogo oficial de pasos), **Pydantic v2 & Pydantic-Settings** (validación de esquemas y configuración), **WPostgreSQL** (capa DAL oficial del ecosistema), **WSQLite** (persistencia y transacciones ligeras), **Psycopg 3 & Psycopg-Pool** (driver PostgreSQL nativo con pool thread-safe), **Pytest** (suite de pruebas unitarias y regresión). |
-| **Infraestructura & Contenedores** | **Docker** & **Docker Compose** (orquestación multi-contenedor), **PostgreSQL 15** (base de datos relacional empresarial), **PgAdmin 4** (consola web de administración de datos en puerto 1717), **Nginx Alpine** (servidor web y reverse-proxy de producción), **Volúmenes Persistentes Host** (`./media` para microservicios y `./enviroment/db` para PostgreSQL). |
+| **Frontend & PWA** | **React 18** (SPA reactiva), **TypeScript** (tipado estricto), **Vite** (bundler de alto rendimiento), **Tailwind CSS** (sistema de diseño atómico), **Google Blockly** (motor de lienzo de bloques Scratch), **Mermaid JS** (renderizado de DAG con pan & zoom), **PrismJS** (coloreado sintáctico en vivo), **Marked** (motor de renderizado GFM de READMEs y alertas), **Lucide React** (iconografía VS Code), **PWA Service Worker** (`sw.js` cache offline), **WebCrypto API** (verificación criptográfica Ed25519 nativa). |
+| **Backend & Daemon Local** | **FastAPI** (framework API asíncrono Python 3.11), **Uvicorn** (servidor ASGI), **WPipe** (`>=2.5.13`, motor de pipelines core), **WPipe Engine Daemon** (servidor local en `127.0.0.1:49152` y UDS `/tmp/wpipe.sock` con W3C Private Network Access), **WPipe Steps** (`>=1.0.2`, catálogo oficial de pasos), **Pydantic v2 & Pydantic-Settings** (validación de esquemas y configuración), **WPostgreSQL** (capa DAL oficial del ecosistema), **WSQLite** (persistencia y transacciones ligeras), **Psycopg 3 & Psycopg-Pool** (driver PostgreSQL nativo con pool thread-safe), **Pytest** (suite de pruebas unitarias y regresión). |
+| **Infraestructura & Nube Edge** | **Cloudflare Pages** (`studio.wisrovi.dev` y `wpipe-studio.pages.dev`), **Cloudflare Workers & D1** (`api.wisrovi.dev`), **Docker** & **Docker Compose** (orquestación multi-contenedor), **PostgreSQL 15** (base de datos relacional empresarial), **PgAdmin 4** (consola web de administración de datos en puerto 1717), **Nginx Alpine** (servidor web y reverse-proxy de producción), **Volúmenes Persistentes Host** (`./media` para microservicios y `./enviroment/db` para PostgreSQL). |
+
+---
+
+## Arquitectura PWA y Puente Web-to-Local (Engine Bridge)
+
+WPipe Studio opera con un modelo híbrido **Cloud Web / Local Engine**:
+1. **Despliegue Serverless en Cloudflare Pages**: La aplicación frontend se sirve desde la red edge global de Cloudflare (`https://studio.wisrovi.dev` y `https://wpipe-studio.pages.dev`), sin requerir servidor central de backend para el diseño visual.
+2. **Capacidades PWA Offline**: Incluye `manifest.webmanifest`, iconos nativos y Service Worker (`sw.js`) que cachea la shell de la aplicación y recursos estáticos, permitiendo abrir y diseñar pipelines sin conexión a internet.
+3. **W3C Private Network Access (PNA)**: La aplicación web en HTTPS se conecta de forma segura con el daemon local `wpipe-engine` (`http://127.0.0.1:49152`) mediante cabeceras preflight `Access-Control-Allow-Private-Network: true`.
+4. **Verificación Criptográfica Ed25519 en Navegador**: El navegador verifica tokens JWS firmados con curva Ed25519 mediante `window.crypto.subtle.verify` contra la clave pública oficial de wisrovi.dev, garantizando que el estado de licencia Pro sea inviolable incluso si un tercero intercepta o simula el endpoint local.
+5. **Widget de Estado & Enlaces Profundos**: `EngineStatusWidget` monitoriza en la cabecera la salud del motor local y el catálogo de 196 steps, mientras `ConnectEngineModal` asiste en la conexión con deep links `vscode://wisrovi.wpipe-studio-vscode/open` e instrucciones de terminal en 1 clic.
 
 ---
 

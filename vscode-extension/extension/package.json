@@ -43,32 +43,32 @@
     "commands": [
       {
         "command": "wpipe.openCanvas",
-        "title": "WPipe: Abrir Lienzo de Bloques",
+        "title": "WPipe: Open Block Canvas",
         "category": "WPipe"
       },
       {
         "command": "wpipe.newPipeline",
-        "title": "WPipe: Crear Nuevo Pipeline Visual",
+        "title": "WPipe: Create New Visual Pipeline",
         "category": "WPipe"
       },
       {
         "command": "wpipe.activateLicense",
-        "title": "WPipe: Activar Clave de Licencia Pro",
+        "title": "WPipe: Activate Pro License Key",
         "category": "WPipe"
       },
       {
         "command": "wpipe.checkLicenseStatus",
-        "title": "WPipe: Ver Estado de Licencia",
+        "title": "WPipe: Check License Status",
         "category": "WPipe"
       },
       {
         "command": "wpipe.compileCurrentPipeline",
-        "title": "WPipe: Compilar Pipeline a Python",
+        "title": "WPipe: Compile Pipeline to Python",
         "category": "WPipe"
       },
       {
         "command": "wpipe.startDaemon",
-        "title": "WPipe: Iniciar Motor Nativo (wpipe-engine)",
+        "title": "WPipe: Start Native Engine (wpipe-engine)",
         "category": "WPipe"
       }
     ],
@@ -93,29 +93,28 @@
         "wpipe.daemonPath": {
           "type": "string",
           "default": "",
-          "description": "Ruta absoluta al binario ejecutable wpipe-engine (dejar vacío para auto-detectar)."
+          "description": "Absolute path to the wpipe-engine executable binary (leave empty to auto-detect)."
         },
         "wpipe.daemonTransport": {
           "type": "string",
           "enum": ["auto", "socket", "http"],
           "default": "auto",
-          "description": "Protocolo de transporte IPC para hablar con el daemon local."
+          "description": "IPC transport protocol to communicate with local daemon."
         },
         "wpipe.apiEndpoint": {
           "type": "string",
           "default": "https://api.wisrovi.dev",
-          "description": "Servidor de autoridad de licencias Cloudflare."
+          "description": "Cloudflare license authority endpoint."
         },
         "wpipe.canvasUrl": {
           "type": "string",
           "default": "http://127.0.0.1:49152",
-          "description": "URL base del frontend del lienzo visual WPipe Studio (por defecto http://127.0.0.1:49152 servido localmente por wpipe-engine, sin necesidad de Docker)."
+          "description": "Base URL of the WPipe Studio visual canvas frontend (defaults to local http://127.0.0.1:49152 served by wpipe-engine, fallback to https://studio.wisrovi.dev)."
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },

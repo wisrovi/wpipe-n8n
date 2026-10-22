@@ -108,6 +108,13 @@ import {
   EngineStatus,
   DEFAULT_ENGINE_PORT,
   getEngineApiUrl,
+  fetchProjectsHybrid,
+  loadProjectHybrid,
+  saveProjectHybrid,
+  duplicateProjectHybrid,
+  deleteProjectHybrid,
+  exportProjectToWpipeFile,
+  parseWpipeFileContent,
 } from "./lib/engineBridge";
 
 export interface UserProfile {
@@ -734,6 +741,7 @@ export default function App() {
   const [userProjects, setUserProjects] = useState<ProjectSummary[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
+  const [storageSource, setStorageSource] = useState<"engine" | "browser" | "cloud">("engine");
 
   // Natural Login / Register Form State
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -1220,22 +1228,12 @@ export default function App() {
       });
   }, []);
 
-  // Fetch Projects for a Specific User
+  // Fetch Projects using Hybrid Engine / Browser Dispatcher
   const fetchUserProjects = async (userId?: string, tokenOverride?: string) => {
-    const targetUid = userId || currentUser?.id;
-    if (!targetUid) return;
     try {
-      const headers: Record<string, string> = { "X-User-ID": targetUid };
-      const token = tokenOverride || sessionToken || localStorage.getItem("studio_session_token");
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-        headers["X-Session-Token"] = token;
-      }
-      const res = await fetch("/api/v1/projects", { headers });
-      if (res.ok) {
-        const data: ProjectSummary[] = await res.json();
-        setUserProjects(data);
-      }
+      const res = await fetchProjectsHybrid(engineStatus.connected, engineStatus.port);
+      setUserProjects(res.projects);
+      setStorageSource(res.source);
     } catch (err) {
       console.error("Error fetching projects:", err);
     }
@@ -1243,14 +1241,10 @@ export default function App() {
 
   // Open / Load a Microservice Project into Workspace
   const handleOpenProject = async (projectId: string) => {
-    if (!currentUser) return;
     try {
       setStatusMessage("Cargando microservicio...");
-      const res = await fetch(`/api/v1/projects/${projectId}`, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error("No se pudo cargar el microservicio");
-      const project: ProjectDetail = await res.json();
+      const res = await loadProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
+      const project: ProjectDetail = res.project;
       setActiveProjectId(project.id);
       setProjectName(project.name);
       setCustomDockerImage(project.docker_image || "python:3.11-slim");
@@ -1268,7 +1262,7 @@ export default function App() {
       }
       loadSimulationHistory(project.id);
       loadProjectEnv(project.id);
-      setStatusMessage(`Microservicio '${project.name}' cargado con éxito ✓`);
+      setStatusMessage(`Microservicio '${project.name}' cargado con éxito (${res.source === "engine" ? "Local PC" : "Navegador"}) ✓`);
       setShowProjectsModal(false);
     } catch (err: any) {
       setStatusMessage(`Error: ${err.message}`);
@@ -1440,11 +1434,10 @@ export default function App() {
     }
   };
 
-  // Save Current Microservice into User Workspace
+  // Save Current Microservice into Local Workspace (Hybrid Engine / Browser)
   const handleSaveProject = async () => {
-    if (!currentUser) return;
     setIsSavingProject(true);
-    setStatusMessage("Guardando microservicio en tu espacio de trabajo...");
+    setStatusMessage("Guardando microservicio...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
     const workspaceState = getWorkspaceStateJson();
     if (workspaceState) {
@@ -1452,45 +1445,24 @@ export default function App() {
     }
 
     try {
-      if (activeProjectId) {
-        // Update existing project
-        const res = await fetch(`/api/v1/projects/${activeProjectId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(),
-          },
-          body: JSON.stringify({
-            name: projectName,
-            canvas_ir: canvasIr,
-            generated_files: generatedFiles,
-          }),
-        });
-        if (!res.ok) throw new Error("Error al actualizar microservicio");
-        await fetchUserProjects(currentUser.id);
-        setStatusMessage(`Microservicio '${projectName}' guardado ✓`);
-      } else {
-        // Create new project
-        const res = await fetch("/api/v1/projects", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(),
-          },
-          body: JSON.stringify({
-            name: projectName,
-            description: `Microservicio ${projectName} creado desde el lienzo`,
-            protocol: "fastapi",
-            canvas_ir: canvasIr,
-            generated_files: generatedFiles,
-          }),
-        });
-        if (!res.ok) throw new Error("Error al crear microservicio");
-        const created: ProjectDetail = await res.json();
-        setActiveProjectId(created.id);
-        await fetchUserProjects(currentUser.id);
-        setStatusMessage(`Microservicio '${created.name}' creado y guardado ✓`);
+      const res = await saveProjectHybrid(
+        {
+          id: activeProjectId,
+          name: projectName,
+          description: `Microservicio ${projectName} guardado desde el lienzo`,
+          protocol: "fastapi",
+          docker_image: customDockerImage,
+          canvas_ir: canvasIr,
+          generated_files: generatedFiles,
+        },
+        engineStatus.connected,
+        engineStatus.port
+      );
+      if (res.project?.id) {
+        setActiveProjectId(res.project.id);
       }
+      await fetchUserProjects();
+      setStatusMessage(`Microservicio '${projectName}' guardado ✓ (${res.source === "engine" ? "Local PC ~/.wpipe" : "Navegador"})`);
     } catch (err: any) {
       setStatusMessage(`Error guardando: ${err.message}`);
     } finally {
@@ -1501,7 +1473,7 @@ export default function App() {
   // Create New Microservice from Modal
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !newProjectName.trim()) return;
+    if (!newProjectName.trim()) return;
     try {
       const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
       const workspaceState = getWorkspaceStateJson();
@@ -1509,30 +1481,27 @@ export default function App() {
         (canvasIr as any).workspace_state = workspaceState;
       }
       const cleanName = newProjectName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
-      const res = await fetch("/api/v1/projects", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify({
+      const res = await saveProjectHybrid(
+        {
           name: cleanName,
           description: newProjectDesc.trim() || `Microservicio ${cleanName}`,
+          docker_image: newProjectDockerImage,
           protocol: "fastapi",
           canvas_ir: canvasIr,
           generated_files: generatedFiles,
-        }),
-      });
-      if (!res.ok) throw new Error("Error al crear microservicio");
-      const created: ProjectDetail = await res.json();
+        },
+        engineStatus.connected,
+        engineStatus.port
+      );
+      const created = res.project;
       setActiveProjectId(created.id);
       setProjectName(created.name);
       setCustomDockerImage(created.docker_image || "python:3.11-slim");
-      await fetchUserProjects(currentUser.id);
+      await fetchUserProjects();
       setIsCreatingProject(false);
       setNewProjectName("");
       setNewProjectDesc("");
-      setStatusMessage(`Microservicio '${created.name}' creado en tu espacio privado ✓`);
+      setStatusMessage(`Microservicio '${created.name}' creado con éxito (${res.source === "engine" ? "Local PC ~/.wpipe" : "Navegador"}) ✓`);
       setShowProjectsModal(false);
     } catch (err: any) {
       setStatusMessage(`Error al crear: ${err.message}`);
@@ -1541,17 +1510,11 @@ export default function App() {
 
   // Duplicate an Existing Microservice
   const handleDuplicateProject = async (projectId: string) => {
-    if (!currentUser) return;
     try {
       setStatusMessage("Duplicando microservicio...");
-      const res = await fetch(`/api/v1/projects/${projectId}/duplicate`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error("Error al duplicar");
-      const duplicated: ProjectDetail = await res.json();
-      await fetchUserProjects(currentUser.id);
-      setStatusMessage(`Microservicio duplicado como '${duplicated.name}' ✓`);
+      const res = await duplicateProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
+      await fetchUserProjects();
+      setStatusMessage(`Microservicio duplicado como '${res.project?.name || "copia"}' ✓`);
     } catch (err: any) {
       setStatusMessage(`Error al duplicar: ${err.message}`);
     }
@@ -1559,22 +1522,74 @@ export default function App() {
 
   // Delete an Existing Microservice
   const handleDeleteProject = async (projectId: string, projName: string) => {
-    if (!currentUser) return;
     if (!window.confirm(`¿Estás seguro de eliminar permanentemente el microservicio '${projName}'?`)) return;
     try {
-      const res = await fetch(`/api/v1/projects/${projectId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error("Error al eliminar");
+      await deleteProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       if (activeProjectId === projectId) {
         setActiveProjectId(null);
       }
-      await fetchUserProjects(currentUser.id);
-      setStatusMessage(`Microservicio '${projName}' eliminado de tu espacio`);
+      await fetchUserProjects();
+      setStatusMessage(`Microservicio '${projName}' eliminado`);
     } catch (err: any) {
       setStatusMessage(`Error al eliminar: ${err.message}`);
     }
+  };
+
+  // Export current canvas/microservice as .wpipe file
+  const handleExportWpipe = () => {
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    const workspaceState = getWorkspaceStateJson();
+    if (workspaceState) {
+      (canvasIr as any).workspace_state = workspaceState;
+    }
+    exportProjectToWpipeFile({
+      id: activeProjectId || `proj_${Date.now()}`,
+      name: projectName,
+      description: `Microservicio ${projectName}`,
+      owner_id: currentUser?.id || "local_dev",
+      docker_image: customDockerImage,
+      protocol: "fastapi",
+      canvas_ir: canvasIr,
+      generated_files: generatedFiles,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    setStatusMessage(`Archivo '${projectName}.wpipe' descargado ✓`);
+  };
+
+  // Import a .wpipe file into workspace
+  const handleImportWpipeFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const project = parseWpipeFileContent(text);
+        setActiveProjectId(project.id);
+        setProjectName(project.name);
+        setCustomDockerImage(project.docker_image || "python:3.11-slim");
+        const files = (project.generated_files && project.generated_files.length > 0)
+          ? project.generated_files
+          : (project.files || []);
+        if (files.length > 0) {
+          setGeneratedFiles(files);
+          setSelectedFileIdx(0);
+        }
+        if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
+          loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+        }
+        // Save imported project
+        await saveProjectHybrid(project, engineStatus.connected, engineStatus.port);
+        await fetchUserProjects();
+        setStatusMessage(`Archivo '${file.name}' importado con éxito ✓`);
+        setShowProjectsModal(false);
+      } catch (err: any) {
+        alert(`Error al importar archivo .wpipe: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   // Natural Login with Username and Password
@@ -2472,6 +2487,17 @@ export default function App() {
                 </button>
 
                 <div className="my-1 border-t border-gray-800" />
+
+                <button
+                  onClick={handleExportWpipe}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer"
+                >
+                  <Download size={15} className="text-sky-400" />
+                  <div>
+                    <div className="font-semibold">Exportar Archivo (.wpipe)</div>
+                    <div className="text-[10px] text-gray-400">Compatible con VS Code y Web</div>
+                  </div>
+                </button>
 
                 <button
                   onClick={handleSaveJson}
@@ -5859,13 +5885,22 @@ export default function App() {
                     <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
                       Mis Microservicios & Proyectos
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 flex items-center gap-1">
-                      <ShieldCheck size={11} /> Aislamiento Multi-Tenant Activo
-                    </span>
+                    {storageSource === "engine" ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 flex items-center gap-1 shadow-sm">
+                        <ShieldCheck size={11} /> 🟢 Local PC (~/.wpipe/workspaces)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 flex items-center gap-1 shadow-sm">
+                        <ShieldCheck size={11} /> 🌐 Navegador Offline (IndexedDB)
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400">
-                    Espacio privado de <strong className="text-gray-200">{currentUser?.name || "William R."}</strong> (
-                    <span className="font-mono text-[11px] text-sky-400/90">media/workspaces/{currentUser?.id || "usr_william"}/</span>)
+                    {storageSource === "engine" ? (
+                      <>Tus microservicios físicos en disco (<span className="font-mono text-[11px] text-sky-400/90">~/.wpipe/workspaces/</span>) sincronizados con tu sistema.</>
+                    ) : (
+                      <>Proyectos locales en la memoria de este navegador. Conecta el daemon local para guardarlos en disco.</>
+                    )}
                   </p>
                 </div>
               </div>
@@ -5893,17 +5928,36 @@ export default function App() {
                 />
               </div>
 
-              <button
-                onClick={() => setIsCreatingProject(!isCreatingProject)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer ${
-                  isCreatingProject
-                    ? "bg-gray-800 hover:bg-gray-700 text-gray-200"
-                    : "bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-sky-600/30"
-                }`}
-              >
-                <FolderPlus size={14} />
-                <span>{isCreatingProject ? "Cancelar" : "Nuevo Microservicio"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Import .wpipe button */}
+                <label className="px-3 py-2 bg-gray-900 hover:bg-gray-800 border border-gray-700/80 rounded-xl text-xs font-semibold text-gray-200 hover:text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                  <FolderOpen size={14} className="text-amber-400" />
+                  <span>Importar .wpipe</span>
+                  <input type="file" accept=".wpipe,.wpipe.json,.json" onChange={handleImportWpipeFile} className="hidden" />
+                </label>
+
+                {/* Export .wpipe button */}
+                <button
+                  onClick={handleExportWpipe}
+                  className="px-3 py-2 bg-gray-900 hover:bg-gray-800 border border-gray-700/80 rounded-xl text-xs font-semibold text-gray-200 hover:text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="Descargar este microservicio como archivo .wpipe"
+                >
+                  <Download size={14} className="text-sky-400" />
+                  <span>Exportar .wpipe</span>
+                </button>
+
+                <button
+                  onClick={() => setIsCreatingProject(!isCreatingProject)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow cursor-pointer ${
+                    isCreatingProject
+                      ? "bg-gray-800 hover:bg-gray-700 text-gray-200"
+                      : "bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white shadow-sky-600/30"
+                  }`}
+                >
+                  <FolderPlus size={14} />
+                  <span>{isCreatingProject ? "Cancelar" : "Nuevo Microservicio"}</span>
+                </button>
+              </div>
             </div>
 
             {/* Inline New Project Form */}

@@ -58,7 +58,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 4. Register Commands
   context.subscriptions.push(
-    vscode.commands.registerCommand("wpipe.openCanvas", () => {
+    vscode.commands.registerCommand("wpipe.openCanvas", async () => {
       const panel = vscode.window.createWebviewPanel(
         "wpipe.fullCanvas",
         "WPipe Studio — Visual IDE",
@@ -69,7 +69,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
       );
       panel.iconPath = vscode.Uri.file(path.join(context.extensionPath, "media", "icon.svg"));
-      panel.webview.html = editorProvider.getHtmlForWebview(panel.webview);
+      await editorProvider.setupWebview(panel);
     })
   );
 

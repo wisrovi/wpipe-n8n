@@ -838,6 +838,7 @@ export default function App() {
   const [cpuUsage, setCpuUsage] = useState<number>(0);
   const [ramUsage, setRamUsage] = useState<number>(142);
   const simulationAbortRef = useRef<boolean>(false);
+  const vsCodeSyncTimerRef = useRef<any>(null);
 
   // Step Parameters Modal State
   const [configModalBlock, setConfigModalBlock] = useState<any | null>(null);
@@ -1277,6 +1278,90 @@ export default function App() {
       });
   }, []);
 
+  // VS Code Webview Bridge Event Listener
+  useEffect(() => {
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    if (!isVSCode) return;
+
+    // Notify parent VS Code webview that the studio canvas is mounted and ready
+    try {
+      window.parent.postMessage({ type: "ready" }, "*");
+    } catch {}
+
+    const handleVsCodeMessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+
+      if (msg.type === "init") {
+        try {
+          if (msg.documentUri) {
+            const rawName = msg.documentUri.split("/").pop() || "pipeline";
+            const cleanName = rawName.replace(/\.(wpipe|wpipe\.json|json)$/, "");
+            if (cleanName) setProjectName(cleanName);
+          }
+          if (msg.data && Object.keys(msg.data).length > 0) {
+            const raw = typeof msg.data === "string" ? msg.data : JSON.stringify(msg.data);
+            const project = parseWpipeFileContent(raw);
+            if (project.name && project.name !== "pipeline" && project.name !== "imported_pipeline") {
+              setProjectName(project.name);
+            }
+            if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
+              loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+            }
+            if (project.generated_files && project.generated_files.length > 0) {
+              setGeneratedFiles(project.generated_files);
+            }
+          }
+          if (msg.license) {
+            setEngineStatus((prev) => ({
+              ...prev,
+              connected: true,
+              tier: msg.license.tier || "free",
+              isPro: Boolean(msg.license.is_pro),
+              customerName: msg.license.customer_name || "VS Code Developer",
+              licenseKey: msg.license.license_key,
+              machineFingerprint: msg.license.machine_fingerprint,
+            }));
+          }
+        } catch (err: any) {
+          console.warn("Failed to load initial VS Code pipeline:", err);
+        }
+      } else if (msg.type === "update") {
+        try {
+          if (msg.data) {
+            const raw = typeof msg.data === "string" ? msg.data : JSON.stringify(msg.data);
+            const project = parseWpipeFileContent(raw);
+            if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
+              loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+            }
+          }
+        } catch {}
+      } else if (msg.type === "simulateResult") {
+        if (msg.result) {
+          setIsSimulating(false);
+          if (msg.result.logs) {
+            setSimLogs(
+              msg.result.logs.map((l: string) => ({
+                time: new Date().toLocaleTimeString(),
+                level: "INFO",
+                msg: l,
+              }))
+            );
+          }
+          if (msg.result.context_egress) {
+            setSimContext(msg.result.context_egress);
+          }
+          setStatusMessage("✓ Simulation completed via VS Code engine");
+        }
+      }
+    };
+
+    window.addEventListener("message", handleVsCodeMessage);
+    return () => {
+      window.removeEventListener("message", handleVsCodeMessage);
+    };
+  }, []);
+
   // Fetch Projects using Hybrid Engine / Browser Dispatcher
   const fetchUserProjects = async (userId?: string, tokenOverride?: string) => {
     try {
@@ -1461,7 +1546,7 @@ export default function App() {
     }
   };
 
-  // 6. Live Split View Workspace Sync
+  // 6. Live Split View Workspace Sync & VS Code Document Auto-Save
   const handleWorkspaceChanged = (ws: any) => {
     if (isSplitView) {
       try {
@@ -1480,6 +1565,41 @@ export default function App() {
           })
           .catch(() => {});
       } catch {}
+    }
+
+    // Auto-sync canvas changes to VS Code document in VS Code mode
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    if (isVSCode) {
+      if (vsCodeSyncTimerRef.current) {
+        clearTimeout(vsCodeSyncTimerRef.current);
+      }
+      vsCodeSyncTimerRef.current = setTimeout(() => {
+        try {
+          const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+          const workspaceState = getWorkspaceStateJson();
+          if (workspaceState) {
+            (canvasIr as any).workspace_state = workspaceState;
+          }
+          window.parent.postMessage(
+            {
+              type: "saveCanvas",
+              canvasIr: {
+                format: "wpipe",
+                project: {
+                  id: activeProjectId || "pipeline",
+                  name: projectName,
+                  protocol: "fastapi",
+                  docker_image: customDockerImage,
+                  canvas_ir: canvasIr,
+                  workspace_state: workspaceState,
+                  generated_files: generatedFiles,
+                },
+              },
+            },
+            "*"
+          );
+        } catch {}
+      }, 400);
     }
   };
 
@@ -1601,6 +1721,29 @@ export default function App() {
     const workspaceState = getWorkspaceStateJson();
     if (workspaceState) {
       (canvasIr as any).workspace_state = workspaceState;
+    }
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    if (isVSCode) {
+      try {
+        window.parent.postMessage(
+          {
+            type: "saveCanvas",
+            canvasIr: {
+              format: "wpipe",
+              project: {
+                id: activeProjectId || "pipeline",
+                name: projectName,
+                protocol: "fastapi",
+                docker_image: customDockerImage,
+                canvas_ir: canvasIr,
+                workspace_state: workspaceState,
+                generated_files: generatedFiles,
+              },
+            },
+          },
+          "*"
+        );
+      } catch {}
     }
     exportProjectToWpipeFile({
       id: activeProjectId || `proj_${Date.now()}`,
@@ -2066,6 +2209,37 @@ export default function App() {
   const handleGenerateZip = async () => {
     setZipLoading(true);
     setStatusMessage("Generando paquete ZIP del microservicio...");
+
+    // Also compile directly to VS Code workspace if running inside VS Code
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    if (isVSCode) {
+      try {
+        const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+        const workspaceState = getWorkspaceStateJson();
+        if (workspaceState) {
+          (canvasIr as any).workspace_state = workspaceState;
+        }
+        window.parent.postMessage(
+          {
+            type: "compile",
+            canvasIr: {
+              format: "wpipe",
+              project: {
+                id: activeProjectId || "pipeline",
+                name: projectName,
+                protocol: "fastapi",
+                docker_image: customDockerImage,
+                canvas_ir: canvasIr,
+                workspace_state: workspaceState,
+                generated_files: generatedFiles,
+              },
+            },
+          },
+          "*"
+        );
+      } catch {}
+    }
+
     try {
       let filesToZip = generatedFiles;
       if (!filesToZip || filesToZip.length === 0) {

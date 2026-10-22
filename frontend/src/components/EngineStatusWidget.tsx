@@ -5,11 +5,30 @@ import { ConnectEngineModal } from "./ConnectEngineModal";
 interface EngineStatusWidgetProps {
   status: EngineStatus;
   onRecheck: (port?: number) => void;
+  showProBadge?: boolean;
 }
+
+export const LicenseProBadge: React.FC<{ status: EngineStatus; onClick?: () => void }> = ({
+  status,
+  onClick,
+}) => {
+  if (!status.isPro) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm transition cursor-pointer"
+      title={`Licencia Pro activa para ${status.customerName || "Enterprise"} (Click para detalles)`}
+    >
+      <span>👑</span>
+      <span className="font-extrabold tracking-wide">PRO</span>
+    </button>
+  );
+};
 
 export const EngineStatusWidget: React.FC<EngineStatusWidgetProps> = ({
   status,
   onRecheck,
+  showProBadge = false,
 }) => {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -45,15 +64,9 @@ export const EngineStatusWidget: React.FC<EngineStatusWidgetProps> = ({
           )}
         </button>
 
-        {/* License Tier Badge */}
-        {status.isPro && (
-          <span
-            className="flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
-            title={`Licencia Pro de ${status.customerName}`}
-          >
-            <span>👑</span>
-            <span className="hidden md:inline">PRO</span>
-          </span>
+        {/* Optional inline badge if showProBadge is true */}
+        {showProBadge && status.isPro && (
+          <LicenseProBadge status={status} onClick={() => setModalOpen(true)} />
         )}
       </div>
 

@@ -102,6 +102,13 @@ import {
   StepForward,
   FastForward,
 } from "lucide-react";
+import { EngineStatusWidget } from "./components/EngineStatusWidget";
+import {
+  probeEngineStatus,
+  EngineStatus,
+  DEFAULT_ENGINE_PORT,
+  getEngineApiUrl,
+} from "./lib/engineBridge";
 
 export interface UserProfile {
   id: string;
@@ -550,6 +557,42 @@ export default function App() {
   const [selectedHistoricalRun, setSelectedHistoricalRun] = useState<any | null>(null);
   const [showDiffModal, setShowDiffModal] = useState<boolean>(false);
 
+  // 8. Web-to-Local Engine Bridge & Licensing Status
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>({
+    connected: false,
+    tier: "free",
+    isPro: false,
+    customerName: "Invitado",
+    port: DEFAULT_ENGINE_PORT,
+    verifiedCryptographically: false,
+    stepsCount: 0,
+    message: "Detectando motor local...",
+  });
+
+  const checkEngine = async (preferredPort?: number) => {
+    const status = await probeEngineStatus(preferredPort || engineStatus.port);
+    setEngineStatus(status);
+    if (status.connected && status.customerName && status.customerName !== "Invitado" && status.customerName !== "Developer") {
+      setCurrentUser((prev) => {
+        if (!prev || prev.id === "guest" || prev.id === "local_dev") {
+          return {
+            id: "engine_user",
+            username: status.customerName.toLowerCase().replace(/\s+/g, "."),
+            name: status.customerName,
+            role: status.isPro ? "pro" : "user",
+          };
+        }
+        return prev;
+      });
+    }
+  };
+
+  useEffect(() => {
+    checkEngine();
+    const interval = setInterval(() => checkEngine(), 20000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Synchronized Tab Switching for Unified Activity Bar & Sub-Header Tabs
   const switchMainTab = (tab: "code" | "simulation" | "flowchart" | "python") => {
     setActiveMainTab(tab);
@@ -920,7 +963,7 @@ export default function App() {
     setPreviewLoading(true);
     setStatusMessage("Sincronizando microservicio Python con el lienzo actual...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
-    fetch("/api/v1/pipeline/transform", {
+    fetch(getEngineApiUrl("/api/v1/pipeline/transform"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(canvasIr),
@@ -1039,16 +1082,21 @@ export default function App() {
 
   // Fetch Release Catalog from Backend & Trigger Initial Codegen
   useEffect(() => {
-    fetch("/api/v1/catalog/steps")
-      .then((res) => res.json())
+    fetch(getEngineApiUrl("/api/v1/catalog/steps"))
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const cType = res.headers.get("content-type") || "";
+        if (!cType.includes("application/json")) throw new Error("Not JSON");
+        return res.json();
+      })
       .then((data) => {
         if (Array.isArray(data)) {
           setCatalog(data);
           setBlocklyCatalog(data);
         }
       })
-      .catch((err) => {
-        console.error("Failed to load catalog steps:", err);
+      .catch(() => {
+        // Fallback silently if engine not available
       });
 
     // Ensure microservice files are generated from initial canvas
@@ -2031,7 +2079,7 @@ export default function App() {
   const handleCopyPythonCode = async () => {
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
     try {
-      const res = await fetch("/api/v1/pipeline/transform", {
+      const res = await fetch(getEngineApiUrl("/api/v1/pipeline/transform"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(canvasIr),
@@ -2111,8 +2159,10 @@ export default function App() {
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
     let stepsToRun: any[] = [];
 
+    const dryRunUrl = getEngineApiUrl("/api/v1/pipeline/dry-run", engineStatus.port);
+
     try {
-      const res = await fetch("/api/v1/pipeline/dry-run", {
+      const res = await fetch(dryRunUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(canvasIr),
@@ -2127,6 +2177,19 @@ export default function App() {
         writes: n.data.contract.writes,
         origin: n.data.origin,
       }));
+    }
+
+    // Check block count against tier
+    if (canvasIr.nodes.length > 5 && !engineStatus.isPro) {
+      setSimLogs((prev) => [
+        ...prev,
+        {
+          time: new Date().toLocaleTimeString(),
+          level: "WARN",
+          msg: "⚠️ Capa Free limitada a 5 bloques. Ejecutando los primeros 5 pasos. Activa una licencia PRO en wpipe-engine para ejecución ilimitada.",
+        },
+      ]);
+      stepsToRun = stepsToRun.slice(0, 5);
     }
 
     if (stepsToRun.length === 0) {
@@ -2980,8 +3043,11 @@ export default function App() {
           </button>
         </div>
 
-        {/* Right: Actions (Run Simulation, Dry-Run, Export ZIP, User Profile) */}
+        {/* Right: Actions (Engine Status, Run Simulation, Dry-Run, Export ZIP, User Profile) */}
         <div className="flex items-center space-x-2">
+          {/* Local Engine Bridge Status Widget */}
+          <EngineStatusWidget status={engineStatus} onRecheck={checkEngine} />
+
           {/* Quick Simulation Start / Stop Controls */}
           {!isSimulating ? (
             <button

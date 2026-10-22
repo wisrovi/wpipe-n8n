@@ -1291,14 +1291,15 @@ El microservicio \`${projectName}\` expone un flujo de trabajo modular asíncron
 ### Diagrama de Flujo (Mermaid DAG)
 
 \`\`\`mermaid
-flowchart TD
-    START(["🌐 Ingress (FastAPI REST: /run)"]):::startClass --> DTO["📋 PipelineContextDTO<br/>(Validación de Entrada)"]
-    DTO --> PIPE["⚡ WPipe Pipeline: ${projectName}"]
-    PIPE --> STEPS["🔄 Topología de Pasos & Bloques de Control<br/>(${stepsListText})"]
-    STEPS --> RES["🏁 PipelineResponseDTO<br/>(HTTP 200 JSON OK)"]:::endClass
+flowchart LR
+    ING(["🌐 Ingress REST: /run"]):::startClass --> DTO["📋 PipelineContextDTO"]
+    DTO --> PIPE["⚡ WPipe: ${projectName}"]
+    PIPE --> STEPS["🔄 Pipeline Steps"]
+    STEPS --> RES(["🏁 Response: HTTP 200"]):::endClass
 
-    classDef startClass fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
-    classDef endClass fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+    classDef startClass fill:#1e3a8a,stroke:#38bdf8,stroke-width:1.5px,color:#ffffff;
+    classDef endClass fill:#064e3b,stroke:#34d399,stroke-width:1.5px,color:#ffffff;
+    classDef default fill:#1e293b,stroke:#475569,stroke-width:1.5px,color:#f8fafc;
 \`\`\`
 
 ### Estructura de Directorios (wpipe-mcp Architecture)

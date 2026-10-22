@@ -1693,7 +1693,27 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       });
     }
 
+    // Attach ResizeObserver to keep Blockly SVG responsive to all screen sizes & sidebar toggles
+    let resizeObserver: ResizeObserver | null = null;
+    const handleResize = () => {
+      if (workspaceRef.current) {
+        Blockly.svgResize(workspaceRef.current);
+      }
+    };
+
+    if (blocklyDivRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize();
+      });
+      resizeObserver.observe(blocklyDivRef.current);
+    }
+    window.addEventListener("resize", handleResize);
+
     return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      window.removeEventListener("resize", handleResize);
       if (workspaceRef.current) {
         if (activeWorkspaceRef === workspaceRef.current) {
           activeWorkspaceRef = null;
@@ -1704,5 +1724,5 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
     };
   }, []);
 
-  return <div ref={blocklyDivRef} className="w-full h-full min-h-[550px] rounded-xl overflow-hidden shadow-2xl" />;
+  return <div ref={blocklyDivRef} className="w-full h-full overflow-hidden" />;
 };

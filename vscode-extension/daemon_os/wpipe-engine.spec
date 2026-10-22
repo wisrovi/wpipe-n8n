@@ -1,19 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-import os
-
-datas_list = [
-    ('wpipe_engine/steps_catalog.json', 'wpipe_engine'),
-]
-if os.path.exists('wpipe_engine/canvas_static'):
-    datas_list.append(('wpipe_engine/canvas_static', 'wpipe_engine/canvas_static'))
-
 a = Analysis(
     ['wpipe_engine/main.py'],
     pathex=[],
     binaries=[],
-    datas=datas_list,
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

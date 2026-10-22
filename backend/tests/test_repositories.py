@@ -1,6 +1,8 @@
 """Unit tests for WPostgreSQL repositories, database settings, and schema migrations."""
 
+import socket
 import uuid
+import pytest
 
 from app.config.settings import DatabaseSettings
 from app.migrations.manager import run_migrations
@@ -10,6 +12,16 @@ from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.token_repository import TokenRepository
 from app.repositories.user_repository import UserRepository
+
+
+def is_postgres_available() -> bool:
+    """Check if the target PostgreSQL server is accessible."""
+    try:
+        cfg = DatabaseSettings.from_env()
+        with socket.create_connection((cfg.host, cfg.port), timeout=0.5):
+            return True
+    except Exception:
+        return False
 
 
 def test_database_settings():
@@ -24,6 +36,7 @@ def test_database_settings():
     assert cfg_dict["port"] == 5432
 
 
+@pytest.mark.skipif(not is_postgres_available(), reason="PostgreSQL not running on configured host/port")
 def test_migrations_manager():
     """Test running TableSync schema synchronization."""
     result = run_migrations()
@@ -33,6 +46,7 @@ def test_migrations_manager():
     assert "auth_tokens" in result["tables"]
 
 
+@pytest.mark.skipif(not is_postgres_available(), reason="PostgreSQL not running on configured host/port")
 def test_user_repository_crud():
     """Test UserRepository with WPostgreSQL."""
     cfg = DatabaseSettings.from_env().to_dict()
@@ -64,6 +78,7 @@ def test_user_repository_crud():
     assert any(u.id == uid for u in all_users)
 
 
+@pytest.mark.skipif(not is_postgres_available(), reason="PostgreSQL not running on configured host/port")
 def test_project_repository_crud():
     """Test ProjectRepository with WPostgreSQL."""
     cfg = DatabaseSettings.from_env().to_dict()
@@ -104,6 +119,7 @@ def test_project_repository_crud():
     assert repo.get_by_id(pid) is None
 
 
+@pytest.mark.skipif(not is_postgres_available(), reason="PostgreSQL not running on configured host/port")
 def test_token_repository_crud():
     """Test TokenRepository with WPostgreSQL."""
     cfg = DatabaseSettings.from_env().to_dict()

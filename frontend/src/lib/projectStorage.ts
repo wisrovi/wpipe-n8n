@@ -234,16 +234,71 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
   // Case 3: Raw CanvasIR (nodes and edges directly)
   if (Array.isArray(parsed.nodes)) {
     return {
-      id: `proj_imported_${Date.now()}`,
-      name: "imported_pipeline",
-      description: "Pipeline importado desde grafo",
+      id: parsed.id || `proj_imported_${Date.now()}`,
+      name: parsed.name || "imported_pipeline",
+      description: parsed.description || "Pipeline imported from canvas IR",
       owner_id: "browser_local_user",
-      docker_image: "python:3.11-slim",
-      protocol: "fastapi",
+      docker_image: parsed.docker_image || "python:3.11-slim",
+      protocol: parsed.protocol || "fastapi",
       canvas_ir: parsed,
+      generated_files: parsed.generated_files || parsed.files || [],
+      files: parsed.generated_files || parsed.files || [],
+      node_count: parsed.nodes.length,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  // Case 4: Pipeline definition with steps array (e.g. demo_pipeline.wpipe)
+  if (Array.isArray(parsed.steps)) {
+    const nodes = [
+      { id: "node_trigger", data: { node_type: "trigger", label: "Trigger REST (/run)", trigger_type: "api", trigger_param: "/run" } },
+      ...parsed.steps.map((s: any, idx: number) => ({
+        id: s.id || `step_${idx + 1}`,
+        data: {
+          node_type: "step",
+          label: s.name || s.type || `Step ${idx + 1}`,
+          step_name: s.type || s.name,
+          category: "connectivity",
+          params: s.params || {},
+        },
+      })),
+      { id: "node_response", data: { node_type: "response", label: "Response Cap (HTTP 200)", response_type: "http_json" } },
+    ];
+    return {
+      id: parsed.id || `proj_imported_${Date.now()}`,
+      name: parsed.name || "demo_pipeline",
+      description: parsed.description || "Pipeline imported from steps specification",
+      owner_id: "browser_local_user",
+      docker_image: parsed.docker_image || "python:3.11-slim",
+      protocol: parsed.protocol || "fastapi",
+      canvas_ir: { nodes },
       generated_files: [],
       files: [],
-      node_count: parsed.nodes.length,
+      node_count: nodes.length,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  // Case 5: Workspace state only or arbitrary pipeline object fallback
+  if (parsed && typeof parsed === "object") {
+    const wsState = parsed.workspace_state || (parsed.canvas_ir && parsed.canvas_ir.workspace_state) || null;
+    const nodes = (parsed.canvas_ir && parsed.canvas_ir.nodes) || parsed.nodes || [];
+    return {
+      id: parsed.id || `proj_imported_${Date.now()}`,
+      name: parsed.name || "pipeline",
+      description: parsed.description || "Imported WPipe Pipeline",
+      owner_id: "browser_local_user",
+      docker_image: parsed.docker_image || "python:3.11-slim",
+      protocol: parsed.protocol || "fastapi",
+      canvas_ir: {
+        nodes: Array.isArray(nodes) ? nodes : [],
+        workspace_state: wsState,
+      },
+      generated_files: parsed.generated_files || parsed.files || [],
+      files: parsed.generated_files || parsed.files || [],
+      node_count: Array.isArray(nodes) ? nodes.length : 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

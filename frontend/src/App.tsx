@@ -2479,7 +2479,7 @@ export default function App() {
   const pluginSteps = catalog.filter((s) => s.repo === "Plugin");
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#07090e] text-gray-100 font-sans select-none overflow-hidden aurora-bg">
+    <div className="flex flex-col h-full w-full min-h-screen bg-[#07090e] text-gray-100 font-sans select-none overflow-hidden aurora-bg">
       {/* 1. FULLSCREEN SPLASH LOADER */}
       {showSplash && (
         <div
@@ -3285,7 +3285,7 @@ export default function App() {
         </div>
 
         {/* Center: Sleek Breadcrumb & Microservice Identifier */}
-        <div className="hidden lg:flex items-center space-x-1.5 px-3 py-1 bg-gray-900/60 hover:bg-gray-900 border border-gray-800/80 hover:border-gray-700/80 rounded-lg text-xs transition">
+        <div className="hidden xl:flex items-center space-x-1.5 px-3 py-1 bg-gray-900/60 hover:bg-gray-900 border border-gray-800/80 hover:border-gray-700/80 rounded-lg text-xs transition">
           <button
             onClick={() => setShowProjectsModal(true)}
             className="flex items-center space-x-1.5 text-gray-400 hover:text-sky-300 font-medium transition cursor-pointer"
@@ -3338,7 +3338,7 @@ export default function App() {
               >
                 <User size={12} className="text-white" />
               </div>
-              <div className="flex flex-col text-left leading-none">
+              <div className="hidden md:flex flex-col text-left leading-none">
                 <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[110px] truncate">
                   {currentUser?.name || "Mi Cuenta"}
                 </span>
@@ -4443,7 +4443,7 @@ export default function App() {
             {/* TAB 1: CODE / SCRATUX BLOCKS WORKSPACE (Permanently Mounted in DOM to preserve blocks) */}
             <div className={activeMainTab === "code" ? "flex-1 bg-[#07090e] relative overflow-hidden flex flex-col" : "hidden"}>
             {/* Floating Action Toolbar */}
-            <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-10">
+            <div className="absolute top-3 right-4 flex items-center gap-1.5 p-1 bg-gray-950/90 backdrop-blur-md border border-gray-800/90 rounded-xl shadow-2xl z-10 max-w-[calc(100%-2rem)] overflow-x-auto no-scrollbar">
               <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 font-medium border-r border-gray-800 mr-1 hidden sm:flex select-none">
                 <Move size={12} className="text-sky-400" />
                 <span>Arrastra el fondo para mover lienzo</span>
@@ -4922,9 +4922,9 @@ export default function App() {
         {activeMainTab === "flowchart" && (
           <div className="flex-1 flex flex-col bg-[#07090e] overflow-hidden">
             {/* Top Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-950/80 border-b border-gray-800/80 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-gray-950/80 border-b border-gray-800/80 text-xs">
               <div className="flex items-center space-x-2">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 border border-gray-800 rounded-lg text-gray-400 text-[11px] font-medium mr-1 select-none">
+                <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 border border-gray-800 rounded-lg text-gray-400 text-[11px] font-medium mr-1 select-none">
                   <Move size={12} className="text-sky-400" />
                   <span>Arrastra fondo para mover • Rueda ratón para zoom</span>
                 </div>
@@ -5286,7 +5286,7 @@ export default function App() {
                       readmePreviewMode && (githubViewingFile.path === "README.md" || githubViewingFile.path.endsWith("/README.md")) ? (
                         /* Markdown Preview inside file tab */
                         <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
-                          <div className="max-w-4xl mx-auto">
+                          <div className="w-full max-w-7xl mx-auto px-2 sm:px-6">
                             <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl px-4 py-2.5 flex items-center justify-between text-xs">
                               <span className="font-bold text-sky-400 flex items-center gap-2">
                                 <BookOpen size={14} />
@@ -5422,7 +5422,7 @@ export default function App() {
                       currentReadme ? (
                         /* Folder with README.md: RENDERIZA DE FORMA BONITA */
                         <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
-                          <div className="max-w-4xl mx-auto">
+                          <div className="w-full max-w-7xl mx-auto px-2 sm:px-6">
                             {/* Banner header above rendered README */}
                             <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl px-4 py-3 flex items-center justify-between flex-wrap gap-2 text-xs">
                               <div className="flex items-center gap-2">
@@ -5488,7 +5488,7 @@ export default function App() {
                       ) : (
                         /* Folder WITHOUT README.md: Show Directory Table */
                         <div className="flex-1 overflow-y-auto p-6 bg-[#1e1e1e] custom-modal-scrollbar">
-                          <div className="max-w-4xl mx-auto space-y-4">
+                          <div className="w-full max-w-7xl mx-auto px-2 sm:px-6 space-y-4">
                             <div className="bg-[#252526] border border-[#3c3c3c] rounded-t-xl p-4 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <FolderOpen size={18} className="text-[#dcb67a]" />

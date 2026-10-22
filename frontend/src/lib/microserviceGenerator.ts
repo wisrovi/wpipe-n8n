@@ -1241,7 +1241,7 @@ clean:
 	rm -rf .pytest_cache .coverage htmlcov output/
 `;
 
-  // 29. Executive level README.md with Legal notice, William Rodriguez attribution, specs & Mermaid DAG
+  // 29. Executive level README.md with Technical specs, Mermaid DAG, and Copyright notice at the end
   const stepsListText = stepNamesForReadme.length > 0 ? stepNamesForReadme.join(", ") : "CleanDataStep, TransformPayloadStep";
   const nowIso = new Date().toISOString();
   const currentYear = new Date().getFullYear();
@@ -1249,46 +1249,21 @@ clean:
   const readmeMd = `# ${projectName}
 
 > **Enterprise Python Microservice Orchestration**  
-> Auto-generado, compilado y verificado por **WPipe Studio (wisrovi SUITE)**.
+> Automatically generated, compiled, and verified by **WPipe Studio (wisrovi SUITE)**.
 
 ---
 
-## ⚖️ Legal Notice, Authorship & Intellectual Property Rights
+## 📖 Technical Documentation
 
-> [!IMPORTANT]
-> **Aviso Prioritario de Derechos de Autor y Protección de Código**  
-> Este documento establece con carácter vinculante y oficial los **derechos de autor, propiedad intelectual y atribución técnica** del presente microservicio. Este archivo se encuentra protegido contra edición manual en WPipe Studio.
-
-### Plataforma & Ecosistema de Ingeniería
-- **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
-- **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
-- **Fecha de Compilación**: \`${nowIso}\`.
-- **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico + wpipe-mcp).
-
-### Autor & Atribución Profesional
-- **Autor Principal**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
-- **Perfil Profesional**: **AI Leader & Solutions Architect**
-- **Sitio Web Oficial**: [https://wisrovi.dev](https://wisrovi.dev)
-- **Ubicación**: Badajoz, Extremadura, España
-- **Misión & Especialidad**: *Liderazgo en inteligencia artificial avanzada, arquitecturas cloud distribuidas y diseño de motores de orquestación de alto rendimiento.*
-- **Copyright**: © ${currentYear} **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Todos los derechos reservados / All Rights Reserved.
-
-### Términos de Derechos y Uso
-Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (\`@step\`) y contratos de orquestación forman parte de la propiedad intelectual exclusiva de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
-
----
-
-## 📖 Documentación Técnica del Microservicio
-
-### Descripción General
-El microservicio \`${projectName}\` expone un flujo de trabajo modular asíncrono y de alto rendimiento, orquestado mediante **WPipe** y servido a través de **FastAPI**.
+### Overview
+The \`${projectName}\` microservice provides a high-performance, modular, asynchronous pipeline workflow orchestrated by **WPipe** and served via **FastAPI**.
 
 - **Pipeline Core**: \`${projectName}\` (\`app/pipelines.py\`)
-- **Topología de Pasos Ensamblados**: ${stepsListText}.
-- **Bloques de Control Soportados**: Bifurcaciones condicionales (\`Condition\`), bucles deterministas o continuos (\`For\`), ejecución concurrente (\`Parallel\`) y tareas desacopladas (\`Background\`).
-- **Contratos de Datos**: Clases Pydantic en \`app/dto/\` con validación estricta de tipos, inmutabilidad y serialización de contexto vía \`@to_obj\`.
+- **Step Topology**: ${stepsListText}.
+- **Supported Control Blocks**: Conditional branches (\`Condition\`), deterministic loops (\`For\`), continuous loops (\`While\`), concurrent execution (\`Parallel\` with accumulate merge policy), and non-blocking asynchronous tasks (\`Background\`).
+- **Data Contracts**: Pydantic models in \`app/dto/\` ensuring strict type validation, immutability, and context serialization via \`@to_obj\`.
 
-### Diagrama de Flujo (Mermaid DAG)
+### Architecture Flowchart (Mermaid DAG)
 
 \`\`\`mermaid
 flowchart LR
@@ -1302,81 +1277,81 @@ flowchart LR
     classDef default fill:#1e293b,stroke:#475569,stroke-width:1.5px,color:#f8fafc;
 \`\`\`
 
-### Estructura de Directorios (wpipe-mcp Architecture)
+### Directory Structure (wpipe-mcp Compliant Architecture)
 
 \`\`\`
 ${projectName}/
 ├── app/
-│   ├── config/              # Configuración y variables de entorno
-│   │   ├── config.yaml      # Parámetros YAML de microservicio
-│   │   └── settings.py      # Pydantic AppSettings tipado
-│   ├── dto/                 # Contratos Pydantic Context DTOs (Dialecto A)
+│   ├── config/              # Configuration and environment settings
+│   │   ├── config.yaml      # Microservice YAML configuration parameters
+│   │   └── settings.py      # Typed Pydantic AppSettings loader
+│   ├── dto/                 # Pydantic Context DTOs (Dialect A)
 │   │   ├── context.py       # PipelineContextDTO
 │   │   ├── request.py       # PipelineRequestDTO
 │   │   └── response.py      # PipelineResponseDTO
 │   ├── model/               # Model weights & pre-trained artifacts
 │   │   └── .gitkeep
-│   ├── services/            # Servicios desacoplados de dominio pesado
+│   ├── services/            # Domain business services
 │   │   └── business_service.py # ProcessingService
-│   ├── states/              # Clases atómicas de estados WPipe (@step)
-│   │   ├── base.py          # BaseStep clase abstracta
+│   ├── states/              # Atomic WPipe state steps (@step)
+│   │   ├── base.py          # BaseStep abstract class
 │   │   ├── clean_data_step.py # CleanDataStep
 │   │   ├── transform_payload_step.py # TransformPayloadStep
 │   │   └── ai_sentiment_step.py # AISentimentStep
-│   ├── test/                # Suite oficial pytest del microservicio
-│   │   ├── test_dto.py      # Validación de esquemas Pydantic
-│   │   ├── test_states.py   # Mutaciones y ciclo de vida de steps
-│   │   ├── test_pipeline.py # Validación del grafo de pipeline
-│   │   └── test_api.py      # Integración con TestClient FastAPI
-│   ├── utils/               # Funciones auxiliares puras
-│   │   └── helpers.py       # Generadores de ID y sanitizadores
-│   ├── pipelines.py         # Topología DAG del pipeline WPipe con C-blocks
-│   └── main.py              # Entrypoint FastAPI REST y ResourceMonitor
-├── tests/                   # Runner estándar raíz
+│   ├── test/                # Official pytest test suite
+│   │   ├── test_dto.py      # Pydantic schema validation
+│   │   ├── test_states.py   # Step lifecycle and state mutation
+│   │   ├── test_pipeline.py # Full pipeline DAG validation
+│   │   └── test_api.py      # FastAPI TestClient integration
+│   ├── utils/               # Pure utility helper functions
+│   │   └── helpers.py       # Transaction ID generators and sanitizers
+│   ├── pipelines.py         # Declarative WPipe DAG topology with C-blocks
+│   └── main.py              # FastAPI REST entrypoint and ResourceMonitor
+├── tests/                   # Root test runner package
 │   └── test_pipeline.py
-├── pytest.ini               # Configuración de runner pytest y pythonpath
-├── pyproject.toml           # Configuración estándar para Black, isort y mypy
-├── Dockerfile               # Contenedor de producción multi-etapa
-├── docker-compose.yml       # Orquestación Docker con healthcheck HTTP
-├── Makefile                 # Automatización (start, stop, into, test, logs)
-├── requirements.txt         # Dependencias Python bloqueadas
-├── run_tests_docker.sh      # Script ejecutor que delega en 'make test'
-└── wpipe.config.json        # Configuración del motor WPipe
+├── pytest.ini               # Pytest configuration and pythonpath
+├── pyproject.toml           # Modern package configuration for Black, isort, mypy
+├── Dockerfile               # Production multi-stage container
+├── docker-compose.yml       # Docker Compose with HTTP healthcheck
+├── Makefile                 # Automation (start, stop, into, test, logs, clean)
+├── requirements.txt         # Pinned Python dependencies
+├── run_tests_docker.sh      # Container test execution script delegating to 'make test'
+└── wpipe.config.json        # WPipe Engine configuration
 \`\`\`
 
-### Tecnologías y Librerías Principales
+### Core Technologies and Libraries
 
-- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: Motor core de ejecución orquestada de pipelines síncronos y asíncronos con gestión de contexto y control de flujo.
-- **[WPipe Steps](https://github.com/wisrovi/wpipe-steps) (>=1.0.2)**: Catálogo modular de pasos para bases de datos, conectividad y seguridad.
-- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: API HTTP REST asíncrona de alto rendimiento para el punto de entrada (\`/run\`).
-- **[Pydantic v2](https://docs.pydantic.dev/)**: Validación estricta de contratos de datos e inmutabilidad de contexto.
-- **[Loguru](https://github.com/Delgan/loguru)**: Registro estructurado y asíncrono de eventos de ejecución.
-- **[Pytest & Pytest-Cov](https://pytest.org/)**: Suite de pruebas unitarias automatizadas con cobertura de código.
-- **[Docker & Docker Compose](https://www.docker.com/)**: Contenedorización lista para producción.
+- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: Core orchestration engine for synchronous and asynchronous pipelines with state tracking, error handling, and DAG dependency execution.
+- **[WPipe Steps](https://github.com/wisrovi/wpipe-steps) (>=1.0.2)**: Pre-built modular step packs for connectivity, databases, security, and AI.
+- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: High-performance asynchronous REST API framework for the ingress entrypoint (\`/run\`).
+- **[Pydantic v2](https://docs.pydantic.dev/)**: Strict data validation, schema enforcement, and immutable context serialization.
+- **[Loguru](https://github.com/Delgan/loguru)**: Structured asynchronous logging and telemetry.
+- **[Pytest & Pytest-Cov](https://pytest.org/)**: Automated test suite with code coverage analysis.
+- **[Docker & Docker Compose](https://www.docker.com/)**: Production-ready containerized deployment.
 
 ---
 
-## 🚀 Despliegue y Ejecución
+## 🚀 Deployment and Execution
 
-### 1. Iniciar con Docker Compose (Recomendado)
+### 1. Start with Docker Compose (Recommended)
 \`\`\`bash
-# Construir y levantar el microservicio
+# Build and run the microservice:
 make start
 
-# Ver el estado y healthcheck:
+# Check service status and healthcheck:
 make status
 
-# Ver logs en tiempo real:
+# Follow logs in real time:
 make logs
 
-# Entrar en consola interactiva al contenedor:
+# Open an interactive bash shell in the container:
 make into
 
-# Detener el microservicio:
+# Stop the microservice:
 make stop
 \`\`\`
 
-### 2. Ejecución Local con Virtualenv
+### 2. Local Execution with Virtual Environment
 \`\`\`bash
 python -m venv .venv
 source .venv/bin/activate
@@ -1384,26 +1359,49 @@ pip install -r requirements.txt
 python app/main.py
 \`\`\`
 
-### 3. Endpoints y Documentación Interactiva
-- **Ejecutar Pipeline**: \`POST /run\` (Envío de payload JSON para procesar en el pipeline)
-- **Comprobación de Salud**: \`GET /health\`
-- **Documentación Swagger UI**: \`http://localhost:8000/docs\`
-- **Especificación OpenAPI**: \`http://localhost:8000/openapi.json\`
+### 3. API Endpoints and Interactive Documentation
+- **Run Pipeline**: \`POST /run\` (Send JSON payload to trigger the orchestration pipeline)
+- **Health Check**: \`GET /health\`
+- **Interactive Swagger UI**: \`http://localhost:8000/docs\`
+- **OpenAPI Schema**: \`http://localhost:8000/openapi.json\`
 
-### 4. Pruebas Automatizadas
+### 4. Automated Testing and Code Coverage
 \`\`\`bash
-# Ejecutar pruebas en Docker vía Makefile:
+# Run tests inside Docker via Makefile:
 ./run_tests_docker.sh
 
-# O directamente:
+# Or directly with make:
 make test
 
-# Ejecución local con reporte de cobertura:
+# Run local pytest with coverage report:
 make pytest
 \`\`\`
 
 ---
-*Generated by WPipe Studio by wisrovi*
+
+## ⚖️ Copyright, Authorship & Legal Notice
+
+> [!NOTE]
+> **Intellectual Property and Code Protection Notice**  
+> This software component, its execution topology, and architectural patterns are officially licensed and attributed below.
+
+### Platform & Engineering Ecosystem
+- **Orchestration Suite**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Visual microservice engineering and modular pipeline design platform.
+- **Core Engine**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
+- **Compilation Timestamp**: \`${nowIso}\`.
+- **Generation Standard**: Dialect A (Pydantic Context DTOs + Hierarchical Topological AST + wpipe-mcp compliant).
+
+### Author & Professional Attribution
+- **Lead Author & Architect**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
+- **Role**: **AI Leader & Solutions Architect**
+- **Website**: [https://wisrovi.dev](https://wisrovi.dev)
+- **Location**: Badajoz, Extremadura, Spain
+- **Specialty & Mission**: *Advanced artificial intelligence, distributed cloud architectures, and high-performance pipeline orchestration engines.*
+
+### License & Intellectual Property Rights
+This software component and its topological graph were authored and compiled under the **WPipe Studio** infrastructure. All architectural patterns, typed DTO abstractions, state bindings (\`@step\`), and orchestration contracts are the intellectual property of **wisrovi** ([wisrovi.dev](https://wisrovi.dev)).
+
+**Copyright © ${currentYear} wisrovi ([wisrovi.dev](https://wisrovi.dev)). All Rights Reserved.**
 `;
 
   // 30. run_tests_docker.sh delegating to Makefile

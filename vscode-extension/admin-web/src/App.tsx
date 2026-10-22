@@ -249,7 +249,7 @@ export default function App() {
       });
       const json = await res.json();
       if (!res.ok) {
-        throw new Error(json.message || "Contraseña de Super-Admin no válida.");
+        throw new Error(json.message || "Invalid Super-Admin master secret.");
       }
       localStorage.setItem("wpipe_admin_master_token", keyToVerify);
       setIsAuthenticated(true);
@@ -407,7 +407,7 @@ export default function App() {
         }),
       });
       if (!res.ok) throw new Error("Error al actualizar licencia.");
-      showToast(`Licencia ${editingLicense.license_key} actualizada correctamente.`);
+      showToast(`License ${editingLicense.license_key} updated successfully.`);
       setEditingLicense(null);
       fetchInitialData();
     } catch (err: any) {
@@ -546,7 +546,7 @@ export default function App() {
       if (!res.ok) throw new Error(json.message || "Error al acuñar licencia VIP.");
 
       setVipResult(json);
-      showToast(`¡Licencia VIP creada con éxito para ${json.customer_name || "Socio"}!`);
+      showToast(`VIP License minted successfully for ${json.customer_name || "Partner"}!`);
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -557,7 +557,7 @@ export default function App() {
 
   // Kick Specific Lease
   const handleKickLease = async (leaseId: string) => {
-    if (!confirm("¿Seguro que deseas expulsar este puesto? Se desconectará de inmediato.")) return;
+    if (!confirm("Are you sure you want to kick this workstation? It will disconnect immediately.")) return;
     setLoading(true);
     try {
       await fetch(`${API_BASE}/v1/admin/leases/kick`, {
@@ -565,7 +565,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${masterKey}` },
         body: JSON.stringify({ lease_id: leaseId }),
       });
-      showToast("Puesto expulsado con éxito.");
+      showToast("Workstation kicked successfully.");
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -592,10 +592,25 @@ export default function App() {
     }
   };
 
-  // Run Custom SQL Query with History
+  // Run Custom SQL Query with History and Safety Safeguards
   const handleRunSql = async (overrideQuery?: string) => {
     const queryToRun = overrideQuery || sqlQuery;
     if (!queryToRun.trim()) return;
+
+    // Safety guard against accidental destructive D1 execution
+    const upper = queryToRun.trim().toUpperCase();
+    const isDestructive =
+      upper.startsWith("DROP ") ||
+      upper.startsWith("TRUNCATE ") ||
+      (upper.startsWith("DELETE ") && !upper.includes("WHERE"));
+
+    if (isDestructive && !overrideQuery) {
+      const confirmDestructive = window.confirm(
+        `⚠️ DESTRUCTIVE QUERY SAFEGUARD:\n\nYou are about to execute a potentially destructive database statement on Cloudflare D1:\n\n"${queryToRun}"\n\nThis will permanently remove or modify data in production. Do you wish to continue?`
+      );
+      if (!confirmDestructive) return;
+    }
+
     setLoading(true);
     setError(null);
     setSqlResults(null);
@@ -610,7 +625,7 @@ export default function App() {
       const nextHistory = [queryToRun, ...sqlHistory.filter((q) => q !== queryToRun)].slice(0, 8);
       setSqlHistory(nextHistory);
       localStorage.setItem("wpipe_sql_history", JSON.stringify(nextHistory));
-      showToast("Consulta ejecutada con éxito.");
+      showToast("Query executed successfully.");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -642,7 +657,7 @@ export default function App() {
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
-    showToast("Copiado al portapapeles.");
+    showToast("Copied to clipboard.");
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
@@ -763,55 +778,55 @@ export default function App() {
     {
       category: "metrics",
       title: "Distribución por Plan",
-      desc: "Conteo de licencias y suma de puestos contratados por cada plan.",
+      desc: "License count and total seats contracted per subscription tier.",
       sql: "SELECT plan, count(*) as licencias, sum(max_seats) as puestos_totales FROM licenses GROUP BY plan ORDER BY puestos_totales DESC;",
     },
     {
       category: "metrics",
-      title: "Ocupación Global de Asientos",
-      desc: "Puestos activos conectados ahora mismo vs cupo total contratado.",
+      title: "Global Seat Utilization",
+      desc: "Active connected workstations right now vs total active quota.",
       sql: "SELECT (SELECT count(*) FROM leases WHERE lease_expires_at > datetime('now')) as puestos_activos, (SELECT sum(max_seats) FROM licenses WHERE status='active') as puestos_contratados;",
     },
     {
       category: "metrics",
-      title: "Top 10 Organizaciones por Cupo",
-      desc: "Empresas con mayor número de puestos asignados.",
+      title: "Top 10 Organizations by Quota",
+      desc: "Enterprises with the highest seat allocation.",
       sql: "SELECT customer_name, customer_email, plan, max_seats, status, created_at FROM licenses ORDER BY max_seats DESC LIMIT 10;",
     },
     {
       category: "audit",
-      title: "Últimos 50 Eventos de Auditoría",
-      desc: "Traza de auditoría de actividad reciente y webhooks.",
+      title: "Latest 50 Audit Events",
+      desc: "Audit trail of recent edge telemetry and webhook calls.",
       sql: "SELECT id, event_type, license_key, ip_address, created_at FROM audit_logs ORDER BY id DESC LIMIT 50;",
     },
     {
       category: "audit",
-      title: "Códigos OTP Generados Recientes",
-      desc: "Últimos 20 códigos OTP enviados con estado de uso y expiración.",
+      title: "Recent OTP Security Codes",
+      desc: "Last 20 OTP verification codes with usage status and expiration.",
       sql: "SELECT id, email, attempts, used, expires_at, created_at FROM otp_codes ORDER BY created_at DESC LIMIT 20;",
     },
     {
       category: "audit",
-      title: "Sistemas Operativos Conectados",
-      desc: "Desglose de puestos flotantes por plataforma (Linux, Windows, macOS).",
+      title: "Connected Operating Systems",
+      desc: "Floating leases breakdown by platform (Linux, Windows, macOS).",
       sql: "SELECT coalesce(os_name, 'Desconocido') as sistema_operativo, count(*) as maquinas_activas FROM leases GROUP BY os_name ORDER BY maquinas_activas DESC;",
     },
     {
       category: "maintenance",
-      title: "Licencias Caducadas",
-      desc: "Licencias con fecha de expiración menor a la fecha actual.",
+      title: "Expired Licenses",
+      desc: "Licenses with expiration date older than current UTC timestamp.",
       sql: "SELECT id, license_key, customer_email, expires_at, status FROM licenses WHERE expires_at IS NOT NULL AND expires_at < datetime('now');",
     },
     {
       category: "maintenance",
-      title: "Leases Vencidos Pendientes de Purgar",
-      desc: "Puestos cuyo heartbeat expiró y pueden ser liberados.",
+      title: "Stale Leases Ready for Purging",
+      desc: "Leases whose heartbeat has expired and can be released.",
       sql: "SELECT id, license_id, hostname, os_name, lease_expires_at FROM leases WHERE lease_expires_at <= datetime('now');",
     },
     {
       category: "maintenance",
-      title: "Licencias Huérfanas (Sin puestos conectados)",
-      desc: "Licencias activas que no tienen ninguna máquina conectada actualmente.",
+      title: "Orphan Licenses (No active seats)",
+      desc: "Active licenses with zero workstations currently connected.",
       sql: "SELECT l.id, l.license_key, l.customer_email, l.plan, l.max_seats FROM licenses l LEFT JOIN leases le ON l.id = le.license_id WHERE le.id IS NULL AND l.status = 'active';",
     },
   ];
@@ -848,14 +863,14 @@ export default function App() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
-                <span>Contraseña Maestra de Super-Admin</span>
+                <span>Super-Admin Master Secret</span>
                 <Lock size={12} className="text-indigo-400" />
               </label>
               <input
                 type="password"
                 value={masterKey}
                 onChange={(e) => setMasterKey(e.target.value)}
-                placeholder="Introduce tu clave de Super-Admin..."
+                placeholder="Enter your master authority key..."
                 className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
                 required
                 autoFocus
@@ -870,12 +885,12 @@ export default function App() {
               {loading ? (
                 <>
                   <RefreshCw size={14} className="animate-spin" />
-                  <span>Verificando...</span>
+                  <span>Verifying...</span>
                 </>
               ) : (
                 <>
                   <Shield size={14} />
-                  <span>Acceder al Panel Maestro</span>
+                  <span>Access Master Cockpit</span>
                 </>
               )}
             </button>
@@ -917,7 +932,7 @@ export default function App() {
                   {pingData.edge_colo} ({pingData.latency_ms}ms)
                 </span>
               ) : (
-                <span className="text-gray-500">Conectando...</span>
+                <span className="text-gray-500">Connecting...</span>
               )}
               {autoRefreshInterval > 0 && (
                 <span className="text-indigo-400 font-mono text-[9px] bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-800">
@@ -951,7 +966,7 @@ export default function App() {
             }`}
           >
             <Users size={13} />
-            <span>Licencias ({licenses.length})</span>
+            <span>Licenses ({licenses.length})</span>
           </button>
 
           <button
@@ -963,7 +978,7 @@ export default function App() {
             }`}
           >
             <Sparkles size={13} />
-            <span>Minador VIP</span>
+            <span>VIP Minter</span>
           </button>
 
           <button
@@ -975,7 +990,7 @@ export default function App() {
             }`}
           >
             <Laptop size={13} />
-            <span>Puestos Flotantes ({leases.length})</span>
+            <span>Floating Leases ({leases.length})</span>
           </button>
 
           <button
@@ -987,7 +1002,7 @@ export default function App() {
             }`}
           >
             <Database size={13} />
-            <span>Consola SQL D1</span>
+            <span>D1 SQL Console</span>
           </button>
 
           <button
@@ -999,7 +1014,7 @@ export default function App() {
             }`}
           >
             <Terminal size={13} />
-            <span>Auditoría</span>
+            <span>Audit Trail</span>
           </button>
         </div>
 
@@ -1035,7 +1050,7 @@ export default function App() {
             className="py-1.5 px-3 bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/60 rounded-lg transition text-xs flex items-center gap-1.5 cursor-pointer font-medium"
           >
             <LogOut size={13} />
-            <span>Cerrar Sesión</span>
+            <span>Sign Out</span>
           </button>
         </div>
       </header>
@@ -1076,12 +1091,12 @@ export default function App() {
                   <Shield size={24} />
                 </div>
                 <div>
-                  <span className="text-[11px] text-gray-400 block font-medium">Total Licencias</span>
+                  <span className="text-[11px] text-gray-400 block font-medium">Total Licenses</span>
                   <div className="text-2xl font-black text-white">
                     {stats?.total_licenses ?? licenses.length}
                   </div>
                   <span className="text-[10px] text-indigo-400 font-mono">
-                    {stats?.active_licenses ?? 0} activas en producción
+                    {stats?.active_licenses ?? 0} active in production
                   </span>
                 </div>
               </div>
@@ -1091,11 +1106,11 @@ export default function App() {
                   <Laptop size={24} />
                 </div>
                 <div>
-                  <span className="text-[11px] text-gray-400 block font-medium">Puestos Flotantes en Vivo</span>
+                  <span className="text-[11px] text-gray-400 block font-medium">Live Floating Leases</span>
                   <div className="text-2xl font-black text-white">
                     {stats?.active_floating_leases ?? leases.length}
                   </div>
-                  <span className="text-[10px] text-purple-400 font-mono">Máquinas conectadas hoy</span>
+                  <span className="text-[10px] text-purple-400 font-mono">Workstations connected today</span>
                 </div>
               </div>
 
@@ -1104,11 +1119,11 @@ export default function App() {
                   <Terminal size={24} />
                 </div>
                 <div>
-                  <span className="text-[11px] text-gray-400 block font-medium">Auditoría (Últimos 7 días)</span>
+                  <span className="text-[11px] text-gray-400 block font-medium">Audit Events (Last 7 Days)</span>
                   <div className="text-2xl font-black text-white">
                     {stats?.recent_audit_events_7d ?? 0}
                   </div>
-                  <span className="text-[10px] text-pink-400 font-mono">Eventos de seguridad & webhooks</span>
+                  <span className="text-[10px] text-pink-400 font-mono">Security events & webhooks</span>
                 </div>
               </div>
 
@@ -1123,7 +1138,7 @@ export default function App() {
                     <span>100% Online</span>
                   </div>
                   <span className="text-[10px] text-emerald-500/90 font-mono">
-                    Cloudflare D1 &bull; 0 &euro;/mes
+                    Cloudflare D1 &bull; 0 €/mo
                   </span>
                 </div>
               </div>
@@ -1136,10 +1151,10 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <Activity size={14} className="text-indigo-400" />
-                    <span>Distribución de Licencias por Nivel de Suscripción</span>
+                    <span>License Distribution by Subscription Tier</span>
                   </span>
                   <span className="text-[11px] text-gray-400 font-mono">
-                    Total: {licenses.length} licencias activas
+                    Total: {licenses.length} active licenses
                   </span>
                 </div>
 
@@ -1205,14 +1220,14 @@ export default function App() {
                 <div className="flex items-center justify-between pb-2 border-b border-gray-800">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <AlertTriangle size={14} className={expiringSoonLicenses.length > 0 ? "text-amber-400" : "text-gray-500"} />
-                    <span>Vencimientos Próximos (&lt;30d)</span>
+                    <span>Upcoming Expirations (&lt;30d)</span>
                   </span>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
                     expiringSoonLicenses.length > 0
                       ? "bg-amber-950 text-amber-300 border border-amber-800"
                       : "bg-gray-800 text-gray-400"
                   }`}>
-                    {expiringSoonLicenses.length} alertas
+                    {expiringSoonLicenses.length} alerts
                   </span>
                 </div>
 
@@ -1228,18 +1243,18 @@ export default function App() {
                           onClick={() => setEditingLicense(lic)}
                           className="px-2 py-0.5 bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 rounded text-[10px] cursor-pointer"
                         >
-                          Renovar
+                          Renew
                         </button>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="py-4 text-center text-xs text-gray-500 font-sans">
-                    ✓ Sin licencias en riesgo de vencer este mes.
+                    ✓ No licenses at risk of expiring this month.
                   </div>
                 )}
                 <span className="text-[10px] text-gray-500 font-mono block mt-2">
-                  Vigilancia automática por Cloudflare D1
+                  Automatic watchdog via Cloudflare D1
                 </span>
               </div>
             </div>
@@ -1250,17 +1265,17 @@ export default function App() {
               <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 text-indigo-400">
                   <Sparkles size={18} />
-                  <h3 className="font-bold text-sm text-white">Minador VIP & Partners</h3>
+                  <h3 className="font-bold text-sm text-white">VIP & Partner Minter</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Acuña licencias institucionales para partners, universidades o demos con enlace de activación automática para VS Code.
+                  Mint institutional licenses for partners, universities or demos with instant VS Code activation.
                 </p>
                 <button
                   onClick={() => setActiveTab("vip_minter")}
                   className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Sparkles size={14} />
-                  <span>Abrir Minador de Licencias</span>
+                  <span>Open License Minter</span>
                 </button>
               </div>
 
@@ -1268,17 +1283,17 @@ export default function App() {
               <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 text-purple-400">
                   <Database size={18} />
-                  <h3 className="font-bold text-sm text-white">Explorador SQL & Tablas</h3>
+                  <h3 className="font-bold text-sm text-white">SQL & Schema Explorer</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Inspecciona dinámicamente las 5 tablas D1, ejecuta consultas analíticas y exporta resultados en CSV o JSON.
+                  Dynamically inspect D1 tables, execute analytical queries, and export results to CSV or JSON.
                 </p>
                 <button
                   onClick={() => setActiveTab("sql_console")}
                   className="w-full py-2 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Database size={14} />
-                  <span>Lanzar Consola SQL</span>
+                  <span>Launch SQL Console</span>
                 </button>
               </div>
 
@@ -1286,10 +1301,10 @@ export default function App() {
               <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-4">
                 <div className="flex items-center gap-2 text-pink-400">
                   <Zap size={18} />
-                  <h3 className="font-bold text-sm text-white">Mantenimiento de Leases</h3>
+                  <h3 className="font-bold text-sm text-white">Lease Governance</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Purga en 1 clic los leases huérfanos que ya no envían heartbeat para liberar cupos de clientes.
+                  1-click purge of orphan leases without heartbeat to liberate customer seat capacity.
                 </p>
                 <button
                   onClick={handlePurgeExpiredLeases}
@@ -1297,7 +1312,7 @@ export default function App() {
                   className="w-full py-2 px-4 bg-gray-800 hover:bg-gray-700 text-pink-300 border border-pink-900/60 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Trash2 size={14} />
-                  <span>Purgar Leases Expirados</span>
+                  <span>Purge Expired Leases</span>
                 </button>
               </div>
             </div>
@@ -1307,13 +1322,13 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Laptop size={18} className="text-indigo-400" />
-                  <h3 className="font-bold text-sm text-white">Puestos Flotantes Recientes Conectados</h3>
+                  <h3 className="font-bold text-sm text-white">Recently Connected Floating Leases</h3>
                 </div>
                 <button
                   onClick={() => setActiveTab("leases")}
                   className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
                 >
-                  <span>Ver todos ({leases.length})</span>
+                  <span>View all ({leases.length})</span>
                   <ChevronRight size={13} />
                 </button>
               </div>
@@ -1322,11 +1337,11 @@ export default function App() {
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-gray-800 text-gray-400">
-                      <th className="pb-2 font-medium">Equipo / Hostname</th>
-                      <th className="pb-2 font-medium">SO</th>
-                      <th className="pb-2 font-medium">Cliente / Licencia</th>
-                      <th className="pb-2 font-medium">Último Heartbeat</th>
-                      <th className="pb-2 font-medium text-right">Acción</th>
+                      <th className="pb-2 font-medium">Workstation / Hostname</th>
+                      <th className="pb-2 font-medium">OS</th>
+                      <th className="pb-2 font-medium">Client / License</th>
+                      <th className="pb-2 font-medium">Last Heartbeat</th>
+                      <th className="pb-2 font-medium text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800/60 font-mono">
@@ -1341,7 +1356,7 @@ export default function App() {
                             onClick={() => handleKickLease(le.id)}
                             className="px-2 py-0.5 bg-red-950 hover:bg-red-900 text-red-300 rounded text-[10px] cursor-pointer"
                           >
-                            Expulsar
+                            Kick
                           </button>
                         </td>
                       </tr>
@@ -1349,7 +1364,7 @@ export default function App() {
                     {leases.length === 0 && (
                       <tr>
                         <td colSpan={5} className="py-4 text-center text-gray-500 font-sans">
-                          No hay puestos flotantes conectados en este momento.
+                          No active floating leases connected right now.
                         </td>
                       </tr>
                     )}
@@ -1374,7 +1389,7 @@ export default function App() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar por correo, nombre o clave..."
+                    placeholder="Search by email, name or license key..."
                     className="w-full pl-9 pr-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
@@ -1384,10 +1399,10 @@ export default function App() {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 focus:outline-none"
                 >
-                  <option value="all">Todos los estados</option>
-                  <option value="active">Activas</option>
-                  <option value="suspended">Suspendidas</option>
-                  <option value="expired">Expiradas</option>
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="expired">Expired</option>
                 </select>
 
                 <select
@@ -1395,7 +1410,7 @@ export default function App() {
                   onChange={(e) => setPlanFilter(e.target.value)}
                   className="px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 focus:outline-none"
                 >
-                  <option value="all">Todos los planes</option>
+                  <option value="all">All tiers</option>
                   <option value="starter">Starter</option>
                   <option value="pro">Pro</option>
                   <option value="enterprise">Enterprise</option>
@@ -1409,7 +1424,7 @@ export default function App() {
                   className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Download size={13} />
-                  <span>Exportar CSV</span>
+                  <span>Export CSV</span>
                 </button>
 
                 <button
@@ -1417,7 +1432,7 @@ export default function App() {
                   className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Sparkles size={13} />
-                  <span>+ Acuñar Licencia VIP</span>
+                  <span>+ Mint VIP License</span>
                 </button>
               </div>
             </div>
@@ -1433,19 +1448,19 @@ export default function App() {
                     onClick={() => handleBulkStatus("active")}
                     className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-medium cursor-pointer"
                   >
-                    Activar Todas
+                    Activate All
                   </button>
                   <button
                     onClick={() => handleBulkStatus("suspended")}
                     className="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-xs font-medium cursor-pointer"
                   >
-                    Suspender Todas
+                    Suspend All
                   </button>
                   <button
                     onClick={() => handleBulkAddSeats(1)}
                     className="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-xs font-medium cursor-pointer"
                   >
-                    +1 Asiento a Todas
+                    +1 Seat to All
                   </button>
                 </div>
 
@@ -1453,7 +1468,7 @@ export default function App() {
                   onClick={() => setSelectedLicenseIds(new Set())}
                   className="text-xs text-gray-400 hover:text-white cursor-pointer"
                 >
-                  Deseleccionar
+                  Deselect
                 </button>
               </div>
             )}
@@ -1467,7 +1482,7 @@ export default function App() {
                       <button
                         onClick={toggleSelectAllLicenses}
                         className="text-gray-400 hover:text-white cursor-pointer"
-                        title="Seleccionar todas"
+                        title="Select all"
                       >
                         {selectedLicenseIds.size === filteredLicenses.length && filteredLicenses.length > 0 ? (
                           <CheckSquare size={14} className="text-indigo-400" />
@@ -1477,13 +1492,13 @@ export default function App() {
                       </button>
                     </th>
                     <th className="pb-3 w-8"></th>
-                    <th className="pb-3">Clave de Puesto (VS Code)</th>
-                    <th className="pb-3">Clave Admin Privada</th>
-                    <th className="pb-3">Cliente / Correo</th>
+                    <th className="pb-3">Workstation Key (VS Code)</th>
+                    <th className="pb-3">Private Admin Key</th>
+                    <th className="pb-3">Customer / Email</th>
                     <th className="pb-3">Plan</th>
-                    <th className="pb-3 text-center">Puestos</th>
-                    <th className="pb-3 text-center">Estado</th>
-                    <th className="pb-3 text-right">Acciones</th>
+                    <th className="pb-3 text-center">Seats</th>
+                    <th className="pb-3 text-center">Status</th>
+                    <th className="pb-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60 font-mono">
@@ -1508,7 +1523,7 @@ export default function App() {
                             <button
                               onClick={() => setExpandedLicenseId(isExpanded ? null : lic.id)}
                               className="text-gray-500 hover:text-indigo-400 cursor-pointer"
-                              title="Ver puestos conectados"
+                              title="View connected workstations"
                             >
                               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button>
@@ -1521,7 +1536,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => handleCopy(lic.license_key)}
                                 className="text-gray-500 hover:text-white cursor-pointer"
-                                title="Copiar clave de puesto"
+                                title="Copy workstation key"
                               >
                                 {copiedKey === lic.license_key ? (
                                   <CheckCircle2 size={11} className="text-emerald-400" />
@@ -1540,7 +1555,7 @@ export default function App() {
                                   type="button"
                                   onClick={() => handleCopy(lic.admin_key!)}
                                   className="text-gray-500 hover:text-purple-300 cursor-pointer"
-                                  title="Copiar clave admin"
+                                  title="Copy admin key"
                                 >
                                   {copiedKey === lic.admin_key ? (
                                     <CheckCircle2 size={11} className="text-emerald-400" />
@@ -1601,7 +1616,7 @@ export default function App() {
                                   : "bg-amber-950 text-amber-400 border-amber-800"
                               }`}
                             >
-                              {lic.status === "active" ? "Activa" : "Suspendida"}
+                              {lic.status === "active" ? "Active" : "Suspended"}
                             </button>
                           </td>
 
@@ -1610,7 +1625,7 @@ export default function App() {
                               <button
                                 onClick={() => setEditingLicense(lic)}
                                 className="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded cursor-pointer"
-                                title="Editar licencia"
+                                title="Edit license"
                               >
                                 <Edit3 size={12} />
                               </button>
@@ -1626,13 +1641,13 @@ export default function App() {
                                 <div className="flex items-center justify-between text-xs text-gray-400 font-sans">
                                   <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
                                     <Laptop size={13} />
-                                    <span>Puestos actualmente ocupando esta licencia ({connectedLeases.length}/{lic.max_seats}):</span>
+                                    <span>Workstations currently holding this license ({connectedLeases.length}/{lic.max_seats}):</span>
                                   </span>
                                 </div>
 
                                 {connectedLeases.length === 0 ? (
                                   <p className="text-gray-500 text-xs italic font-sans">
-                                    Ninguna máquina conectada en este momento.
+                                    No workstation connected at this moment.
                                   </p>
                                 ) : (
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1651,7 +1666,7 @@ export default function App() {
                                           onClick={() => handleKickLease(le.id)}
                                           className="px-2 py-1 bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 rounded text-[10px] cursor-pointer"
                                         >
-                                          Expulsar
+                                          Kick
                                         </button>
                                       </div>
                                     ))}
@@ -1675,7 +1690,7 @@ export default function App() {
                   <div className="flex items-center justify-between pb-3 border-b border-gray-800">
                     <h3 className="font-bold text-white text-sm flex items-center gap-2">
                       <Edit3 size={15} className="text-indigo-400" />
-                      <span>Editar Licencia: {editingLicense.license_key}</span>
+                      <span>Edit License: {editingLicense.license_key}</span>
                     </h3>
                     <button
                       onClick={() => setEditingLicense(null)}
@@ -1687,7 +1702,7 @@ export default function App() {
 
                   <form onSubmit={handleSaveLicenseEdit} className="space-y-3 text-xs">
                     <div>
-                      <label className="text-gray-400 block mb-1">Cliente</label>
+                      <label className="text-gray-400 block mb-1">Customer</label>
                       <input
                         type="text"
                         disabled
@@ -1698,15 +1713,15 @@ export default function App() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-gray-300 block mb-1">Estado</label>
+                        <label className="text-gray-300 block mb-1">Status</label>
                         <select
                           value={editingLicense.status}
                           onChange={(e) => setEditingLicense({ ...editingLicense, status: e.target.value })}
                           className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white"
                         >
-                          <option value="active">active (Activa)</option>
-                          <option value="suspended">suspended (Suspendida)</option>
-                          <option value="expired">expired (Expirada)</option>
+                          <option value="active">active (Active)</option>
+                          <option value="suspended">suspended (Suspended)</option>
+                          <option value="expired">expired (Expired)</option>
                         </select>
                       </div>
 
@@ -1726,7 +1741,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-gray-300 block mb-1">Asientos Máximos (Floating Seats)</label>
+                      <label className="text-gray-300 block mb-1">Maximum Seats (Floating Leases)</label>
                       <input
                         type="number"
                         min="1"
@@ -1740,7 +1755,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="text-gray-300 block mb-1">Fecha de Expiración (ISO / Vacío = Permanente)</label>
+                      <label className="text-gray-300 block mb-1">Expiration Date (ISO / Empty = Lifetime)</label>
                       <input
                         type="text"
                         value={editingLicense.expires_at || ""}
@@ -1754,28 +1769,28 @@ export default function App() {
                           onClick={() => extendExpiration(30)}
                           className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
                         >
-                          +30 Días
+                          +30 Days
                         </button>
                         <button
                           type="button"
                           onClick={() => extendExpiration(90)}
                           className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
                         >
-                          +90 Días
+                          +90 Days
                         </button>
                         <button
                           type="button"
                           onClick={() => extendExpiration(365)}
                           className="px-2 py-0.5 bg-gray-800 hover:bg-indigo-900 border border-gray-700 hover:border-indigo-600 rounded text-[10px] text-gray-300 hover:text-white cursor-pointer transition"
                         >
-                          +1 Año
+                          +1 Year
                         </button>
                         <button
                           type="button"
                           onClick={() => extendExpiration(null)}
                           className="px-2 py-0.5 bg-purple-950/80 hover:bg-purple-900 border border-purple-800 rounded text-[10px] text-purple-200 cursor-pointer transition"
                         >
-                          Vitalicia (Lifetime)
+                          Perpetual (Lifetime)
                         </button>
                       </div>
                     </div>
@@ -1786,14 +1801,14 @@ export default function App() {
                         onClick={() => setEditingLicense(null)}
                         className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-medium cursor-pointer"
                       >
-                        Cancelar
+                        Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={loading}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold transition cursor-pointer"
                       >
-                        Guardar Cambios
+                        Save Changes
                       </button>
                     </div>
                   </form>
@@ -1812,7 +1827,7 @@ export default function App() {
             <div className="bg-[#0f172a] border border-indigo-900/60 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex items-center gap-2 text-indigo-400">
                 <HelpCircle size={20} />
-                <h3 className="font-extrabold text-base text-white">¿Qué hace el Minador VIP?</h3>
+                <h3 className="font-extrabold text-base text-white">VIP & Partner Authority</h3>
               </div>
               <p className="text-xs text-gray-300 leading-relaxed">
                 El flujo estándar de WPipe Studio cobra a través de **Lemon Squeezy** con tarjeta de crédito y crea la licencia vía webhooks automáticos.
@@ -1822,12 +1837,12 @@ export default function App() {
                 <ul className="list-disc list-inside space-y-1 text-gray-300 text-[11px]">
                   <li><strong>Partners Comerciales:</strong> Convenios B2B donde la facturación va por factura bancaria.</li>
                   <li><strong>Universidades & Aceleradoras:</strong> Donación de cupos de 50 asientos para formación.</li>
-                  <li><strong>Influencers & Embajadores:</strong> Licencias gratuitas para difusión en redes.</li>
-                  <li><strong>Tus Propios Equipos:</strong> Licencias master con puestos ilimitados para desarrollo.</li>
+                  <li><strong>Influencers & Ambassadors:</strong> Complimentary licenses for technical outreach.</li>
+                  <li><strong>Internal Teams:</strong> Master licenses with unlimited seats for development.</li>
                 </ul>
               </div>
               <p className="text-[11px] text-gray-400 leading-relaxed">
-                Genera firmas Ed25519 en D1 idénticas a las comerciales, asignando además una <strong>Clave de Administración privada</strong> para el socio.
+                Issues Ed25519 cryptographic signatures in D1 identical to commercial sales, generating a <strong>Private Administration Key</strong> for governance.
               </p>
             </div>
 
@@ -1837,10 +1852,10 @@ export default function App() {
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <Sparkles size={16} className="text-purple-400" />
-                    <span>Acuñador de Licencias VIP & Partners</span>
+                    <span>VIP & Partner License Minter</span>
                   </h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Emisión criptográfica instantánea en Cloudflare D1 con deep links de activación directa.
+                    Instant cryptographic issuance on Cloudflare D1 with 1-click deep links.
                   </p>
                 </div>
               </div>
@@ -1848,7 +1863,7 @@ export default function App() {
               <form onSubmit={handleMintVip} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-gray-300 font-medium mb-1">Nombre del Socio / Organización</label>
+                    <label className="block text-gray-300 font-medium mb-1">Partner / Organization Name</label>
                     <input
                       type="text"
                       value={vipName}
@@ -1860,7 +1875,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-300 font-medium mb-1">Correo de Contacto</label>
+                    <label className="block text-gray-300 font-medium mb-1">Contact Email</label>
                     <input
                       type="email"
                       value={vipEmail}
@@ -1874,7 +1889,7 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-gray-300 font-medium mb-1">Nivel de Plan</label>
+                    <label className="block text-gray-300 font-medium mb-1">Subscription Tier</label>
                     <select
                       value={vipPlan}
                       onChange={(e) => setVipPlan(e.target.value)}
@@ -1888,7 +1903,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-300 font-medium mb-1">Puestos Concurrentes (Seats)</label>
+                    <label className="block text-gray-300 font-medium mb-1">Concurrent Seats Quota</label>
                     <input
                       type="number"
                       min="1"
@@ -1901,24 +1916,24 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-gray-300 font-medium mb-1">Validez / Expiración</label>
+                    <label className="block text-gray-300 font-medium mb-1">Validity / Duration</label>
                     <select
                       value={vipDuration}
                       onChange={(e) => setVipDuration(e.target.value)}
                       className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white"
                     >
-                      <option value="30">30 Días (Demo Comercial)</option>
-                      <option value="90">90 Días (Trimestral)</option>
-                      <option value="365">1 Año (Anual Partner)</option>
-                      <option value="permanent">Permanente (De por vida)</option>
+                      <option value="30">30 Days (Demo)</option>
+                      <option value="90">90 Days (Quarterly)</option>
+                      <option value="365">1 Year (Annual Partner)</option>
+                      <option value="permanent">Perpetual (Lifetime)</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-gray-300 font-medium mb-1 flex items-center justify-between">
-                    <span>Clave Personalizada (Opcional)</span>
-                    <span className="text-[10px] text-gray-500 font-mono">Dejar vacío para autogenerar</span>
+                    <span>Custom Key (Optional)</span>
+                    <span className="text-[10px] text-gray-500 font-mono">Leave empty to autogenerate</span>
                   </label>
                   <input
                     type="text"
@@ -1935,7 +1950,7 @@ export default function App() {
                   className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:from-indigo-400 hover:to-pink-500 text-white font-bold rounded-lg transition shadow-lg shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Sparkles size={14} />
-                  <span>{loading ? "Acuñando en Cloudflare D1..." : "Acuñar y Registrar Licencia Oficial"}</span>
+                  <span>{loading ? "Minting in Cloudflare D1..." : "Mint & Register Official License"}</span>
                 </button>
               </form>
 
@@ -1945,7 +1960,7 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-purple-300 font-bold">
                       <CheckCircle2 size={16} />
-                      <span>¡Licencia Acuñada y Activa en Cloudflare D1!</span>
+                      <span>License Minted & Active in Cloudflare D1!</span>
                     </div>
 
                     <button
@@ -1953,14 +1968,14 @@ export default function App() {
                       className="px-2.5 py-1 bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-700 rounded text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <QrCode size={13} />
-                      <span>Ver Código QR</span>
+                      <span>View QR Code</span>
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
                     <div className="bg-gray-900/90 p-3 rounded-lg border border-gray-800 flex items-center justify-between">
                       <div>
-                        <span className="text-[10px] text-gray-400 block">Clave de Puesto (VS Code):</span>
+                        <span className="text-[10px] text-gray-400 block">Workstation Key (VS Code):</span>
                         <strong className="text-white text-sm">{vipResult.license_key}</strong>
                       </div>
                       <button
@@ -1973,7 +1988,7 @@ export default function App() {
 
                     <div className="bg-gray-900/90 p-3 rounded-lg border border-gray-800 flex items-center justify-between">
                       <div>
-                        <span className="text-[10px] text-gray-400 block">Clave de Administración (Privada):</span>
+                        <span className="text-[10px] text-gray-400 block">Private Admin Key:</span>
                         <strong className="text-purple-300 text-sm">{vipResult.admin_key}</strong>
                       </div>
                       <button
@@ -1988,7 +2003,7 @@ export default function App() {
                   {/* 1-Click VS Code Deep Link */}
                   <div className="bg-indigo-950/60 border border-indigo-800 p-3 rounded-lg flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-bold text-white block">Enlace de Activación 1-Clic para VS Code:</span>
+                      <span className="text-xs font-bold text-white block">1-Click Activation Link for VS Code:</span>
                       <code className="text-[11px] text-indigo-300 font-mono">
                         vscode://wisrovi.wpipe-studio-vscode/activate?key={vipResult.license_key}
                       </code>
@@ -1999,7 +2014,7 @@ export default function App() {
                       }
                       className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold cursor-pointer shrink-0"
                     >
-                      Copiar Deep Link
+                      Copy Deep Link
                     </button>
                   </div>
 
@@ -2008,34 +2023,34 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-gray-300 font-sans font-bold flex items-center gap-1.5">
                         <Send size={12} className="text-purple-400" />
-                        <span>Plantilla de Correo para el Socio (Listo para enviar):</span>
+                        <span>Email Template for Partner (Ready to send):</span>
                       </span>
                       <button
                         onClick={() => {
-                          const emailText = `Hola ${vipName || "Socio"},\n\nAquí tienes tu licencia oficial de WPipe Studio (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} puestos):\n\n- Clave de Activación (VS Code): ${vipResult.license_key}\n- Clave de Administración Privada: ${vipResult.admin_key}\n- Portal de Autoservicio: https://portal.wisrovi.dev\n\nActivación rápida en 1 clic (VS Code):\nvscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}\n\nPara activar en terminal:\nwpipe-engine activate --key ${vipResult.license_key}\n\nUn cordial saludo,\nWilliam Rodriguez - wisrovi.dev`;
+                          const emailText = `Hello ${vipName || "Partner"},\n\nHere is your official WPipe Studio license (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} seats):\n\n- Workstation Key (VS Code): ${vipResult.license_key}\n- Private Admin Key: ${vipResult.admin_key}\n- Self-Service Portal: https://portal.wisrovi.dev\n\n1-Click activation for VS Code:\nvscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}\n\nActivate via terminal:\nwpipe license activate --key ${vipResult.license_key}\n\nBest regards,\nWilliam Rodriguez - wisrovi.dev`;
                           handleCopy(emailText);
                         }}
                         className="text-[10px] text-purple-300 hover:text-white cursor-pointer"
                       >
-                        {copiedKey?.includes("Hola") ? "¡Plantilla Copiada!" : "Copiar Correo Completo"}
+                        {copiedKey?.includes("Hello") ? "Email Template Copied!" : "Copy Full Email Template"}
                       </button>
                     </div>
                     <pre className="text-[11px] font-mono text-gray-400 whitespace-pre-wrap bg-gray-950 p-2.5 rounded border border-gray-800/60 leading-relaxed">
-{`Hola ${vipName || "Socio"},
+{`Hello ${vipName || "Partner"},
 
-Aquí tienes tu licencia oficial de WPipe Studio (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} puestos):
+Here is your official WPipe Studio license (${vipResult.plan.toUpperCase()} - ${vipResult.max_seats} seats):
 
-- Clave de Activación (VS Code): ${vipResult.license_key}
-- Clave de Administración Privada: ${vipResult.admin_key}
-- Portal de Autoservicio: https://portal.wisrovi.dev
+- Workstation Key (VS Code): ${vipResult.license_key}
+- Private Admin Key: ${vipResult.admin_key}
+- Self-Service Portal: https://portal.wisrovi.dev
 
-Activación rápida en 1 clic (VS Code):
+1-Click activation for VS Code:
 vscode://wisrovi.wpipe-studio-vscode/activate?key=${vipResult.license_key}
 
-Para activar en terminal:
-wpipe-engine activate --key ${vipResult.license_key}
+Activate via terminal:
+wpipe license activate --key ${vipResult.license_key}
 
-Un cordial saludo,
+Best regards,
 William Rodriguez - wisrovi.dev`}
                     </pre>
                   </div>
@@ -2047,9 +2062,9 @@ William Rodriguez - wisrovi.dev`}
             {showQrModal && vipResult && (
               <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="bg-[#0f172a] border border-purple-700 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
-                  <h3 className="font-bold text-white text-base">Código QR de Activación</h3>
+                  <h3 className="font-bold text-white text-base">Activation QR Code</h3>
                   <p className="text-xs text-gray-400">
-                    Escanea para activar la licencia en VS Code o terminal móvil.
+                    Scan to activate license in VS Code or mobile test device.
                   </p>
                   <div className="bg-white p-4 rounded-xl inline-block shadow-inner">
                     <img
@@ -2065,7 +2080,7 @@ William Rodriguez - wisrovi.dev`}
                     onClick={() => setShowQrModal(false)}
                     className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
                   >
-                    Cerrar
+                    Close
                   </button>
                 </div>
               </div>
@@ -2082,10 +2097,10 @@ William Rodriguez - wisrovi.dev`}
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Laptop size={18} className="text-indigo-400" />
-                  <span>Monitor en Vivo de Puestos Flotantes (Floating Leases)</span>
+                  <span>Live Floating Leases Monitor</span>
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Estaciones de trabajo ejecutando pipelines activas en el mundo. Heartbeat cada 30 min.
+                  Workstations running pipelines worldwide. Heartbeat every 30 min.
                 </p>
               </div>
 
@@ -2096,7 +2111,7 @@ William Rodriguez - wisrovi.dev`}
                     type="text"
                     value={leaseSearch}
                     onChange={(e) => setLeaseSearch(e.target.value)}
-                    placeholder="Filtrar por hostname, SO o hash..."
+                    placeholder="Filter by hostname, OS or hash..."
                     className="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white"
                   />
                 </div>
@@ -2106,7 +2121,7 @@ William Rodriguez - wisrovi.dev`}
                   className="px-3 py-1.5 bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Trash2 size={13} />
-                  <span>Purgar Expirados</span>
+                  <span>Purge Expired</span>
                 </button>
               </div>
             </div>
@@ -2115,12 +2130,12 @@ William Rodriguez - wisrovi.dev`}
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400 font-medium">
-                    <th className="pb-3">Licencia Asociada</th>
+                    <th className="pb-3">Associated License</th>
                     <th className="pb-3">Hostname</th>
                     <th className="pb-3">SO</th>
-                    <th className="pb-3">Huella de Máquina (SHA-256)</th>
-                    <th className="pb-3">Último Heartbeat</th>
-                    <th className="pb-3">Expira</th>
+                    <th className="pb-3">Machine Fingerprint (SHA-256)</th>
+                    <th className="pb-3">Last Heartbeat</th>
+                    <th className="pb-3">Expires</th>
                     <th className="pb-3 text-right">Acción</th>
                   </tr>
                 </thead>
@@ -2141,7 +2156,7 @@ William Rodriguez - wisrovi.dev`}
                             type="button"
                             onClick={() => setLeaseSearch(le.machine_fingerprint)}
                             className="text-gray-500 hover:text-indigo-400 cursor-pointer p-0.5"
-                            title="Filtrar todas las conexiones de este ordenador"
+                            title="Filter all connections from this machine"
                           >
                             <Search size={11} />
                           </button>
@@ -2158,7 +2173,7 @@ William Rodriguez - wisrovi.dev`}
                           onClick={() => handleKickLease(le.id)}
                           className="px-2.5 py-1 bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 rounded text-[11px] cursor-pointer"
                         >
-                          Expulsar
+                          Kick
                         </button>
                       </td>
                     </tr>
@@ -2166,7 +2181,7 @@ William Rodriguez - wisrovi.dev`}
                   {filteredLeases.length === 0 && (
                     <tr>
                       <td colSpan={7} className="py-6 text-center text-gray-500 font-sans">
-                        No hay puestos flotantes registrados que coincidan con la búsqueda.
+                        No floating leases found matching the search.
                       </td>
                     </tr>
                   )}
@@ -2188,7 +2203,7 @@ William Rodriguez - wisrovi.dev`}
                 <div className="flex items-center justify-between pb-2 border-b border-gray-800">
                   <span className="font-bold text-xs text-white flex items-center gap-1.5">
                     <Table size={14} className="text-indigo-400" />
-                    <span>Tablas D1 ({schemaTables.length})</span>
+                    <span>D1 Tables ({schemaTables.length})</span>
                   </span>
                   <button
                     onClick={() => loadSchemaExplorer()}
@@ -2207,7 +2222,7 @@ William Rodriguez - wisrovi.dev`}
                     type="text"
                     value={schemaSearch}
                     onChange={(e) => setSchemaSearch(e.target.value)}
-                    placeholder="Filtrar tablas o campos..."
+                    placeholder="Filter tables or fields..."
                     className="w-full pl-7 pr-2 py-1 bg-gray-900 border border-gray-800 rounded text-[11px] text-white placeholder-gray-500 focus:outline-none"
                   />
                 </div>
@@ -2281,7 +2296,7 @@ William Rodriguez - wisrovi.dev`}
                 <div className="flex items-center justify-between pb-2 border-b border-gray-800">
                   <span className="font-bold text-xs text-white flex items-center gap-1.5">
                     <FileText size={14} className="text-purple-400" />
-                    <span>Consultas Predefinidas</span>
+                    <span>Predefined Queries</span>
                   </span>
                 </div>
 
@@ -2295,7 +2310,7 @@ William Rodriguez - wisrovi.dev`}
                         : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    Métricas
+                    Metrics
                   </button>
                   <button
                     onClick={() => setSelectedPresetCategory("audit")}
@@ -2305,7 +2320,7 @@ William Rodriguez - wisrovi.dev`}
                         : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    Auditoría
+                    Audit
                   </button>
                   <button
                     onClick={() => setSelectedPresetCategory("maintenance")}
@@ -2315,7 +2330,7 @@ William Rodriguez - wisrovi.dev`}
                         : "text-gray-400 hover:text-white"
                     }`}
                   >
-                    Limpieza
+                    Maintenance
                   </button>
                 </div>
 
@@ -2341,7 +2356,7 @@ William Rodriguez - wisrovi.dev`}
                   <div className="flex items-center justify-between pb-1 border-b border-gray-800">
                     <span className="font-bold text-[11px] text-gray-400 flex items-center gap-1">
                       <History size={12} className="text-gray-400" />
-                      <span>Historial Reciente</span>
+                      <span>Recent History</span>
                     </span>
                     <button
                       onClick={() => {
@@ -2350,7 +2365,7 @@ William Rodriguez - wisrovi.dev`}
                       }}
                       className="text-[10px] text-gray-500 hover:text-red-400 cursor-pointer"
                     >
-                      Limpiar
+                      Clear
                     </button>
                   </div>
                   <div className="space-y-1 max-h-40 overflow-y-auto">
@@ -2375,10 +2390,10 @@ William Rodriguez - wisrovi.dev`}
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <Database size={18} className="text-indigo-400" />
-                    <span>Consola SQL Directa sobre Cloudflare D1</span>
+                    <span>Direct SQL Console on Cloudflare D1</span>
                   </h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Ejecución instantánea contra el clúster SQLite distribuido de Cloudflare.
+                    Instant execution against Cloudflare distributed SQLite cluster.
                   </p>
                 </div>
 
@@ -2389,7 +2404,7 @@ William Rodriguez - wisrovi.dev`}
                     className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white rounded-lg text-xs font-bold transition shadow-lg shadow-indigo-500/20 cursor-pointer flex items-center gap-1.5"
                   >
                     <Play size={13} />
-                    <span>Ejecutar SQL</span>
+                    <span>Execute SQL</span>
                   </button>
                 </div>
               </div>
@@ -2500,10 +2515,10 @@ William Rodriguez - wisrovi.dev`}
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Terminal size={18} className="text-indigo-400" />
-                  <span>Flujo de Auditoría & Webhooks de Lemon Squeezy</span>
+                  <span>Flujo de Audit & Webhooks de Lemon Squeezy</span>
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Registro de eventos criptográficos, activaciones, liberaciones y compras.
+                  Log of cryptographic events, activations, liberations, and purchases.
                 </p>
               </div>
 
@@ -2514,7 +2529,7 @@ William Rodriguez - wisrovi.dev`}
                     type="text"
                     value={auditSearch}
                     onChange={(e) => setAuditSearch(e.target.value)}
-                    placeholder="Filtrar por evento, IP o clave..."
+                    placeholder="Filter by event, IP or key..."
                     className="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white"
                   />
                 </div>
@@ -2524,7 +2539,7 @@ William Rodriguez - wisrovi.dev`}
                   className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Download size={13} />
-                  <span>Exportar CSV</span>
+                  <span>Export CSV</span>
                 </button>
               </div>
             </div>
@@ -2534,11 +2549,11 @@ William Rodriguez - wisrovi.dev`}
                 <thead className="sticky top-0 bg-gray-900 border-b border-gray-800 text-gray-400">
                   <tr>
                     <th className="p-3">ID</th>
-                    <th className="p-3">Evento</th>
-                    <th className="p-3">Clave de Licencia</th>
-                    <th className="p-3">IP Origen</th>
-                    <th className="p-3">Detalles JSON</th>
-                    <th className="p-3">Fecha y Hora</th>
+                    <th className="p-3">Event</th>
+                    <th className="p-3">License Key</th>
+                    <th className="p-3">Source IP</th>
+                    <th className="p-3">JSON Details</th>
+                    <th className="p-3">Date & Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60">
@@ -2559,7 +2574,7 @@ William Rodriguez - wisrovi.dev`}
                   {filteredAuditLogs.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-gray-500 font-sans">
-                        No se encontraron registros de auditoría.
+                        No audit records found.
                       </td>
                     </tr>
                   )}

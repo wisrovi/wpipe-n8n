@@ -14,7 +14,7 @@ Motor nativo del sistema y servidor de licencias local para **WPipe Studio (wisr
 | **Python 3.11+ / CPython** | Runtime principal para el motor de pipelines y generación de código AST. |
 | **Cryptography (PyCA)** | Verificación de firmas asimétricas Ed25519 sobre tokens compactos JWS/JWT. |
 | **Unix Domain Sockets (`socket.AF_UNIX`)** | Canal IPC local de ultra-baja latencia entre VS Code y el daemon sin exponer puertos de red. |
-| **HTTP Localhost (`127.0.0.1:49152`)** | Transporte IPC alternativo para Windows o entornos sin soporte de sockets Unix. |
+| **HTTP Localhost (`127.0.0.1:49152`)** | Transporte IPC alternativo y Web-to-Local Bridge con W3C Private Network Access (PNA) para la PWA de `studio.wisrovi.dev`. |
 | **Nuitka / PyInstaller** | Compilación anticipada (AOT) a binario C cerrado para protección estricta contra ingeniería inversa. |
 | **Pytest** | Suite de pruebas unitarias automatizadas para licencias, cuotas freemium y compilación. |
 
@@ -34,6 +34,9 @@ Motor nativo del sistema y servidor de licencias local para **WPipe Studio (wisr
    - Preserva los bloques `# >>> [WPIPE:CUSTOM_IMPORTS]` y `# >>> [WPIPE:CUSTOM_LOGIC]` escritos manualmente por el usuario.
 4. **Validación Offline con Período de Gracia**:
    - Valida el token firmado sin necesidad de conexión constante a internet, con 7 días de gracia adicionales.
+5. **Web-to-Local Bridge con W3C Private Network Access (PNA)**:
+   - Permite que la Progressive Web App (`https://studio.wisrovi.dev` y `https://wpipe-studio.pages.dev`) invoque al daemon local en `http://127.0.0.1:49152` mediante cabeceras preflight seguras (`Access-Control-Allow-Private-Network: true`).
+   - Sirve tokens JWS firmados con curva Ed25519 en `/v1/license/status` para que el navegador valide criptográficamente la autenticidad del plan Pro con la WebCrypto API.
 
 ---
 

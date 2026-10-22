@@ -18,6 +18,7 @@ from wpipe_engine.core.compiler import ASTCompiler
 from wpipe_engine.core.licensing import LicenseManager
 from wpipe_engine.core.limiter import check_compilation_limits
 from wpipe_engine.core.runner import LocalRunner
+from wpipe_engine.core.workspace import WorkspaceManager
 
 DEFAULT_SOCKET_PATH = "/tmp/wpipe.sock"
 DEFAULT_HTTP_HOST = "127.0.0.1"
@@ -76,8 +77,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         if self._is_allowed_origin():
             allowed = origin if origin else "*"
             self.send_header("Access-Control-Allow-Origin", allowed)
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Access-Control-Request-Private-Network")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Access-Control-Request-Private-Network, X-User-ID, X-Session-Token")
             if self.headers.get("Access-Control-Request-Private-Network") == "true":
                 self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Vary", "Origin")
@@ -163,9 +164,12 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             return
 
         license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
+        workspace_mgr: WorkspaceManager = self.server.workspace_mgr  # type: ignore
+
+        clean_path = self.path.split("?")[0]
 
         # 1. Base Health & Status
-        if self.path in ("/", "/v1/health", "/health"):
+        if clean_path in ("/", "/v1/health", "/health"):
             # If path is "/" and canvas static files exist, serve index.html
             if self.path == "/" and (CANVAS_STATIC_DIR / "index.html").exists():
                 if self._serve_static("index.html"):
@@ -229,16 +233,37 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             }])
             return
 
-        elif self.path.startswith("/api/v1/projects"):
-            self._send_json(200, [])
+        # 4. Local Projects & Workspace Management
+        elif clean_path in ("/api/v1/projects", "/v1/projects"):
+            self._send_json(200, workspace_mgr.list_projects())
             return
 
-        # 4. Static Canvas Files (index.html, JS, CSS, SVG)
+        elif clean_path.startswith("/api/v1/projects/") or clean_path.startswith("/v1/projects/"):
+            prefix = "/api/v1/projects/" if clean_path.startswith("/api/v1/projects/") else "/v1/projects/"
+            subpath = clean_path[len(prefix):]
+            parts = [p for p in subpath.split("/") if p]
+            if len(parts) == 1:
+                proj = workspace_mgr.get_project(parts[0])
+                if proj:
+                    self._send_json(200, proj)
+                else:
+                    self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": parts[0]})
+                return
+            elif len(parts) >= 2 and parts[1] == "env":
+                env_list = workspace_mgr.get_env_vars(parts[0])
+                self._send_json(200, {"variables": env_list})
+                return
+            elif len(parts) >= 2 and parts[1] == "simulations":
+                sims = workspace_mgr.get_simulations(parts[0])
+                self._send_json(200, sims)
+                return
+
+        # 5. Static Canvas Files (index.html, JS, CSS, SVG)
         served = self._serve_static(self.path)
         if served:
             return
 
-        # 5. SPA Fallback: if not an API call and canvas exists, serve index.html
+        # 6. SPA Fallback: if not an API call and canvas exists, serve index.html
         if not self.path.startswith("/api/") and not self.path.startswith("/v1/"):
             if self._serve_static("index.html"):
                 return
@@ -253,11 +278,13 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
         compiler: ASTCompiler = self.server.compiler  # type: ignore
         runner: LocalRunner = self.server.runner  # type: ignore
+        workspace_mgr: WorkspaceManager = self.server.workspace_mgr  # type: ignore
 
         body = self._read_json_body()
+        clean_path = self.path.split("?")[0]
 
         # 0. Local Dev Auth Login
-        if self.path in ("/api/v1/auth/login", "/auth/login"):
+        if clean_path in ("/api/v1/auth/login", "/auth/login"):
             self._send_json(200, {
                 "token": "local_dev_token",
                 "user": {
@@ -269,8 +296,56 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             })
             return
 
-        # 1. License Activation
-        if self.path in ("/v1/license/activate", "/license/activate"):
+        # 1. Local Projects Creation & Operations
+        elif clean_path in ("/api/v1/projects", "/v1/projects"):
+            name = body.get("name", "new_microservice")
+            desc = body.get("description", "")
+            docker_img = body.get("docker_image", "python:3.11-slim")
+            proto = body.get("protocol", "fastapi")
+            canvas_ir = body.get("canvas_ir")
+            gen_files = body.get("generated_files")
+            if not gen_files and canvas_ir:
+                try:
+                    gen_files = compiler.compile_canvas(canvas_ir, project_name=name)
+                except Exception:
+                    pass
+            proj = workspace_mgr.create_project(
+                name=name,
+                description=desc,
+                docker_image=docker_img,
+                protocol=proto,
+                canvas_ir=canvas_ir,
+                generated_files=gen_files,
+            )
+            self._send_json(201, proj)
+            return
+
+        elif clean_path.startswith("/api/v1/projects/") or clean_path.startswith("/v1/projects/"):
+            prefix = "/api/v1/projects/" if clean_path.startswith("/api/v1/projects/") else "/v1/projects/"
+            subpath = clean_path[len(prefix):]
+            parts = [p for p in subpath.split("/") if p]
+            if len(parts) >= 2 and parts[1] == "duplicate":
+                dup = workspace_mgr.duplicate_project(parts[0])
+                if dup:
+                    self._send_json(200, dup)
+                else:
+                    self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": parts[0]})
+                return
+            elif len(parts) >= 2 and parts[1] == "env":
+                saved = workspace_mgr.save_env_vars(parts[0], body.get("variables", []))
+                self._send_json(200 if saved else 400, {"status": "saved" if saved else "error"})
+                return
+            elif len(parts) >= 2 and parts[1] == "simulations":
+                saved = workspace_mgr.add_simulation(parts[0], body)
+                self._send_json(200 if saved else 400, {"status": "saved" if saved else "error"})
+                return
+            elif len(parts) >= 2 and parts[1] == "terminal":
+                res = workspace_mgr.execute_terminal(parts[0], body.get("command", ""))
+                self._send_json(200, res)
+                return
+
+        # 2. License Activation
+        elif clean_path in ("/v1/license/activate", "/license/activate"):
             key = body.get("license_key", "")
             if not key:
                 self._send_json(400, {"error": "MISSING_LICENSE_KEY", "message": "Clave requerida"})
@@ -350,6 +425,47 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
 
+    def do_PUT(self) -> None:
+        if not self._is_allowed_origin():
+            self._send_json(403, {"error": "FORBIDDEN_ORIGIN", "message": "Cross-origin request rejected."})
+            return
+
+        workspace_mgr: WorkspaceManager = self.server.workspace_mgr  # type: ignore
+        body = self._read_json_body()
+        clean_path = self.path.split("?")[0]
+
+        if clean_path.startswith("/api/v1/projects/") or clean_path.startswith("/v1/projects/"):
+            prefix = "/api/v1/projects/" if clean_path.startswith("/api/v1/projects/") else "/v1/projects/"
+            project_id = clean_path[len(prefix):].split("/")[0]
+            updated = workspace_mgr.update_project(project_id, body)
+            if updated:
+                self._send_json(200, updated)
+            else:
+                self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": project_id})
+            return
+
+        self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
+
+    def do_DELETE(self) -> None:
+        if not self._is_allowed_origin():
+            self._send_json(403, {"error": "FORBIDDEN_ORIGIN", "message": "Cross-origin request rejected."})
+            return
+
+        workspace_mgr: WorkspaceManager = self.server.workspace_mgr  # type: ignore
+        clean_path = self.path.split("?")[0]
+
+        if clean_path.startswith("/api/v1/projects/") or clean_path.startswith("/v1/projects/"):
+            prefix = "/api/v1/projects/" if clean_path.startswith("/api/v1/projects/") else "/v1/projects/"
+            project_id = clean_path[len(prefix):].split("/")[0]
+            deleted = workspace_mgr.delete_project(project_id)
+            if deleted:
+                self._send_json(200, {"status": "deleted", "id": project_id})
+            else:
+                self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": project_id})
+            return
+
+        self._send_json(404, {"error": "NOT_FOUND", "path": self.path})
+
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress default stderr HTTP logging to keep daemon quiet."""
         pass
@@ -365,12 +481,14 @@ def start_ipc_server(
     license_mgr = LicenseManager()
     compiler = ASTCompiler()
     runner = LocalRunner()
+    workspace_mgr = WorkspaceManager()
 
     if use_http or sys.platform == "win32":
         server = ThreadedHTTPServer((http_host, http_port), EngineRequestHandler)
         server.license_mgr = license_mgr  # type: ignore
         server.compiler = compiler  # type: ignore
         server.runner = runner  # type: ignore
+        server.workspace_mgr = workspace_mgr  # type: ignore
         print(f"🚀 wpipe-engine escuchando en HTTP http://{http_host}:{http_port} (PID: {os.getpid()})")
         try:
             server.serve_forever()
@@ -385,6 +503,7 @@ def start_ipc_server(
             http_server.license_mgr = license_mgr  # type: ignore
             http_server.compiler = compiler  # type: ignore
             http_server.runner = runner  # type: ignore
+            http_server.workspace_mgr = workspace_mgr  # type: ignore
             http_thread = threading.Thread(target=http_server.serve_forever, daemon=True)
             http_thread.start()
             print(f"🌐 wpipe-engine servidor canvas activo en http://{http_host}:{http_port}")
@@ -404,6 +523,7 @@ def start_ipc_server(
         server.license_mgr = license_mgr  # type: ignore
         server.compiler = compiler  # type: ignore
         server.runner = runner  # type: ignore
+        server.workspace_mgr = workspace_mgr  # type: ignore
         print(f"🚀 wpipe-engine escuchando en socket Unix {socket_path} (PID: {os.getpid()})")
         try:
             server.serve_forever()

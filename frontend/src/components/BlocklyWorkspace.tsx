@@ -780,19 +780,29 @@ export function addControlBlockToWorkspace(
 }
 
 export function getMermaidFromBlocklyWorkspace(): string {
-  if (!activeWorkspaceRef) return "graph TD\n    empty[\"Empty Canvas\"]";
+  if (!activeWorkspaceRef) return "flowchart TD\n    empty[\"Empty Canvas\"]";
   const topBlocks = activeWorkspaceRef.getTopBlocks(true);
   if (!topBlocks || topBlocks.length === 0) {
-    return "graph TD\n    empty[\"Empty Canvas\"]";
+    return "flowchart TD\n    empty[\"Empty Canvas\"]";
   }
 
-  let lines: string[] = ["graph TD"];
+  let lines: string[] = ["flowchart TD"];
   let nodeCounter = 1;
 
-  function traverseBlock(block: Blockly.Block): { entryId: string; exitNodes: string[] } {
+  interface ExitPath {
+    nodeId: string;
+    label?: string;
+  }
+
+  interface TraverseResult {
+    entryId: string;
+    exits: ExitPath[];
+  }
+
+  function traverseBlock(block: Blockly.Block, stopAtNext: boolean = false): TraverseResult {
     const currentId = `node_${nodeCounter++}`;
     const type = block.type;
-    let branchExits: string[] = [];
+    let nodeExits: ExitPath[] = [];
 
     if (type === "wpipe_trigger") {
       const trigType = block.getFieldValue("TRIGGER_TYPE") || "api";
@@ -807,7 +817,7 @@ export function getMermaidFromBlocklyWorkspace(): string {
       };
       const label = typeLabels[trigType] || `🚀 TRIGGER: ${trigType}`;
       lines.push(`    ${currentId}(["${label}"]):::startTrigger`);
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId }];
     } else if (type === "wpipe_response") {
       const respType = block.getFieldValue("RESPONSE_TYPE") || "http_json";
       const respParam = block.getFieldValue("RESPONSE_PARAM") || '{"status": "success"}';
@@ -820,106 +830,155 @@ export function getMermaidFromBlocklyWorkspace(): string {
       };
       const label = typeLabels[respType] || `🏁 RESPONSE: ${respType}`;
       lines.push(`    ${currentId}(["${label}"]):::endResponse`);
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId }];
     } else if (type === "wpipe_step") {
       const name = block.getFieldValue("STEP_NAME") || "Step";
-      lines.push(`    ${currentId}["📦 ${name}"]`);
-      branchExits = [currentId];
+      lines.push(`    ${currentId}["📦 ${name}"]:::catalogStep`);
+      nodeExits = [{ nodeId: currentId }];
     } else if (type === "wpipe_ai_step") {
       const name = block.getFieldValue("STEP_NAME") || "AIStep";
       lines.push(`    ${currentId}["✨ IA: ${name}"]:::aiStep`);
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId }];
     } else if (type === "wpipe_user_file_step") {
       const name = block.getFieldValue("STEP_NAME") || "CustomStep";
       const fileName = block.getFieldValue("FILE_NAME") || "file.py";
       lines.push(`    ${currentId}["📄 ${name}<br/><small>${fileName}</small>"]:::userStep`);
-      branchExits = [currentId];
-    } else if (type === "wpipe_if" || type === "wpipe_if_else") {
-      const cond = block.getFieldValue("CONDITION") || "IF Condition";
-      lines.push(`    ${currentId}{{"🔀 SI: ${cond}"}}`);
+      nodeExits = [{ nodeId: currentId }];
+    } else if (type === "wpipe_if") {
+      const cond = (block.getFieldValue("CONDITION") || "is_valid == True").replace(/"/g, "'");
+      lines.push(`    ${currentId}{"🔀 Condición: ${cond}"}:::condStep`);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -->|TRUE| ${childRes.entryId}`);
-        branchExits.push(...childRes.exitNodes);
+        lines.push(`    ${currentId} -->|"SÍ (True)"| ${childRes.entryId}`);
+        nodeExits.push(...childRes.exits);
+        nodeExits.push({ nodeId: currentId, label: "NO (False)" });
       } else {
-        branchExits.push(currentId);
+        nodeExits = [{ nodeId: currentId }];
+      }
+    } else if (type === "wpipe_if_else") {
+      const cond = (block.getFieldValue("CONDITION") || "status_code == 200").replace(/"/g, "'");
+      lines.push(`    ${currentId}{"🔀 Condición: ${cond}"}:::condStep`);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        const childRes = traverseBlock(doInput.connection.targetBlock()!);
+        lines.push(`    ${currentId} -->|"SÍ (True)"| ${childRes.entryId}`);
+        nodeExits.push(...childRes.exits);
+      } else {
+        nodeExits.push({ nodeId: currentId, label: "SÍ (True)" });
       }
 
       const elseInput = block.getInput("ELSE");
       if (elseInput && elseInput.connection && elseInput.connection.targetBlock()) {
         const elseRes = traverseBlock(elseInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -->|FALSE| ${elseRes.entryId}`);
-        branchExits.push(...elseRes.exitNodes);
+        lines.push(`    ${currentId} -->|"NO (False)"| ${elseRes.entryId}`);
+        nodeExits.push(...elseRes.exits);
+      } else {
+        nodeExits.push({ nodeId: currentId, label: "NO (False)" });
       }
     } else if (type === "wpipe_for") {
-      const iters = block.getFieldValue("ITERATIONS") || "5";
-      lines.push(`    ${currentId}{{"🔁 REPEAT (${iters}x)"}}`);
+      const iters = block.getFieldValue("ITERATIONS") || "3";
+      lines.push(`    ${currentId}{{"🔁 Bucle For (${iters}x)"}}:::loopStep`);
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -->|LOOP| ${childRes.entryId}`);
-        childRes.exitNodes.forEach((ex) => lines.push(`    ${ex} -.->|LOOP BACK| ${currentId}`));
+        lines.push(`    ${currentId} -->|"Iterar (1..${iters})"| ${childRes.entryId}`);
+        childRes.exits.forEach((ex) => {
+          lines.push(`    ${ex.nodeId} -.->|"Siguiente Iteración"| ${currentId}`);
+        });
       }
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId, label: "Fin Bucle (Completado)" }];
     } else if (type === "wpipe_while") {
-      const cond = block.getFieldValue("CONDITION") || "retry_count < 3";
-      lines.push(`    ${currentId}{{"🔁 WHILE (${cond})"}}`);
+      const cond = (block.getFieldValue("CONDITION") || "retry_count < 3").replace(/"/g, "'");
+      lines.push(`    ${currentId}{{"🔁 Bucle While (${cond})"}}:::loopStep`);
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -->|LOOP| ${childRes.entryId}`);
-        childRes.exitNodes.forEach((ex) => lines.push(`    ${ex} -.->|LOOP BACK| ${currentId}`));
+        lines.push(`    ${currentId} -->|"Iterar (True)"| ${childRes.entryId}`);
+        childRes.exits.forEach((ex) => {
+          lines.push(`    ${ex.nodeId} -.->|"Re-evaluar Condición"| ${currentId}`);
+        });
       }
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId, label: "Condición Falsa (Fin)" }];
     } else if (type === "wpipe_parallel") {
       const policy = block.getFieldValue("MERGE_POLICY") || "accumulate";
-      lines.push(`    ${currentId}["⚡ RUN IN PARALLEL<br/><small>Merge: ${policy}</small>"]`);
+      lines.push(`    ${currentId}["⚡ Inicio Paralelo (Fork)<br/><small>Merge: ${policy}</small>"]:::parallelStep`);
+      const joinId = `join_${nodeCounter++}`;
+      lines.push(`    ${joinId}["🔗 Fusión Contexto (Join)<br/><small>Merge: ${policy}</small>"]:::parallelStep`);
+
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
-        const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -->|PARALLEL| ${childRes.entryId}`);
-        branchExits.push(...childRes.exitNodes);
+        let curParallelBlock: Blockly.Block | null = doInput.connection.targetBlock();
+        let branchNum = 1;
+        while (curParallelBlock) {
+          const pChildRes = traverseBlock(curParallelBlock, true);
+          lines.push(`    ${currentId} ==>|"Hebra ${branchNum++}"| ${pChildRes.entryId}`);
+          pChildRes.exits.forEach((ex) => {
+            lines.push(`    ${ex.nodeId} ==> ${joinId}`);
+          });
+          curParallelBlock = curParallelBlock.nextConnection?.targetBlock() || null;
+        }
       } else {
-        branchExits.push(currentId);
+        lines.push(`    ${currentId} ==> ${joinId}`);
       }
+      nodeExits = [{ nodeId: joinId }];
     } else if (type === "wpipe_background") {
-      lines.push(`    ${currentId}["⏳ BACKGROUND TASK"]:::bgStep`);
+      lines.push(`    ${currentId}["⏳ Tarea Segundo Plano (Background)"]:::bgStep`);
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -.->|ASYNC BG| ${childRes.entryId}`);
-        branchExits.push(...childRes.exitNodes);
-      } else {
-        branchExits.push(currentId);
+        lines.push(`    ${currentId} -.->|"Lanzar Hilo Asíncrono"| ${childRes.entryId}`);
+        const bgEndId = `bg_done_${nodeCounter++}`;
+        lines.push(`    ${bgEndId}(["🏁 Fin Hilo Asíncrono"]):::bgStep`);
+        childRes.exits.forEach((ex) => {
+          lines.push(`    ${ex.nodeId} -.-> ${bgEndId}`);
+        });
       }
+      nodeExits = [{ nodeId: currentId, label: "Flujo Principal" }];
     } else {
       lines.push(`    ${currentId}["${type}"]`);
-      branchExits = [currentId];
+      nodeExits = [{ nodeId: currentId }];
     }
 
-    let finalExitNodes = branchExits;
-    if (block.nextConnection && block.nextConnection.targetBlock()) {
+    let finalExits = nodeExits;
+    if (!stopAtNext && block.nextConnection && block.nextConnection.targetBlock()) {
       const nextRes = traverseBlock(block.nextConnection.targetBlock()!);
-      branchExits.forEach((ex) => {
-        lines.push(`    ${ex} --> ${nextRes.entryId}`);
+      nodeExits.forEach((ex) => {
+        if (ex.label) {
+          const cleanLabel = ex.label.replace(/^"|"$/g, "");
+          lines.push(`    ${ex.nodeId} -->|"${cleanLabel}"| ${nextRes.entryId}`);
+        } else {
+          lines.push(`    ${ex.nodeId} --> ${nextRes.entryId}`);
+        }
       });
-      finalExitNodes = nextRes.exitNodes;
+      finalExits = nextRes.exits;
     }
 
-    return { entryId: currentId, exitNodes: finalExitNodes };
+    return { entryId: currentId, exits: finalExits };
   }
 
-  topBlocks.forEach((tb) => {
+  // Prioritize root trigger block first
+  const sortedTopBlocks = [...topBlocks].sort((a, b) => {
+    if (a.type === "wpipe_trigger") return -1;
+    if (b.type === "wpipe_trigger") return 1;
+    return 0;
+  });
+
+  sortedTopBlocks.forEach((tb) => {
     traverseBlock(tb);
   });
 
-  lines.push("    classDef startTrigger fill:#d97706,stroke:#f59e0b,stroke-width:3px,color:#fff,font-weight:bold;");
-  lines.push("    classDef endResponse fill:#9f1239,stroke:#f43f5e,stroke-width:3px,color:#fff,font-weight:bold;");
-  lines.push("    classDef aiStep fill:#9333ea,stroke:#c084fc,stroke-width:2px,color:#fff;");
-  lines.push("    classDef userStep fill:#0d9488,stroke:#2dd4bf,stroke-width:2px,color:#fff;");
-  lines.push("    classDef bgStep fill:#4338ca,stroke:#818cf8,stroke-width:2px,color:#fff;");
+  lines.push("    classDef startTrigger fill:#d97706,stroke:#f59e0b,stroke-width:2px,color:#fff,font-weight:bold;");
+  lines.push("    classDef endResponse fill:#9f1239,stroke:#f43f5e,stroke-width:2px,color:#fff,font-weight:bold;");
+  lines.push("    classDef catalogStep fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;");
+  lines.push("    classDef aiStep fill:#581c87,stroke:#a855f7,stroke-width:2px,color:#fff;");
+  lines.push("    classDef userStep fill:#115e59,stroke:#14b8a6,stroke-width:2px,color:#fff;");
+  lines.push("    classDef condStep fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;");
+  lines.push("    classDef loopStep fill:#713f12,stroke:#eab308,stroke-width:2px,color:#fff;");
+  lines.push("    classDef parallelStep fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;");
+  lines.push("    classDef bgStep fill:#312e81,stroke:#6366f1,stroke-width:2px,color:#fff;");
 
   return lines.join("\n");
 }
@@ -1187,116 +1246,220 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
   return { nodes, edges, viewport: { x: 0, y: 0, zoom: 1 } };
 }
 
-export function getWorkPlanFromBlocklyWorkspace(catalogSteps: any[] = []): string {
+export function getWorkPlanFromBlocklyWorkspace(
+  catalogSteps: any[] = [],
+  projectName: string = "main_pipeline"
+): string {
   if (!activeWorkspaceRef) {
     return "# 📋 WPipe Studio Execution Work Plan\n\nNo blocks found in workspace.";
   }
 
-  const allBlocks = activeWorkspaceRef.getAllBlocks(false);
-  if (!allBlocks || allBlocks.length === 0) {
+  const topBlocks = activeWorkspaceRef.getTopBlocks(true);
+  if (!topBlocks || topBlocks.length === 0) {
     return "# 📋 WPipe Studio Execution Work Plan\n\nNo blocks configured in workspace.";
   }
 
-  const triggerBlocks = allBlocks.filter((b) => b.type === "wpipe_trigger");
-  const responseBlocks = allBlocks.filter((b) => b.type === "wpipe_response");
-  const stepBlocks = allBlocks.filter((b) => b.type === "wpipe_step");
-  const aiBlocks = allBlocks.filter((b) => b.type === "wpipe_ai_step");
-  const userFileBlocks = allBlocks.filter((b) => b.type === "wpipe_user_file_step");
-  const controlBlocks = allBlocks.filter(
-    (b) =>
-      b.type.startsWith("wpipe_") &&
-      !["wpipe_trigger", "wpipe_response", "wpipe_step", "wpipe_ai_step", "wpipe_user_file_step"].includes(b.type)
-  );
-
-  let md = `# 📋 WPipe Studio Execution Work Plan & Architecture Specification\n\n`;
-  md += `> **Generated on:** ${new Date().toISOString().split("T")[0]}\n`;
-  md += `> **Pipeline Status:** Verified for Execution\n\n`;
-
-  md += `---
-
-## 0. 🚀 Ingress & Pipeline Triggers (${triggerBlocks.length})
-`;
-  if (triggerBlocks.length === 0) {
-    md += `*Default trigger: API REST (/run)*\n\n`;
-  } else {
-    triggerBlocks.forEach((b, idx) => {
-      const t = b.getFieldValue("TRIGGER_TYPE") || "api";
-      const p = b.getFieldValue("TRIGGER_PARAM") || "/run";
-      md += `#### ${idx + 1}. \`${t.toUpperCase()}\` Ingress\n- **Route / Topic / Key:** \`${p}\`\n\n`;
-    });
-  }
-
-  md += `---
-
-## 1. 📦 Steps & State Contracts
-
-### 🌐 Official & Plugin Catalog Steps (${stepBlocks.length})
-`;
-  if (stepBlocks.length === 0) {
-    md += `*No standard catalog steps in workspace.*\n\n`;
-  } else {
-    stepBlocks.forEach((b, idx) => {
-      const name = b.getFieldValue("STEP_NAME") || "Step";
-      const ns = b.getFieldValue("NAMESPACE") || "wpipe_steps";
-      md += `#### ${idx + 1}. \`${name}\`\n- **Namespace:** \`${ns}\`\n\n`;
-    });
-  }
-
-  md += `### ✨ AI-Generated States (${aiBlocks.length})
-`;
-  if (aiBlocks.length === 0) {
-    md += `*No AI-generated steps configured.*\n\n`;
-  } else {
-    aiBlocks.forEach((b, idx) => {
-      const name = b.getFieldValue("STEP_NAME") || "custom_ai_state";
-      const prompt = b.getFieldValue("AI_PROMPT") || "";
-      md += `#### ${idx + 1}. \`${name}\` (Dialect A)\n- **Generation Prompt:** "${prompt}"\n- **Output:** \`app/states/${name}.py\` + \`app/dto/${name}_dto.py\`\n\n`;
-    });
-  }
-
-  md += `### 📄 User-Imported Python States (${userFileBlocks.length})
-`;
-  if (userFileBlocks.length === 0) {
-    md += `*No user-imported python files.*\n\n`;
-  } else {
-    userFileBlocks.forEach((b, idx) => {
-      const name = b.getFieldValue("STEP_NAME") || "custom_user_step";
-      const fileName = b.getFieldValue("FILE_NAME") || "file.py";
-      md += `#### ${idx + 1}. \`${name}\`\n- **Source File:** \`${fileName}\`\n\n`;
-    });
-  }
-
-  md += `---
-
-## 2. 🔀 Control Flow Blocks (${controlBlocks.length})
-`;
-  controlBlocks.forEach((b, idx) => {
-    md += `- **Node ${idx + 1}:** \`${b.type}\``;
-    if (b.getFieldValue("CONDITION")) {
-      md += ` (Condition: \`${b.getFieldValue("CONDITION")}\`)`;
-    }
-    if (b.getFieldValue("ITERATIONS")) {
-      md += ` (Repeat: \`${b.getFieldValue("ITERATIONS")}\` times)`;
-    }
-    if (b.getFieldValue("MERGE_POLICY")) {
-      md += ` (Merge: \`${b.getFieldValue("MERGE_POLICY")}\`)`;
-    }
-    md += `\n`;
+  // Sort top blocks so root triggers/initial blocks come first
+  const sortedTopBlocks = [...topBlocks].sort((a, b) => {
+    if (a.type === "wpipe_trigger") return -1;
+    if (b.type === "wpipe_trigger") return 1;
+    return 0;
   });
 
+  const catalog = catalogSteps.length > 0 ? catalogSteps : globalCatalog;
+
+  let stepCounter = 1;
+
+  function renderPlanBlock(
+    block: Blockly.Block,
+    depth: number = 0,
+    isParallelBranch: boolean = false
+  ): string[] {
+    const pad = "  ".repeat(depth);
+    const type = block.type;
+    const lines: string[] = [];
+
+    if (type === "wpipe_trigger") {
+      const trigType = (block.getFieldValue("TRIGGER_TYPE") || "api").toLowerCase();
+      const trigParam = block.getFieldValue("TRIGGER_PARAM") || "/run";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🚀 Ingress / Punto de Activación Principal**`);
+      lines.push(`${pad}  - **Tipo de Ingesta:** \`${trigType.toUpperCase()}\``);
+      lines.push(`${pad}  - **Ruta / Topic / Canal:** \`${trigParam}\``);
+      lines.push(`${pad}  - **Contrato de Entrada:** Recibe payload sin procesar, realiza validación Pydantic e inicializa el contexto de ejecución (\`PipelineContextDTO\`).`);
+    } else if (type === "wpipe_response") {
+      const respType = (block.getFieldValue("RESPONSE_TYPE") || "http_json").toLowerCase();
+      const respParam = block.getFieldValue("RESPONSE_PARAM") || '{"status": "success", "data": context}';
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🏁 Egress / Salida y Respuesta del Pipeline**`);
+      lines.push(`${pad}  - **Protocolo de Salida:** \`${respType.toUpperCase()}\``);
+      lines.push(`${pad}  - **Payload / Parámetro:** \`${respParam}\``);
+      lines.push(`${pad}  - **Comportamiento:** Serializa el estado final enriquecido del contexto consolidando métricas y latencia total.`);
+    } else if (type === "wpipe_step") {
+      const name = block.getFieldValue("STEP_NAME") || "Step";
+      const ns = block.getFieldValue("NAMESPACE") || "wpipe_steps";
+      const catEntry = catalog.find((c) => c.name === name || c.func_name === name);
+      const doc = catEntry?.description || catEntry?.docstring || "Paso modular ejecutable perteneciente al ecosistema WPipe.";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 📦 Paso de Catálogo: \`${name}\`**`);
+      lines.push(`${pad}  - **Namespace / Pack:** \`${ns}\``);
+      lines.push(`${pad}  - **Descripción Técnica:** ${doc}`);
+      lines.push(`${pad}  - **Mutación de Contexto:** Procesa los datos de entrada y persiste las transformaciones en el diccionario de contexto transaccional.`);
+    } else if (type === "wpipe_ai_step") {
+      const name = block.getFieldValue("STEP_NAME") || "AISentimentStep";
+      const prompt = block.getFieldValue("AI_PROMPT") || "Clasificar sentimiento del texto (threshold=0.5)";
+      lines.push(`${pad}- **Paso ${stepCounter++}: ✨ Paso Inteligente IA: \`${name}\`**`);
+      lines.push(`${pad}  - **Directiva de Inferencia:** "${prompt}"`);
+      lines.push(`${pad}  - **Contrato:** Ejecuta heurísticas de inferencia / NLP sobre el payload inyectando scores predictivos en el contexto.`);
+    } else if (type === "wpipe_user_file_step") {
+      const name = block.getFieldValue("STEP_NAME") || "CleanDataStep";
+      const fileName = block.getFieldValue("FILE_NAME") || "clean_data.py";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 📄 Paso de Usuario / Script: \`${name}\`**`);
+      lines.push(`${pad}  - **Archivo Fuente:** \`${fileName}\``);
+      lines.push(`${pad}  - **Función:** Sanitización, limpieza de claves y normalización de tipos en memoria.`);
+    } else if (type === "wpipe_if") {
+      const cond = block.getFieldValue("CONDITION") || "is_valid == True";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🔀 Bifurcación Condicional Simple: \`Condition(expression="${cond}")\`**`);
+      lines.push(`${pad}  - **Expresión Evaluada:** \`${cond}\``);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Rama SÍ (True):**`);
+        const childBlock = doInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(childBlock, depth + 2));
+      } else {
+        lines.push(`${pad}  - **Rama SÍ (True):** *(Vacía - paso sin operación)*`);
+      }
+      lines.push(`${pad}  - **Rama NO (False / Bypass):**`);
+      lines.push(`${pad}    - Si la expresión evalúa a Falso, la ejecución omite este bloque y avanza directamente al siguiente paso del pipeline sin alterar el contexto.`);
+    } else if (type === "wpipe_if_else") {
+      const cond = block.getFieldValue("CONDITION") || "status_code == 200";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🔀 Bifurcación Condicional Dual: \`Condition(expression="${cond}")\`**`);
+      lines.push(`${pad}  - **Expresión Evaluada:** \`${cond}\``);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Rama SÍ (True):**`);
+        const childBlock = doInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(childBlock, depth + 2));
+      } else {
+        lines.push(`${pad}  - **Rama SÍ (True):** *(Vacía)*`);
+      }
+
+      const elseInput = block.getInput("ELSE");
+      if (elseInput && elseInput.connection && elseInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Rama NO (False):**`);
+        const elseBlock = elseInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(elseBlock, depth + 2));
+      } else {
+        lines.push(`${pad}  - **Rama NO (False):** *(Bypass / Fallback)*`);
+      }
+      lines.push(`${pad}  - **Punto de Convergencia:** Ambas ramas concluyen y sincronizan su flujo hacia el siguiente nodo.`);
+    } else if (type === "wpipe_for") {
+      const iters = block.getFieldValue("ITERATIONS") || "3";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🔁 Bucle de Repetición: \`For(iterations=${iters})\`**`);
+      lines.push(`${pad}  - **Número de Iteraciones:** ${iters} ciclos continuos`);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Cuerpo del Bucle (Body):**`);
+        const childBlock = doInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(childBlock, depth + 2));
+      }
+      lines.push(`${pad}  - **Condición de Salida:** Tras completar los ${iters} ciclos, la ejecución prosigue con el siguiente paso.`);
+    } else if (type === "wpipe_while") {
+      const cond = block.getFieldValue("CONDITION") || "retry_count < 3";
+      lines.push(`${pad}- **Paso ${stepCounter++}: 🔁 Bucle Condicional Mientras: \`For(validation_expression="${cond}")\`**`);
+      lines.push(`${pad}  - **Expresión de Continuidad:** \`${cond}\``);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Cuerpo del Bucle (Body):**`);
+        const childBlock = doInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(childBlock, depth + 2));
+      }
+      lines.push(`${pad}  - **Condición de Parada:** Cuando la expresión evalúa a Falso, el bucle se interrumpe y continúa la secuencia.`);
+    } else if (type === "wpipe_parallel") {
+      const merge = block.getFieldValue("MERGE_POLICY") || "accumulate";
+      lines.push(`${pad}- **Paso ${stepCounter++}: ⚡ Concurrencia en Paralelo: \`Parallel(merge_policy="${merge}")\`**`);
+      lines.push(`${pad}  - **Política de Fusión (Merge Policy):** \`${merge}\` (fusión determinista sin sobreescrituras destructivas).`);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Hebras Concurrentes Snapped (Workers):**`);
+        let curParallel: Blockly.Block | null = doInput.connection.targetBlock();
+        let branchNum = 1;
+        while (curParallel) {
+          lines.push(`${pad}    - **Hebra ${branchNum++} Concurrente:**`);
+          lines.push(...renderPlanBlock(curParallel, depth + 3, true));
+          curParallel = curParallel.nextConnection?.targetBlock() || null;
+        }
+      }
+      lines.push(`${pad}  - **Barrera de Fusión (Join Barrier):** Todos los hilos finalizan concurrentemente y su resultado se integra en el contexto global bajo la política \`${merge}\`.`);
+    } else if (type === "wpipe_background") {
+      lines.push(`${pad}- **Paso ${stepCounter++}: ⏳ Tarea Asíncrona Desacoplada: \`Background\`**`);
+      lines.push(`${pad}  - **Modelo de Ejecución:** Tarea fire-and-forget en thread secundario sin bloquear el hilo principal.`);
+
+      const doInput = block.getInput("DO");
+      if (doInput && doInput.connection && doInput.connection.targetBlock()) {
+        lines.push(`${pad}  - **Paso Asíncrono Delegado:**`);
+        const childBlock = doInput.connection.targetBlock()!;
+        lines.push(...renderPlanBlock(childBlock, depth + 2));
+      }
+      lines.push(`${pad}  - **Comportamiento No-Bloqueante:** El pipeline principal prosigue de inmediato sin esperar la finalización de este hilo.`);
+    } else {
+      lines.push(`${pad}- **Paso ${stepCounter++}: \`${type}\`**`);
+    }
+
+    if (!isParallelBranch && block.nextConnection && block.nextConnection.targetBlock()) {
+      lines.push(...renderPlanBlock(block.nextConnection.targetBlock()!, depth));
+    }
+
+    return lines;
+  }
+
+  const executionSteps: string[] = [];
+  sortedTopBlocks.forEach((tb) => {
+    executionSteps.push(...renderPlanBlock(tb, 0));
+  });
+
+  const mermaidDag = getMermaidFromBlocklyWorkspace();
+
+  let md = `# 📋 Plan de Ejecución y Especificación de Arquitectura — ${projectName}\n\n`;
+  md += `> **Pipeline:** \`${projectName}\` | **Motor:** WPipe Core v2.5.13 Enterprise\n`;
+  md += `> **Generado:** ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC | **Estado:** Validado para Ejecución\n`;
+  md += `> **Arquitectura:** Microservicio Asíncrono Modular compliant con directrices WPipe Architect Manual\n\n`;
+
   md += `---
 
-## 3. 🏁 Egress & Pipeline Response (${responseBlocks.length})
+## 1. 🎯 Resumen Ejecutivo
+
+El pipeline **${projectName}** implementa una máquina de estados determinista y de alto rendimiento utilizando **WPipe OS**. Cuenta con gestión de ciclo de vida completo: ingesta, orquestación lógica, control de flujo bifurcado, concurrencia paralela, tareas asíncronas en segundo plano y punto de salida unificado.
+
+- **Total de Nodos Orquestados:** ${stepCounter - 1} pasos
+- **Punto de Ingress:** Fast-API REST Ingress / Worker Ingress
+- **Mecanismos de Control:** Ramificaciones condicionales, bucles protegidos y paralelismo con política de merge acumulativo.
+
+---
+
+## 2. 🔀 Secuencia Jerárquica de Ejecución del Pipeline
+
+${executionSteps.join("\n")}
+
+---
+
+## 3. 📊 Diagrama de Flujo Oficial (Mermaid DAG)
+
+\`\`\`mermaid
+${mermaidDag}
+\`\`\`
+
+---
+
+## 4. 🛡️ Estándares de Arquitectura, Concurrencia y Calidad WPipe
+
+1. **Inmutabilidad y Merge Determinista:** Los resultados de ramas concurrentes y bloques paralelos se fusionan siguiendo estrictamente la política declarada (\`merge_policy="accumulate"\`), garantizando consistencia transaccional y evitando colisiones de claves en memoria.
+2. **Desacoplamiento de Tareas Asíncronas:** Las tareas encapsuladas en \`Background\` se delegan al pool de hilos de WPipe sin retener el ciclo de vida del hilo principal de ejecución ni incrementar la latencia de respuesta hacia el cliente.
+3. **Manejo de Errores y Timeouts:** Cada paso encapsula su contrato de datos con validación Pydantic y decoradores \`@to_obj\`, \`@timeout_sync\` y control de excepciones (\`TaskError\`).
+4. **Trazabilidad y Observabilidad:** Todas las transiciones de estado son registradas en SQLite WAL con métricas Prometheus, tracking de latencia por nodo y consumo de recursos CPU/RAM.
 `;
-  if (responseBlocks.length === 0) {
-    md += `*Default egress: Return execution context JSON*\n\n`;
-  } else {
-    responseBlocks.forEach((b, idx) => {
-      const t = b.getFieldValue("RESPONSE_TYPE") || "http_json";
-      const p = b.getFieldValue("RESPONSE_PARAM") || '{"status": "success"}';
-      md += `#### ${idx + 1}. \`${t.toUpperCase()}\` Exit Point\n- **Target / Destination / Format:** \`${p}\`\n\n`;
-    });
-  }
 
   return md;
 }
@@ -1368,10 +1531,10 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
         triggerBlock.nextConnection.connect(block1.previousConnection);
       }
 
-      // 2. Paso con IA (ai_sentiment_step)
+      // 2. Paso con IA (AISentimentStep)
       const blockAi = ws.newBlock("wpipe_ai_step");
-      blockAi.setFieldValue("ai_sentiment_step", "STEP_NAME");
-      blockAi.setFieldValue("Clasificar sentimiento del texto de entrada", "AI_PROMPT");
+      blockAi.setFieldValue("AISentimentStep", "STEP_NAME");
+      blockAi.setFieldValue("Clasificar sentimiento del texto (threshold=0.5)", "AI_PROMPT");
       blockAi.initSvg();
       blockAi.render();
       attachBlockCollapseBehavior(blockAi);
@@ -1379,10 +1542,10 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
         block1.nextConnection.connect(blockAi.previousConnection);
       }
 
-      // 3. Paso Personalizado (.py) (custom_cleaner_step)
+      // 3. Paso Personalizado (.py) (CleanDataStep)
       const blockUser = ws.newBlock("wpipe_user_file_step");
-      blockUser.setFieldValue("custom_cleaner_step", "STEP_NAME");
-      blockUser.setFieldValue("cleaner_state.py", "FILE_NAME");
+      blockUser.setFieldValue("CleanDataStep", "STEP_NAME");
+      blockUser.setFieldValue("clean_data.py", "FILE_NAME");
       blockUser.initSvg();
       blockUser.render();
       attachBlockCollapseBehavior(blockUser);

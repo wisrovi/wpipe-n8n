@@ -34,6 +34,9 @@ import {
   AlertCircle,
   Sparkles,
   Radio,
+  Eye,
+  EyeOff,
+  Trash2,
 } from "lucide-react";
 
 interface Device {
@@ -92,6 +95,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showAdminKeys, setShowAdminKeys] = useState<boolean>(false);
+  const [maskKeys, setMaskKeys] = useState<boolean>(true);
   const [deviceSearch, setDeviceSearch] = useState<string>("");
   const [editingNickId, setEditingNickId] = useState<string | null>(null);
   const [nickInput, setNickInput] = useState<string>("");
@@ -112,18 +116,25 @@ export default function App() {
   };
 
   const formatRelativeTime = (dateStr: string): string => {
-    if (!dateStr) return "Desconocido";
+    if (!dateStr) return "Unknown";
     const now = new Date().getTime();
     const past = new Date(dateStr).getTime();
     const diffSec = Math.floor((now - past) / 1000);
-    if (isNaN(diffSec) || diffSec < 0) return "Justo ahora";
-    if (diffSec < 60) return `Hace ${diffSec}s`;
+    if (isNaN(diffSec) || diffSec < 0) return "Just now";
+    if (diffSec < 60) return `${diffSec}s ago`;
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return `Hace ${diffMin} min`;
+    if (diffMin < 60) return `${diffMin}m ago`;
     const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `Hace ${diffHours} h`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     const diffDays = Math.floor(diffHours / 24);
-    return `Hace ${diffDays} d`;
+    return `${diffDays}d ago`;
+  };
+
+  const maskLicenseKey = (key: string): string => {
+    if (!maskKeys) return key;
+    const parts = key.split("-");
+    if (parts.length <= 2) return key;
+    return `${parts[0]}-${parts[1]}-••••-••••`;
   };
 
   const handleSaveNickname = (deviceId: string) => {
@@ -136,7 +147,7 @@ export default function App() {
   const exportDevicesToCsv = (devicesToExport: Device[]) => {
     if (!devicesToExport || devicesToExport.length === 0) return;
     const csvRows = [
-      "ID,Hostname,Apodo,Sistema Operativo,Huella SHA-256,Ultimo Heartbeat,Expira",
+      "ID,Hostname,Nickname,Operating System,SHA-256 Fingerprint,Last Heartbeat,Expires",
       ...devicesToExport.map((d) =>
         `"${d.id}","${d.hostname || ""}","${nicknames[d.id] || ""}","${d.os_name || ""}","${d.machine_fingerprint}","${d.last_heartbeat_at}","${d.lease_expires_at}"`
       ),
@@ -145,7 +156,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `wpipe_dispositivos_${data?.license_key || "export"}.csv`);
+    link.setAttribute("download", `wpipe_workstations_${data?.license_key || "export"}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -160,7 +171,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `wpipe_dispositivos_${data?.license_key || "export"}.json`);
+    link.setAttribute("download", `wpipe_workstations_${data?.license_key || "export"}.json`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -169,7 +180,7 @@ export default function App() {
   const handleLiberateAllSeats = async () => {
     if (!token || !data || data.devices.length === 0) return;
     const confirmAll = window.confirm(
-      `¿Deseas liberar TODOS los (${data.devices.length}) puestos conectados? Todos los ordenadores se desconectarán y los asientos quedarán libres inmediatamente.`
+      `Do you want to liberate all (${data.devices.length}) active workstations? All connected machines will be disconnected immediately and seats will become free.`
     );
     if (!confirmAll) return;
 
@@ -183,10 +194,47 @@ export default function App() {
           })
         )
       );
-      showToast("Se han liberado todos los puestos exitosamente.");
+      showToast("All seats have been liberated successfully.");
       await fetchOverview(token, currentKey || undefined);
     } catch (err: any) {
-      showToast(err.message || "Error al liberar los asientos.", "error");
+      showToast(err.message || "Failed to liberate all seats.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLiberateStaleSeats = async () => {
+    if (!token || !data || data.devices.length === 0) return;
+    const now = Date.now();
+    const staleDevices = data.devices.filter((d) => {
+      const past = new Date(d.last_heartbeat_at).getTime();
+      return isNaN(past) || (now - past) > 3600000; // > 1 hour
+    });
+
+    if (staleDevices.length === 0) {
+      showToast("All connected workstations are actively reporting heartbeats.", "info");
+      return;
+    }
+
+    const confirmStale = window.confirm(
+      `Found ${staleDevices.length} workstation(s) without a heartbeat in the last hour. Liberate them now?`
+    );
+    if (!confirmStale) return;
+
+    setLoading(true);
+    try {
+      await Promise.all(
+        staleDevices.map((d) =>
+          fetch(`${API_BASE}/v1/portal/seats/${d.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+      showToast(`Liberated ${staleDevices.length} inactive workstation(s).`);
+      await fetchOverview(token, currentKey || undefined);
+    } catch (err: any) {
+      showToast(err.message || "Failed to liberate stale seats.", "error");
     } finally {
       setLoading(false);
     }
@@ -208,15 +256,15 @@ export default function App() {
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || "No se pudo cargar la información de la licencia.");
+        throw new Error(errJson.message || "Unable to load license details.");
       }
       const json: LicenseOverview = await res.json();
       setData(json);
       setCurrentKey(json.license_key);
       localStorage.setItem("wpipe_active_key", json.license_key);
     } catch (err: any) {
-      setError(err.message || "Error al conectar con el servidor.");
-      if (err.message && (err.message.includes("UNAUTHORIZED") || err.message.includes("expirada"))) {
+      setError(err.message || "Error connecting to authorization authority.");
+      if (err.message && (err.message.includes("UNAUTHORIZED") || err.message.includes("expired"))) {
         handleLogout();
       }
     } finally {
@@ -248,14 +296,14 @@ export default function App() {
       const json = await res.json();
 
       if (!res.ok) {
-        throw new Error(json.message || "Error al enviar código de verificación.");
+        throw new Error(json.message || "Failed to dispatch verification code.");
       }
 
       setOtpStep("code");
-      setInfoNotice(`Código de seguridad de 6 dígitos enviado a ${cleanEmail}`);
-      showToast(`Código de seguridad de 6 dígitos enviado a ${cleanEmail}`);
+      setInfoNotice(`A 6-digit security code has been sent to ${cleanEmail}`);
+      showToast(`Security code dispatched to ${cleanEmail}`);
     } catch (err: any) {
-      setError(err.message || "Error al solicitar código OTP.");
+      setError(err.message || "Error requesting OTP security code.");
     } finally {
       setLoading(false);
     }
@@ -280,14 +328,14 @@ export default function App() {
       const json = await res.json();
 
       if (!res.ok) {
-        throw new Error(json.message || "Código incorrecto o expirado.");
+        throw new Error(json.message || "Invalid or expired security code.");
       }
 
       localStorage.setItem("wpipe_portal_session_token", json.token);
       setToken(json.token);
       fetchOverview(json.token);
     } catch (err: any) {
-      setError(err.message || "Error al verificar código.");
+      setError(err.message || "Error verifying security code.");
     } finally {
       setLoading(false);
     }
@@ -311,14 +359,14 @@ export default function App() {
       const json = await res.json();
 
       if (!res.ok) {
-        throw new Error(json.message || "Clave no válida.");
+        throw new Error(json.message || "Invalid admin key.");
       }
 
       localStorage.setItem("wpipe_portal_session_token", json.token);
       setToken(json.token);
       fetchOverview(json.token);
     } catch (err: any) {
-      setError(err.message || "Error al autenticar con clave.");
+      setError(err.message || "Authentication error.");
     } finally {
       setLoading(false);
     }
@@ -346,14 +394,14 @@ export default function App() {
   const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key);
     setCopiedKey(key);
-    showToast("Copiado al portapapeles");
+    showToast("Copied to clipboard");
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
   const handleLiberateSeat = async (leaseId: string, hostname: string | null) => {
     if (!token) return;
     const confirmKick = window.confirm(
-      `¿Deseas liberar inmediatamente el asiento del equipo "${hostname || "PC"}"? El nuevo ordenador podrá usar la licencia Pro en 1 segundo.`
+      `Do you want to release the workstation "${hostname || "Workstation"}" immediately? Another computer will be able to claim this seat instantly.`
     );
     if (!confirmKick) return;
 
@@ -366,12 +414,12 @@ export default function App() {
         },
       });
       if (!res.ok) {
-        throw new Error("No se pudo liberar el asiento.");
+        throw new Error("Could not release seat.");
       }
-      showToast(`Asiento del equipo "${hostname || "PC"}" liberado exitosamente.`);
+      showToast(`Workstation "${hostname || "Workstation"}" seat successfully liberated.`);
       await fetchOverview(token, currentKey || undefined);
     } catch (err: any) {
-      showToast(err.message || "Error al liberar el asiento.", "error");
+      showToast(err.message || "Error liberating seat.", "error");
     } finally {
       setLoading(false);
     }
@@ -408,10 +456,10 @@ export default function App() {
             </h1>
             <p className="text-xs text-sky-400 font-semibold tracking-wider uppercase mt-1 flex items-center justify-center gap-1.5">
               <ShieldCheck size={14} />
-              <span>Portal de Autoservicio Enterprise</span>
+              <span>Enterprise Customer Self-Service Portal</span>
             </p>
             <p className="text-xs text-gray-400 mt-2">
-              Gestión segura de licencias corporativas, auditoría de equipos en tiempo real y liberación de asientos.
+              Corporate license governance, real-time workstation telemetry, and seat allocation.
             </p>
           </div>
 
@@ -430,7 +478,7 @@ export default function App() {
               }`}
             >
               <Mail size={13} />
-              <span>Correo (OTP)</span>
+              <span>Email (OTP)</span>
             </button>
             <button
               type="button"
@@ -445,7 +493,7 @@ export default function App() {
               }`}
             >
               <Key size={13} />
-              <span>Clave Admin</span>
+              <span>Admin Key</span>
             </button>
           </div>
 
@@ -470,20 +518,20 @@ export default function App() {
                 <form onSubmit={handleRequestOtp} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
-                      <span>Correo Corporativo del Comprador</span>
-                      <span className="text-[10px] text-gray-500 font-normal">Sin contraseñas</span>
+                      <span>Buyer Corporate Email</span>
+                      <span className="text-[10px] text-gray-500 font-normal">Passwordless</span>
                     </label>
                     <input
                       type="email"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
-                      placeholder="it-admin@empresa.com"
+                      placeholder="it-admin@enterprise.com"
                       className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent font-sans"
                       required
                       autoFocus
                     />
                     <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                      Te enviaremos un código de seguridad de 6 dígitos de un solo uso para verificar que eres el propietario del buzón.
+                      We will dispatch a 6-digit one-time security code to verify domain mailbox ownership.
                     </p>
                   </div>
 
@@ -493,13 +541,13 @@ export default function App() {
                     className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Send size={14} />
-                    <span>{loading ? "Enviando código..." : "Enviar Código de Seguridad"}</span>
+                    <span>{loading ? "Sending code..." : "Send Verification Code"}</span>
                   </button>
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Verificando:</span>
+                    <span className="text-xs text-gray-400">Verifying:</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -510,7 +558,7 @@ export default function App() {
                       className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
                     >
                       <ArrowLeft size={12} />
-                      <span>Cambiar correo</span>
+                      <span>Change email</span>
                     </button>
                   </div>
 
@@ -520,7 +568,7 @@ export default function App() {
 
                   <div>
                     <label className="block text-xs font-medium text-gray-300 mb-1.5 text-center">
-                      Código de Seguridad (6 dígitos)
+                      Security Code (6 digits)
                     </label>
                     <input
                       type="text"
@@ -535,7 +583,7 @@ export default function App() {
                       autoFocus
                     />
                     <p className="text-[11px] text-gray-400 mt-1.5 text-center">
-                      Expira en 10 minutos. Revisa tu bandeja de entrada o spam.
+                      Expires in 10 minutes. Please check your inbox or spam folder.
                     </p>
                   </div>
 
@@ -545,7 +593,7 @@ export default function App() {
                     className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Lock size={14} />
-                    <span>{loading ? "Verificando..." : "Verificar y Entrar"}</span>
+                    <span>{loading ? "Verifying..." : "Verify & Access Portal"}</span>
                   </button>
                 </form>
               )}
@@ -557,7 +605,7 @@ export default function App() {
             <form onSubmit={handleLoginAdminKey} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
-                  <span>Clave de Administración Corporativa</span>
+                  <span>Corporate Admin Key</span>
                   <span className="text-[10px] text-purple-400 font-mono">WPIPE-ADM-...</span>
                 </label>
                 <input
@@ -570,14 +618,14 @@ export default function App() {
                   autoFocus
                 />
                 <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                  Esta clave privada solo la recibe el director o comprador en su recibo de compra. Otorga control total sobre la liberación de asientos.
+                  Private sovereign key issued on your purchase invoice. Grants instant seat revocation privileges.
                 </p>
               </div>
 
               <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-lg text-[11px] text-amber-200/90 flex items-start gap-2">
                 <Lock size={14} className="text-amber-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Aviso de Seguridad:</strong> Las claves de terminal (VS Code tipo <code>WPIPE-PRO-...</code>) no tienen acceso a este portal. Si eres empleado, usa tu clave directamente en el plugin.
+                  <strong>Security Note:</strong> Terminal workstation keys (e.g. <code>WPIPE-PRO-...</code>) cannot log into this administrative portal. Use your terminal key inside the VS Code extension.
                 </span>
               </div>
 
@@ -587,7 +635,7 @@ export default function App() {
                 className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold rounded-lg text-sm shadow-lg shadow-sky-500/20 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <Key size={14} />
-                <span>{loading ? "Autenticando..." : "Acceder con Clave Maestra"}</span>
+                <span>{loading ? "Authenticating..." : "Sign In with Admin Key"}</span>
               </button>
             </form>
           )}
@@ -636,7 +684,7 @@ export default function App() {
             <div className="flex items-center gap-2 bg-gray-900 border border-sky-800/60 rounded-lg px-2.5 py-1">
               <Building2 size={14} className="text-sky-400 shrink-0" />
               <label htmlFor="license-select" className="text-[11px] text-gray-400 font-medium whitespace-nowrap">
-                Licencia:
+                License:
               </label>
               <select
                 id="license-select"
@@ -646,12 +694,22 @@ export default function App() {
               >
                 {orgLicenses.map((lic) => (
                   <option key={lic.id} value={lic.license_key} className="bg-gray-900 text-white">
-                    {lic.license_key.slice(0, 16)}... ({lic.active_seats}/{lic.max_seats} en uso) [{lic.plan.toUpperCase()}]
+                    {lic.license_key.slice(0, 16)}... ({lic.active_seats}/{lic.max_seats} in use) [{lic.plan.toUpperCase()}]
                   </option>
                 ))}
               </select>
             </div>
           )}
+
+          {/* Mask Key Toggle */}
+          <button
+            onClick={() => setMaskKeys(!maskKeys)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 border border-gray-800 text-xs text-gray-300 hover:text-white transition cursor-pointer"
+            title={maskKeys ? "Reveal Keys" : "Mask Keys for screen sharing"}
+          >
+            {maskKeys ? <EyeOff size={13} className="text-gray-400" /> : <Eye size={13} className="text-sky-400" />}
+            <span className="hidden sm:inline">{maskKeys ? "Confidential" : "Visible"}</span>
+          </button>
 
           {/* Auto Refresh Poller */}
           <div className="hidden sm:flex items-center gap-1.5 bg-gray-900/90 border border-gray-800 rounded-lg px-2 py-1 text-xs">
@@ -661,7 +719,7 @@ export default function App() {
               onChange={(e) => setAutoRefreshRate(Number(e.target.value))}
               className="bg-transparent text-[11px] text-gray-300 focus:outline-none cursor-pointer"
             >
-              <option value={0} className="bg-gray-900 text-white">Refresco Manual</option>
+              <option value={0} className="bg-gray-900 text-white">Manual Refresh</option>
               <option value={15} className="bg-gray-900 text-white">Auto 15s</option>
               <option value={30} className="bg-gray-900 text-white">Auto 30s</option>
             </select>
@@ -676,28 +734,28 @@ export default function App() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition cursor-pointer shadow-md shadow-sky-600/20"
           >
             <UserPlus size={13} />
-            <span className="hidden md:inline">Invitar Desarrollador</span>
-            <span className="md:hidden">+ Invitar</span>
+            <span className="hidden md:inline">Invite Developer</span>
+            <span className="md:hidden">+ Invite</span>
           </button>
 
           {/* Direct VS Code Deep Link */}
           <a
             href={`vscode://wisrovi.wpipe-studio-vscode/activate?key=${encodeURIComponent(data.license_key)}`}
             className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-xs font-semibold text-indigo-200 transition cursor-pointer"
-            title="Abrir este puesto directamente en VS Code instalado"
+            title="Open this workstation license directly in local VS Code"
           >
             <Sparkles size={13} className="text-indigo-400" />
-            <span>Abrir en VS Code</span>
+            <span>Launch VS Code</span>
           </a>
 
           <button
             onClick={() => fetchOverview(token, currentKey || undefined)}
             disabled={loading}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 transition cursor-pointer"
-            title="Refrescar estado en vivo"
+            title="Refresh real-time telemetry"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            <span className="hidden xl:inline">Actualizar</span>
+            <span className="hidden xl:inline">Refresh</span>
           </button>
 
           <button
@@ -705,13 +763,34 @@ export default function App() {
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-800/60 text-xs text-red-300 transition cursor-pointer"
           >
             <LogOut size={13} />
-            <span>Salir</span>
+            <span>Sign Out</span>
           </button>
         </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
+
+        {/* Seat Saturation Warning Banner (If 100% full) */}
+        {percentUsed >= 100 && (
+          <div className="p-4 bg-red-950/70 border border-red-700 rounded-2xl flex items-center justify-between gap-4 text-xs text-red-200 shadow-xl animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={20} className="text-red-400 shrink-0" />
+              <div>
+                <strong className="text-white block font-bold">All Concurrency Seats are Currently Occupied</strong>
+                <span>
+                  All {data.max_seats} seat leases are held by active developers. To connect a new station, release an inactive workstation below or expand your plan.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleLiberateStaleSeats}
+              className="px-3 py-1.5 bg-red-800 hover:bg-red-700 text-white rounded-lg font-semibold shrink-0 cursor-pointer shadow-md"
+            >
+              Liberate Inactive Seats
+            </button>
+          </div>
+        )}
 
         {/* Organization-Wide Summary (When multiple licenses exist) */}
         {orgLicenses.length > 1 && (
@@ -722,32 +801,32 @@ export default function App() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>Organización: {data.customer_name}</span>
+                  <span>Organization: {data.customer_name}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-sky-900/80 text-sky-300 border border-sky-700 font-mono">
-                    {orgLicenses.length} licencias contratadas
+                    {orgLicenses.length} active licenses
                   </span>
                 </h3>
                 <p className="text-xs text-gray-300 mt-0.5">
-                  Consolidado global de la empresa: <strong>{orgTotalActive}</strong> de <strong>{orgTotalSeats}</strong> asientos en uso ({orgTotalAvailable} disponibles para nuevos empleados).
+                  Consolidated enterprise pool: <strong>{orgTotalActive}</strong> of <strong>{orgTotalSeats}</strong> seats occupied ({orgTotalAvailable} seats available for new teammates).
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-gray-400">Licencia activa:</span>
+              <span className="text-xs text-gray-400">Active License:</span>
               <code className="text-xs font-mono font-bold text-sky-300 bg-sky-950/80 px-2.5 py-1 rounded border border-sky-700/80 flex items-center gap-1.5">
-                <span>{data.license_key}</span>
+                <span>{maskLicenseKey(data.license_key)}</span>
                 <button
                   type="button"
                   onClick={() => handleCopyKey(data.license_key)}
                   className="hover:text-white cursor-pointer"
-                  title="Copiar clave"
+                  title="Copy full key"
                 >
                   <Copy size={12} />
                 </button>
               </code>
               {copiedKey === data.license_key && (
-                <span className="text-[11px] text-emerald-400 font-semibold animate-in fade-in">¡Copiada!</span>
+                <span className="text-[11px] text-emerald-400 font-semibold animate-in fade-in">Copied!</span>
               )}
             </div>
           </div>
@@ -784,46 +863,46 @@ export default function App() {
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-sm font-black text-white">{percentUsed}%</span>
-                <span className="text-[9px] text-gray-400 font-mono">ocupado</span>
+                <span className="text-[9px] text-gray-400 font-mono">utilized</span>
               </div>
             </div>
 
             <div>
-              <span className="text-xs text-gray-400 font-medium block">Puestos Flotantes</span>
+              <span className="text-xs text-gray-400 font-medium block">Floating Seats</span>
               <div className="text-lg font-black text-white mt-0.5">
                 {data.active_seats} <span className="text-gray-500 text-xs font-normal">/ {data.max_seats}</span>
               </div>
               <span className="text-[11px] text-sky-400 font-mono block mt-0.5">
-                {data.available_seats} libres para el equipo
+                {data.available_seats} available for team
               </span>
             </div>
           </div>
 
           <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-5 shadow-xl">
-            <span className="text-xs text-gray-400 font-medium">Plan Contratado</span>
+            <span className="text-xs text-gray-400 font-medium">Subscription Tier</span>
             <div className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-300 mt-1 uppercase">
               {data.plan}
             </div>
             <span className="text-[11px] text-gray-500 font-mono mt-1 block">
-              {data.expires_at ? `Expira: ${data.expires_at.slice(0, 10)}` : "Vitalicia (Lifetime)"}
+              {data.expires_at ? `Expires: ${data.expires_at.slice(0, 10)}` : "Perpetual (Lifetime)"}
             </span>
           </div>
 
           <div className="bg-[#0f172a] border border-gray-800 rounded-2xl p-5 shadow-xl">
-            <span className="text-xs text-gray-400 font-medium">Capacidad de Puestos</span>
+            <span className="text-xs text-gray-400 font-medium">Concurrency Quota</span>
             <div className="text-xl font-black text-white mt-1">
-              {data.max_seats} Simultáneos
+              {data.max_seats} Simultaneous
             </div>
             <span className="text-[11px] text-gray-500 mt-1 block">
-              Concurrencia flotante por heartbeat
+              Floating lease via 30m heartbeat
             </span>
           </div>
 
           <div className="bg-[#0f172a] border border-emerald-900/50 bg-emerald-950/20 rounded-2xl p-5 shadow-xl">
-            <span className="text-xs text-emerald-400 font-medium">Estado del Servicio</span>
+            <span className="text-xs text-emerald-400 font-medium">Licensing Authority</span>
             <div className="text-xl font-black text-emerald-300 mt-1 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>100% Operativo</span>
+              <span>100% Operational</span>
             </div>
             <span className="text-[11px] text-emerald-500/80 mt-1 block font-mono">
               Cloudflare Edge Validated
@@ -831,33 +910,68 @@ export default function App() {
           </div>
         </div>
 
-        {/* Developer Quick Snippet Box */}
-        <div className="bg-gradient-to-r from-gray-900 via-sky-950/20 to-gray-900 border border-gray-800 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-sky-500/10 border border-sky-500/20 rounded-xl text-sky-400">
-              <Terminal size={18} />
+        {/* Download Center & Quick Setup */}
+        <div className="bg-[#0f172a] border border-sky-800/40 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-400">
+                <Download size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Direct Binaries & Offline Package Downloads</h3>
+                <p className="text-xs text-gray-400">Zero-friction installation artifacts for air-gapped or developer workstations</p>
+              </div>
             </div>
-            <div>
-              <span className="text-xs font-bold text-white block">
-                Comando de Activación para Desarrolladores
-              </span>
-              <p className="text-[11px] text-gray-400">
-                Pásale este comando a tus ingenieros para activar WPipe Studio en su terminal en 1 segundo:
-              </p>
+            <div className="flex items-center gap-2">
+              <a
+                href={`${API_BASE}/v1/downloads/latest`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-md"
+              >
+                <Download size={13} />
+                <span>Download Extension (.vsix)</span>
+              </a>
+              <a
+                href={`${API_BASE}/v1/downloads/linux-x64/wpipe-engine`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Terminal size={13} />
+                <span>CLI Engine (Linux)</span>
+              </a>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <code className="text-xs font-mono text-sky-300 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex-1 md:flex-none">
-              wpipe-engine activate --key {data.license_key}
-            </code>
-            <button
-              onClick={() => handleCopyKey(`wpipe-engine activate --key ${data.license_key}`)}
-              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0"
-            >
-              <Copy size={12} />
-              <span>{copiedKey?.includes("activate") ? "¡Copiado!" : "Copiar"}</span>
-            </button>
+          {/* Developer Quick Snippet Box */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+                <Terminal size={18} />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white block">
+                  Workstation Terminal Activation Command
+                </span>
+                <p className="text-[11px] text-gray-400">
+                  Run this single command on any developer computer to activate the floating Pro seat:
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <code className="text-xs font-mono text-sky-300 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 flex-1 md:flex-none">
+                wpipe license activate --key {maskLicenseKey(data.license_key)}
+              </code>
+              <button
+                onClick={() => handleCopyKey(`wpipe license activate --key ${data.license_key}`)}
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <Copy size={12} />
+                <span>{copiedKey?.includes("activate") ? "Copied!" : "Copy"}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -867,10 +981,10 @@ export default function App() {
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Laptop size={18} className="text-sky-400" />
-                <span>Equipos Conectados en Tiempo Real ({data.devices.length})</span>
+                <span>Connected Workstations ({data.devices.length})</span>
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Heartbeat automático cada 30 min. Asigna apodos para reconocer fácilmente cada estación.
+                Automatic heartbeat every 30 minutes. Assign nicknames to easily recognize developer laptops.
               </p>
             </div>
 
@@ -881,8 +995,8 @@ export default function App() {
                   type="text"
                   value={deviceSearch}
                   onChange={(e) => setDeviceSearch(e.target.value)}
-                  placeholder="Buscar por hostname o apodo..."
-                  className="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white"
+                  placeholder="Filter by hostname, OS, nickname..."
+                  className="pl-8 pr-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
 
@@ -891,7 +1005,7 @@ export default function App() {
                   <button
                     onClick={() => exportDevicesToCsv(data.devices)}
                     className="px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                    title="Exportar listado de estaciones a hoja de cálculo CSV"
+                    title="Export workstation inventory to CSV spreadsheet"
                   >
                     <Download size={13} />
                     <span>CSV</span>
@@ -899,19 +1013,28 @@ export default function App() {
                   <button
                     onClick={() => exportDevicesToJson(data.devices)}
                     className="px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                    title="Exportar estaciones con apodos a archivo JSON estructurado"
+                    title="Export structured JSON inventory"
                   >
                     <Download size={13} />
                     <span>JSON</span>
                   </button>
                   <button
+                    onClick={handleLiberateStaleSeats}
+                    disabled={loading}
+                    className="px-2.5 py-1.5 bg-amber-950/70 hover:bg-amber-900 border border-amber-700/80 rounded-lg text-xs font-semibold text-amber-200 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    title="Liberate workstations with no heartbeat in the last hour"
+                  >
+                    <Clock size={13} className="text-amber-400" />
+                    <span>Purge Stale</span>
+                  </button>
+                  <button
                     onClick={handleLiberateAllSeats}
                     disabled={loading}
                     className="px-2.5 py-1.5 bg-red-950/70 hover:bg-red-900 border border-red-700/80 rounded-lg text-xs font-semibold text-red-200 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                    title="Desconectar todas las estaciones de esta licencia inmediatamente"
+                    title="Disconnect all workstations immediately"
                   >
-                    <AlertTriangle size={13} className="text-red-400" />
-                    <span>Liberar Todos</span>
+                    <Trash2 size={13} className="text-red-400" />
+                    <span>Liberate All</span>
                   </button>
                 </div>
               )}
@@ -923,11 +1046,12 @@ export default function App() {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400">
-                    <th className="pb-3 font-semibold">Equipo / Apodo</th>
-                    <th className="pb-3 font-semibold">Sistema Operativo</th>
-                    <th className="pb-3 font-semibold">Último Heartbeat</th>
-                    <th className="pb-3 font-semibold">Estado</th>
-                    <th className="pb-3 font-semibold text-right">Acción</th>
+                    <th className="pb-3 font-semibold">Workstation / Nickname</th>
+                    <th className="pb-3 font-semibold">Operating System</th>
+                    <th className="pb-3 font-semibold">Hardware Fingerprint</th>
+                    <th className="pb-3 font-semibold">Last Heartbeat</th>
+                    <th className="pb-3 font-semibold">Lease Status</th>
+                    <th className="pb-3 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60 font-mono">
@@ -938,14 +1062,15 @@ export default function App() {
                       const nick = (nicknames[dev.id] || "").toLowerCase();
                       const host = (dev.hostname || "").toLowerCase();
                       const os = (dev.os_name || "").toLowerCase();
-                      return nick.includes(term) || host.includes(term) || os.includes(term);
+                      const mfp = (dev.machine_fingerprint || "").toLowerCase();
+                      return nick.includes(term) || host.includes(term) || os.includes(term) || mfp.includes(term);
                     })
                     .map((dev) => (
                       <tr key={dev.id} className="hover:bg-gray-800/30 transition">
                         <td className="py-3.5 text-white">
                           <div className="space-y-0.5">
                             <div className="font-bold flex items-center gap-1.5">
-                              <span>{dev.hostname || "Estación de Trabajo"}</span>
+                              <span>{dev.hostname || "Developer Workstation"}</span>
                               {nicknames[dev.id] && (
                                 <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-normal">
                                   {nicknames[dev.id]}
@@ -960,7 +1085,7 @@ export default function App() {
                                   type="text"
                                   value={nickInput}
                                   onChange={(e) => setNickInput(e.target.value)}
-                                  placeholder="Ej. Portátil de Juan..."
+                                  placeholder="e.g. Alice's MacBook Pro..."
                                   className="px-2 py-0.5 bg-gray-900 border border-sky-600 rounded text-xs text-white"
                                   autoFocus
                                 />
@@ -968,7 +1093,7 @@ export default function App() {
                                   onClick={() => handleSaveNickname(dev.id)}
                                   className="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-bold cursor-pointer"
                                 >
-                                  Guardar
+                                  Save
                                 </button>
                                 <button
                                   onClick={() => setEditingNickId(null)}
@@ -986,13 +1111,18 @@ export default function App() {
                                 className="text-[10px] text-gray-500 hover:text-sky-300 flex items-center gap-1 font-sans cursor-pointer"
                               >
                                 <Tag size={10} />
-                                <span>{nicknames[dev.id] ? "Editar apodo" : "+ Añadir apodo"}</span>
+                                <span>{nicknames[dev.id] ? "Edit nickname" : "+ Add nickname"}</span>
                               </button>
                             )}
                           </div>
                         </td>
                         <td className="py-3.5 text-gray-300">
                           {dev.os_name || "Linux"}
+                        </td>
+                        <td className="py-3.5 text-gray-400">
+                          <code className="text-[11px] text-gray-400 bg-gray-900/80 px-1.5 py-0.5 rounded border border-gray-800">
+                            {dev.machine_fingerprint.slice(0, 16)}...
+                          </code>
                         </td>
                         <td className="py-3.5 text-gray-400">
                           <div className="flex items-center gap-1.5" title={dev.last_heartbeat_at}>
@@ -1006,7 +1136,7 @@ export default function App() {
                         <td className="py-3.5">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 flex items-center gap-1 w-fit">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            En Línea (Pro)
+                            Online (Pro)
                           </span>
                         </td>
                         <td className="py-3.5 text-right font-sans">
@@ -1015,7 +1145,7 @@ export default function App() {
                             disabled={loading}
                             className="px-3 py-1 bg-red-950/70 hover:bg-red-900 border border-red-700/80 rounded-lg text-xs font-semibold text-red-200 transition cursor-pointer disabled:opacity-50"
                           >
-                            🔓 Liberar Asiento
+                            Liberate Seat
                           </button>
                         </td>
                       </tr>
@@ -1026,9 +1156,9 @@ export default function App() {
           ) : (
             <div className="text-center py-10 bg-gray-900/40 rounded-lg border border-dashed border-gray-800">
               <CheckCircle2 size={32} className="mx-auto text-emerald-400 mb-2" />
-              <h4 className="text-sm font-semibold text-white">Todos los Asientos de esta Licencia están Libres</h4>
+              <h4 className="text-sm font-semibold text-white">All Seats for This License are Free</h4>
               <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-                No hay equipos usando esta clave en este momento. Abre VS Code en cualquier ordenador para activar el primer puesto.
+                No active workstation is claiming this license right now. Open VS Code on any computer to activate the first station.
               </p>
             </div>
           )}
@@ -1041,10 +1171,10 @@ export default function App() {
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Building2 size={18} className="text-indigo-400" />
-                  <span>Claves Corporativas de tu Organización ({orgLicenses.length})</span>
+                  <span>Corporate License Keys in Your Organization ({orgLicenses.length})</span>
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Entrega la clave de terminal a tus empleados. Guarda la clave de administración en privado.
+                  Distribute the workstation key to team members. Keep the private admin key secure.
                 </p>
               </div>
               <button
@@ -1053,7 +1183,7 @@ export default function App() {
                 className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 font-semibold cursor-pointer w-fit"
               >
                 <Key size={13} />
-                <span>{showAdminKeys ? "Ocultar Claves Admin" : "Mostrar Claves Admin"}</span>
+                <span>{showAdminKeys ? "Hide Admin Keys" : "Show Admin Keys"}</span>
               </button>
             </div>
 
@@ -1074,24 +1204,24 @@ export default function App() {
                         {lic.plan}
                       </span>
                       <span className="text-[11px] text-gray-400 font-mono">
-                        {lic.active_seats} / {lic.max_seats} en uso
+                        {lic.active_seats} / {lic.max_seats} in use
                       </span>
                     </div>
 
                     {/* Terminal Key for Employees */}
                     <div className="mt-2.5">
                       <span className="text-[10px] text-gray-400 font-medium block">
-                        Clave de Puesto (VS Code empleados):
+                        Workstation Key (VS Code developers):
                       </span>
                       <div className="flex items-center justify-between mt-0.5">
                         <code className="text-xs font-mono font-bold text-white truncate max-w-[200px]">
-                          {lic.license_key}
+                          {maskLicenseKey(lic.license_key)}
                         </code>
                         <button
                           type="button"
                           onClick={() => handleCopyKey(lic.license_key)}
                           className="text-gray-400 hover:text-white cursor-pointer ml-1 p-1"
-                          title="Copiar clave de puesto"
+                          title="Copy workstation key"
                         >
                           <Copy size={12} />
                         </button>
@@ -1103,7 +1233,7 @@ export default function App() {
                       <div className="mt-2 pt-2 border-t border-gray-800/60">
                         <span className="text-[10px] text-purple-400 font-medium block flex items-center gap-1">
                           <Lock size={10} />
-                          <span>Clave de Administración (Privada):</span>
+                          <span>Private Administration Key:</span>
                         </span>
                         <div className="flex items-center justify-between mt-0.5">
                           <code className="text-[11px] font-mono font-bold text-purple-300 truncate max-w-[200px]">
@@ -1113,7 +1243,7 @@ export default function App() {
                             type="button"
                             onClick={() => handleCopyKey(lic.admin_key!)}
                             className="text-gray-400 hover:text-purple-300 cursor-pointer ml-1 p-1"
-                            title="Copiar clave de administración"
+                            title="Copy administration key"
                           >
                             <Copy size={12} />
                           </button>
@@ -1122,14 +1252,14 @@ export default function App() {
                     )}
 
                     <span className="text-[10px] text-gray-500 mt-2 block">
-                      {lic.expires_at ? `Expira: ${lic.expires_at.slice(0, 10)}` : "Vitalicia (Lifetime)"}
+                      {lic.expires_at ? `Expires: ${lic.expires_at.slice(0, 10)}` : "Perpetual (Lifetime)"}
                     </span>
 
                     <div className="mt-3 pt-2.5 border-t border-gray-800/80 flex items-center justify-between">
                       {isSelected ? (
                         <span className="text-xs font-semibold text-sky-400 flex items-center gap-1">
                           <CheckCircle2 size={13} />
-                          <span>Activa ahora</span>
+                          <span>Currently Active</span>
                         </span>
                       ) : (
                         <button
@@ -1137,7 +1267,7 @@ export default function App() {
                           onClick={() => handleSwitchLicense(lic.license_key)}
                           className="text-xs text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
                         >
-                          Gestionar esta clave →
+                          Manage This Key →
                         </button>
                       )}
                     </div>
@@ -1153,9 +1283,9 @@ export default function App() {
           <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg flex items-start gap-3">
             <HelpCircle size={20} className="text-sky-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-white">¿Se ha estropeado un ordenador o rotado un empleado?</h4>
+              <h4 className="text-sm font-bold text-white">Replacing a broken laptop or onboarding a new developer?</h4>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                Pulsa <strong>"Liberar Asiento"</strong> en la tabla superior. El puesto se liberará en 1 segundo y el nuevo empleado podrá utilizar la licencia Pro sin trámites.
+                Click <strong>"Liberate Seat"</strong> in the table above. The seat will be returned immediately to the pool, and your new engineer can activate Pro without support tickets.
               </p>
             </div>
           </div>
@@ -1163,9 +1293,9 @@ export default function App() {
           <div className="bg-[#0f172a] border border-gray-800 rounded-xl p-5 shadow-lg flex items-start gap-3">
             <PlusCircle size={20} className="text-purple-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-white">¿Necesitas más asientos para tu equipo?</h4>
+              <h4 className="text-sm font-bold text-white">Need more concurrent seats for your team?</h4>
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                Puedes añadir asientos adicionales a esta misma clave sin cambiar de licencia. Lemon Squeezy prorratea automáticamente los días restantes del mes.
+                You can add extra seats to this same license key at any time. Lemon Squeezy automatically prorates the remaining days of your billing cycle.
               </p>
               <a
                 href="https://wisrovi.dev"
@@ -1173,7 +1303,7 @@ export default function App() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 font-semibold mt-2"
               >
-                <span>Ampliar puestos en Lemon Squeezy</span>
+                <span>Expand seats at wisrovi.dev</span>
                 <ExternalLink size={12} />
               </a>
             </div>
@@ -1191,8 +1321,8 @@ export default function App() {
                   <UserPlus size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Invitar Desarrollador a tu Equipo</h3>
-                  <p className="text-xs text-gray-400">Entrega el acceso flotante a WPipe Studio Pro</p>
+                  <h3 className="text-base font-bold text-white">Invite Developer to Your Team</h3>
+                  <p className="text-xs text-gray-400">Share floating Pro access to WPipe Studio</p>
                 </div>
               </div>
               <button
@@ -1207,7 +1337,7 @@ export default function App() {
             <div className="space-y-1.5">
               <span className="text-xs font-semibold text-sky-300 flex items-center gap-1.5">
                 <Sparkles size={14} />
-                <span>Opción 1: Enlace Directo a VS Code (1 Clic)</span>
+                <span>Option 1: 1-Click Launch in VS Code</span>
               </span>
               <div className="flex items-center gap-2">
                 <input
@@ -1221,7 +1351,7 @@ export default function App() {
                   className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
                 >
                   <Copy size={13} />
-                  <span>Copiar</span>
+                  <span>Copy</span>
                 </button>
               </div>
             </div>
@@ -1230,18 +1360,18 @@ export default function App() {
             <div className="space-y-1.5">
               <span className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
                 <Terminal size={14} className="text-indigo-400" />
-                <span>Opción 2: Comando en Terminal</span>
+                <span>Option 2: Terminal Command</span>
               </span>
               <div className="flex items-center gap-2">
                 <code className="flex-1 px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-xs text-indigo-300 font-mono truncate">
-                  wpipe-engine activate --key {data.license_key}
+                  wpipe license activate --key {data.license_key}
                 </code>
                 <button
-                  onClick={() => handleCopyKey(`wpipe-engine activate --key ${data.license_key}`)}
+                  onClick={() => handleCopyKey(`wpipe license activate --key ${data.license_key}`)}
                   className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
                 >
                   <Copy size={13} />
-                  <span>Copiar</span>
+                  <span>Copy</span>
                 </button>
               </div>
             </div>
@@ -1249,23 +1379,23 @@ export default function App() {
             {/* Slack / Teams copyable template */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-300">Plantilla para Slack / Teams</span>
+                <span className="text-xs font-semibold text-gray-300">Slack / Teams Invitation Template</span>
                 <button
                   onClick={() => {
-                    const tmpl = `👋 **¡Acceso a WPipe Studio Pro activado!**\nHola, ya tienes asignada tu licencia de WPipe Studio:\n1. Instala la extensión oficial 'WPipe Studio' en VS Code.\n2. Haz clic en este enlace para activar tu puesto flotante:\nvscode://wisrovi.wpipe-studio-vscode/activate?key=${data.license_key}\nO activa por terminal: \`wpipe-engine activate --key ${data.license_key}\``;
+                    const tmpl = `👋 **WPipe Studio Pro Access Activated!**\nHi, your WPipe Studio Pro seat is ready:\n1. Install the official 'WPipe Studio' extension in VS Code.\n2. Click this direct link to claim your floating seat:\nvscode://wisrovi.wpipe-studio-vscode/activate?key=${data.license_key}\nOr activate via terminal: \`wpipe license activate --key ${data.license_key}\``;
                     handleCopyKey(tmpl);
                   }}
                   className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer font-normal"
                 >
                   <Copy size={11} />
-                  <span>Copiar plantilla completa</span>
+                  <span>Copy full template</span>
                 </button>
               </div>
               <div className="p-3 bg-gray-950 border border-gray-800 rounded-lg text-[11px] font-mono text-gray-300 leading-relaxed max-h-24 overflow-y-auto">
-                👋 ¡Acceso a WPipe Studio Pro activado!<br/>
-                1. Instala la extensión en VS Code.<br/>
-                2. Abre el enlace directo o introduce la clave:<br/>
-                <strong className="text-sky-400 font-bold">{data.license_key}</strong>
+                👋 WPipe Studio Pro Access Activated!<br/>
+                1. Install the extension in VS Code.<br/>
+                2. Click the link or activate with key:<br/>
+                <strong className="text-sky-400 font-bold">{maskLicenseKey(data.license_key)}</strong>
               </div>
             </div>
 
@@ -1282,9 +1412,9 @@ export default function App() {
                 <div className="text-xs text-gray-400">
                   <span className="font-semibold text-white flex items-center gap-1">
                     <QrCode size={13} className="text-sky-400" />
-                    <span>Escaneo QR</span>
+                    <span>QR Code Scan</span>
                   </span>
-                  <span>Para activar rápidamente en estaciones táctiles o cámaras.</span>
+                  <span>Quick camera scan for test tablets and workstations.</span>
                 </div>
               </div>
 
@@ -1292,7 +1422,7 @@ export default function App() {
                 onClick={() => setInviteModalOpen(false)}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg cursor-pointer"
               >
-                Cerrar
+                Close
               </button>
             </div>
           </div>

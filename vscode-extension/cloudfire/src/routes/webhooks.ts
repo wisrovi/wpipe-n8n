@@ -24,6 +24,15 @@ function generateAdminKey(): string {
   return `WPIPE-ADM-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
 }
 
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 async function verifyLemonSignature(rawBody: string, signatureHex: string, secret: string): Promise<boolean> {
   try {
     const enc = new TextEncoder();
@@ -38,7 +47,7 @@ async function verifyLemonSignature(rawBody: string, signatureHex: string, secre
     const computedHex = Array.from(new Uint8Array(mac))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
-    return computedHex.toLowerCase() === signatureHex.toLowerCase();
+    return constantTimeEquals(computedHex.toLowerCase(), signatureHex.toLowerCase());
   } catch {
     return false;
   }
@@ -69,7 +78,7 @@ async function verifyStripeSignature(rawBody: string, stripeHeader: string, secr
     const computedHex = Array.from(new Uint8Array(mac))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
-    return computedHex.toLowerCase() === signature.toLowerCase();
+    return constantTimeEquals(computedHex.toLowerCase(), signature.toLowerCase());
   } catch {
     return false;
   }
@@ -89,10 +98,19 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
     });
   }
 
-  // 1. Signature Verification if Secrets Configured
-  const lemonSignature = request.headers.get("x-signature");
-  if (env.LEMONSQUEEZY_WEBHOOK_SECRET && lemonSignature) {
-    const valid = await verifyLemonSignature(rawBody, lemonSignature, env.LEMONSQUEEZY_WEBHOOK_SECRET);
+  // 1. Strict Signature Verification if Secrets Configured
+  const lemonSecret = env.LEMONSQUEEZY_WEBHOOK_SECRET?.trim();
+  const stripeSecret = env.STRIPE_WEBHOOK_SECRET?.trim();
+
+  if (lemonSecret) {
+    const lemonSignature = request.headers.get("x-signature");
+    if (!lemonSignature) {
+      return new Response(JSON.stringify({ error: "MISSING_SIGNATURE", message: "Header 'x-signature' is required for Lemon Squeezy" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const valid = await verifyLemonSignature(rawBody, lemonSignature, lemonSecret);
     if (!valid) {
       return new Response(JSON.stringify({ error: "INVALID_SIGNATURE", message: "Lemon Squeezy HMAC signature mismatch" }), {
         status: 401,
@@ -101,9 +119,15 @@ export async function handleWebhooks(request: Request, env: Env): Promise<Respon
     }
   }
 
-  const stripeSignature = request.headers.get("stripe-signature");
-  if (env.STRIPE_WEBHOOK_SECRET && stripeSignature) {
-    const valid = await verifyStripeSignature(rawBody, stripeSignature, env.STRIPE_WEBHOOK_SECRET);
+  if (stripeSecret) {
+    const stripeSignature = request.headers.get("stripe-signature");
+    if (!stripeSignature) {
+      return new Response(JSON.stringify({ error: "MISSING_SIGNATURE", message: "Header 'stripe-signature' is required for Stripe" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const valid = await verifyStripeSignature(rawBody, stripeSignature, stripeSecret);
     if (!valid) {
       return new Response(JSON.stringify({ error: "INVALID_SIGNATURE", message: "Stripe HMAC signature mismatch" }), {
         status: 401,

@@ -1697,7 +1697,11 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
     let resizeObserver: ResizeObserver | null = null;
     const handleResize = () => {
       if (workspaceRef.current) {
-        Blockly.svgResize(workspaceRef.current);
+        requestAnimationFrame(() => {
+          if (workspaceRef.current) {
+            Blockly.svgResize(workspaceRef.current);
+          }
+        });
       }
     };
 

@@ -4359,7 +4359,7 @@ export default function App() {
                   <Code size={13} className="text-purple-400" />
                   <span>Código & Archivos</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#2b2b2b] text-gray-300 font-mono">
-                    {generatedFiles.length > 0 ? generatedFiles.length : 10}
+                    {generatedFiles.length > 0 ? generatedFiles.length : 23}
                   </span>
                 </button>
 

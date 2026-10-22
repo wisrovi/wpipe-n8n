@@ -40,36 +40,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    webviewPanel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.file(path.join(this.context.extensionPath, "media")),
-        vscode.Uri.file(path.join(this.context.extensionPath, "dist")),
-      ],
-    };
-
-    const licenseStatus = await this.ipcClient.getLicenseStatus();
-    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document, licenseStatus);
-
-    // Synchronize initial document content
-    const sendInitialData = () => {
-      let docContent: any = {};
-      try {
-        const text = document.getText();
-        docContent = text ? JSON.parse(text) : {};
-      } catch {
-        docContent = {};
-      }
-
-      webviewPanel.webview.postMessage({
-        type: "init",
-        data: docContent,
-        license: licenseStatus,
-        documentUri: document.uri.toString(),
-      });
-    };
-
-    sendInitialData();
+    await this.setupWebview(webviewPanel, document);
 
     // Listen to changes in the text document
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -84,6 +55,48 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       }
     });
 
+    webviewPanel.onDidDispose(() => {
+      changeDocumentSubscription.dispose();
+    });
+  }
+
+  public async setupWebview(
+    webviewPanel: vscode.WebviewPanel,
+    document?: vscode.TextDocument
+  ): Promise<void> {
+    webviewPanel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.file(path.join(this.context.extensionPath, "media")),
+        vscode.Uri.file(path.join(this.context.extensionPath, "dist")),
+      ],
+    };
+
+    const licenseStatus = await this.ipcClient.getLicenseStatus();
+    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document, licenseStatus);
+
+    // Synchronize initial document content
+    const sendInitialData = () => {
+      let docContent: any = {};
+      if (document) {
+        try {
+          const text = document.getText();
+          docContent = text ? JSON.parse(text) : {};
+        } catch {
+          docContent = {};
+        }
+      }
+
+      webviewPanel.webview.postMessage({
+        type: "init",
+        data: docContent,
+        license: licenseStatus,
+        documentUri: document ? document.uri.toString() : "vscode://untitled/pipeline.wpipe",
+      });
+    };
+
+    sendInitialData();
+
     // Listen to messages from Webview
     webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
@@ -93,18 +106,33 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         }
 
         case "saveCanvas": {
-          const edit = new vscode.WorkspaceEdit();
-          const fullRange = new vscode.Range(
-            document.positionAt(0),
-            document.positionAt(document.getText().length)
-          );
-          edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
-          await vscode.workspace.applyEdit(edit);
+          if (document) {
+            const edit = new vscode.WorkspaceEdit();
+            const fullRange = new vscode.Range(
+              document.positionAt(0),
+              document.positionAt(document.getText().length)
+            );
+            edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
+            await vscode.workspace.applyEdit(edit);
+          } else {
+            // Untitled canvas opened from toolbar or command
+            const wsFolder = vscode.workspace.workspaceFolders?.[0];
+            if (wsFolder) {
+              const defaultUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "pipeline.wpipe"));
+              await vscode.workspace.fs.writeFile(
+                defaultUri,
+                Buffer.from(JSON.stringify(msg.canvasIr, null, 2), "utf8")
+              );
+            }
+          }
           break;
         }
 
         case "compile": {
-          const projectName = path.basename(document.uri.fsPath, path.extname(document.uri.fsPath));
+          const defaultName = document
+            ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
+            : "main_pipeline";
+          const projectName = (msg.canvasIr && msg.canvasIr.name) || defaultName;
           const res = await this.ipcClient.compilePipeline(msg.canvasIr, projectName);
 
           if (res.error === "LIMIT_EXCEEDED") {
@@ -118,7 +146,8 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             }
           } else if (res.status === "success" && (res.files_dict || res.files)) {
             const wsFolder =
-              vscode.workspace.getWorkspaceFolder(document.uri) || vscode.workspace.workspaceFolders?.[0];
+              (document && vscode.workspace.getWorkspaceFolder(document.uri)) ||
+              vscode.workspace.workspaceFolders?.[0];
             if (wsFolder) {
               const filesMap: Record<string, string> = res.files_dict || {};
               if (!res.files_dict && Array.isArray(res.files)) {
@@ -162,10 +191,6 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           break;
         }
       }
-    });
-
-    webviewPanel.onDidDispose(() => {
-      changeDocumentSubscription.dispose();
     });
   }
 
@@ -286,10 +311,16 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       frame.style.display = 'block';
       frame.src = 'https://studio.wisrovi.dev/?mode=vscode&t=' + Date.now();
     }
-      fallback.style.display = 'none';
-      frame.style.display = 'block';
-      frame.src = baseUrl + '/?mode=vscode&t=' + Date.now();
-    }
+
+    // Health probe: if local engine is offline, seamlessly switch to cloud PWA
+    fetch(baseUrl + '/health', { mode: 'cors' })
+      .then((res) => {
+        if (!res.ok) throw new Error('Daemon unhealthy');
+      })
+      .catch(() => {
+        console.warn('Local engine offline, falling back to cloud PWA.');
+        loadCloudFallback();
+      });
 
     // Bridge message communication between iframe and VS Code extension
     window.addEventListener('message', (event) => {

@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { EngineIpcClient } from "./ipcClient";
 import { DaemonManager } from "./daemonManager";
 import { WPipeCanvasEditorProvider } from "./customEditor";
@@ -37,16 +38,16 @@ export async function activate(context: vscode.ExtensionContext) {
       const status = await ipcClient.getLicenseStatus();
       if (status.is_pro) {
         statusBarItem.text = `$(check) WPipe: ${status.tier.toUpperCase()}`;
-        statusBarItem.tooltip = `WPipe Studio ${status.tier.toUpperCase()} Activo — Bloques ilimitados`;
+        statusBarItem.tooltip = `WPipe Studio ${status.tier.toUpperCase()} Active — Unlimited blocks`;
         statusBarItem.backgroundColor = undefined;
       } else {
         statusBarItem.text = `$(circuit-board) WPipe: Free (≤5)`;
-        statusBarItem.tooltip = "WPipe Studio Plan Free (Máx 5 bloques). Clic para ver estado o actualizar.";
+        statusBarItem.tooltip = "WPipe Studio Free Plan (Max 5 blocks). Click to check status or upgrade.";
         statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
       }
     } catch {
       statusBarItem.text = `$(warning) WPipe: Offline`;
-      statusBarItem.tooltip = "wpipe-engine no responde. Clic para iniciar.";
+      statusBarItem.tooltip = "wpipe-engine is offline. Click to start.";
     }
   }
 
@@ -76,9 +77,9 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("wpipe.startDaemon", async () => {
       const ok = await daemonManager.ensureDaemonRunning();
       if (ok) {
-        vscode.window.showInformationMessage("✅ Motor nativo wpipe-engine iniciado y listo.");
+        vscode.window.showInformationMessage("✅ Native wpipe-engine started and ready.");
       } else {
-        vscode.window.showErrorMessage("❌ No se pudo iniciar el motor wpipe-engine.");
+        vscode.window.showErrorMessage("❌ Failed to start wpipe-engine.");
       }
       await updateStatusBar();
     })
@@ -88,17 +89,17 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("wpipe.checkLicenseStatus", async () => {
       const status = await ipcClient.getLicenseStatus();
       const options = status.is_pro
-        ? ["Aceptar"]
-        : ["Activar Licencia Pro", "Comprar en wisrovi.dev", "Cerrar"];
+        ? ["OK"]
+        : ["Activate Pro License", "Buy at wisrovi.dev", "Close"];
 
       const choice = await vscode.window.showInformationMessage(
-        `WPipe Studio — ${status.message}`,
+        `WPipe Studio — ${status.message || "License Status"}`,
         ...options
       );
 
-      if (choice === "Activar Licencia Pro") {
+      if (choice === "Activate Pro License") {
         vscode.commands.executeCommand("wpipe.activateLicense");
-      } else if (choice === "Comprar en wisrovi.dev") {
+      } else if (choice === "Buy at wisrovi.dev") {
         vscode.env.openExternal(vscode.Uri.parse("https://wisrovi.dev"));
       }
     })
@@ -110,11 +111,11 @@ export async function activate(context: vscode.ExtensionContext) {
         typeof keyArg === "string" && keyArg.trim().length >= 8
           ? keyArg.trim()
           : await vscode.window.showInputBox({
-              prompt: "Introduce tu clave de licencia WPipe Pro",
+              prompt: "Enter your WPipe Pro license key",
               placeHolder: "WPIPE-PRO-XXXX-XXXX-XXXX",
               validateInput: (text) => {
                 if (!text || text.trim().length < 8) {
-                  return "Introduce una clave de licencia válida.";
+                  return "Please enter a valid license key.";
                 }
                 return null;
               },
@@ -125,7 +126,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Verificando clave de licencia con Cloudflare Edge (api.wisrovi.dev)...",
+          title: "Verifying license key with Cloudflare Edge (api.wisrovi.dev)...",
         },
         async () => {
           try {
@@ -135,10 +136,10 @@ export async function activate(context: vscode.ExtensionContext) {
               vscode.window.showInformationMessage(`🎉 ${res.message}`);
               await updateStatusAndUi();
             } else {
-              vscode.window.showErrorMessage(`❌ Error de activación: ${res.message}`);
+              vscode.window.showErrorMessage(`❌ Activation failed: ${res.message}`);
             }
           } catch (e: any) {
-            vscode.window.showErrorMessage(`Error al contactar con wpipe-engine: ${e.message}`);
+            vscode.window.showErrorMessage(`Error communicating with wpipe-engine: ${e.message}`);
           }
         }
       );
@@ -149,7 +150,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("wpipe.newPipeline", async () => {
       const wsFolder = vscode.workspace.workspaceFolders?.[0];
       if (!wsFolder) {
-        vscode.window.showWarningMessage("Abre una carpeta de proyecto para crear un pipeline.");
+        vscode.window.showWarningMessage("Open a workspace folder first to create a pipeline.");
         return;
       }
 
@@ -162,10 +163,19 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!targetUri) return;
 
       const initialIr = {
-        nodes: [
-          { id: "node_1", data: { node_type: "trigger", label: "Trigger REST (/run)" } },
-          { id: "node_2", data: { node_type: "step", label: "HttpRequest" } },
-        ],
+        format: "wpipe",
+        project: {
+          id: `proj_${Date.now()}`,
+          name: path.basename(targetUri.fsPath, ".wpipe"),
+          protocol: "fastapi",
+          docker_image: "python:3.11-slim",
+          canvas_ir: {
+            nodes: [
+              { id: "node_1", data: { node_type: "trigger", label: "Trigger REST (/run)" } },
+              { id: "node_2", data: { node_type: "step", label: "HttpRequest" } },
+            ],
+          },
+        },
       };
 
       await vscode.workspace.fs.writeFile(
@@ -173,6 +183,89 @@ export async function activate(context: vscode.ExtensionContext) {
         Buffer.from(JSON.stringify(initialIr, null, 2), "utf8")
       );
       await vscode.commands.executeCommand("vscode.openWith", targetUri, WPipeCanvasEditorProvider.viewType);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("wpipe.compileCurrentPipeline", async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (
+          activeEditor &&
+          (activeEditor.document.fileName.endsWith(".wpipe") ||
+            activeEditor.document.fileName.endsWith(".wpipe.json"))
+        ) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+
+      if (!targetUri) {
+        const files = await vscode.workspace.findFiles("**/*.{wpipe,wpipe.json}", "**/node_modules/**", 10);
+        if (files.length === 0) {
+          vscode.window.showWarningMessage("No .wpipe or .wpipe.json pipeline files found in current workspace.");
+          return;
+        }
+        const items = files.map((f) => ({
+          label: path.basename(f.fsPath),
+          uri: f,
+          description: vscode.workspace.asRelativePath(f),
+        }));
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: "Select a pipeline file to compile to Python",
+        });
+        if (!selected) return;
+        targetUri = selected.uri;
+      }
+
+      try {
+        const rawBytes = await vscode.workspace.fs.readFile(targetUri);
+        const text = Buffer.from(rawBytes).toString("utf8");
+        const parsed = text ? JSON.parse(text) : {};
+        const projectName = path.basename(targetUri.fsPath, path.extname(targetUri.fsPath));
+        await daemonManager.ensureDaemonRunning();
+        const canvasPayload =
+          parsed.canvas_ir || (parsed.project && parsed.project.canvas_ir) || parsed;
+        const res = await ipcClient.compilePipeline(canvasPayload, projectName);
+
+        if (res.error === "LIMIT_EXCEEDED") {
+          const action = await vscode.window.showWarningMessage(
+            `⚠️ ${res.message}`,
+            "Upgrade to WPipe Pro",
+            "Dismiss"
+          );
+          if (action === "Upgrade to WPipe Pro") {
+            vscode.env.openExternal(vscode.Uri.parse(res.details?.upgrade_url || "https://wisrovi.dev"));
+          }
+        } else if (res.status === "success" && (res.files_dict || res.files)) {
+          const wsFolder =
+            vscode.workspace.getWorkspaceFolder(targetUri) || vscode.workspace.workspaceFolders?.[0];
+          if (wsFolder) {
+            const filesMap: Record<string, string> = res.files_dict || {};
+            if (!res.files_dict && Array.isArray(res.files)) {
+              for (const item of res.files) {
+                if (item && item.path && item.content) {
+                  filesMap[item.path] = item.content;
+                }
+              }
+            }
+            for (const [relPath, content] of Object.entries(filesMap)) {
+              const fileUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+              await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(fileUri.fsPath)));
+              await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content as string, "utf8"));
+            }
+            vscode.window.showInformationMessage(`✅ Pipeline successfully compiled to Python (${projectName})`);
+            const mainPipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+            if (fs.existsSync(mainPipeUri.fsPath)) {
+              vscode.window.showTextDocument(mainPipeUri);
+            }
+          }
+        } else {
+          vscode.window.showErrorMessage(`❌ Compilation failed: ${res.message || "Unknown error"}`);
+        }
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Error compiling pipeline: ${err.message}`);
+      }
     })
   );
 
@@ -250,7 +343,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         case "copyToClipboard":
           if (msg.text) {
             vscode.env.clipboard.writeText(msg.text);
-            vscode.window.showInformationMessage("📋 Clave de licencia copiada al portapapeles.");
+            vscode.window.showInformationMessage("📋 License key copied to clipboard.");
           }
           break;
       }
@@ -267,7 +360,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         tier: "free",
         is_pro: false,
         max_blocks: 5,
-        message: "Plan Free",
+        message: "Free Plan",
       });
     }
   }
@@ -276,7 +369,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     const isPro = Boolean(status && status.is_pro);
     const rawTier = (status?.tier || "FREE").toUpperCase();
     const tierName = escapeHtml(rawTier);
-    const customerName = status?.customer_name ? escapeHtml(status.customer_name) : "Desarrollador";
+    const customerName = status?.customer_name ? escapeHtml(status.customer_name) : "Developer";
     const rawKey = status?.license_key || "";
     const cleanKey = escapeHtml(rawKey);
     const maskedKey = escapeHtml(maskKey(rawKey));
@@ -285,7 +378,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
     const expInfo = formatExpiration(status?.lease_expires_at);
 
     // Engine metadata
-    const enginePid = status?.engine?.pid ? escapeHtml(String(status.engine.pid)) : "Activo";
+    const enginePid = status?.engine?.pid ? escapeHtml(String(status.engine.pid)) : "Active";
     const pythonVer = status?.engine?.python_version ? escapeHtml(status.engine.python_version) : "3.13";
     const transportType = status?.engine?.transport === "unix_socket" ? "Unix Socket (/tmp/wpipe.sock)" : "HTTP Local (127.0.0.1:49152)";
 
@@ -297,62 +390,62 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         <span class="crown">👑</span>
         <span class="tier-text">PLAN ${tierName}</span>
       </div>
-      <span class="online-pill" title="Asiento sincronizado y validado en Cloudflare Edge">
-        <span class="pulse-dot"></span> Puesto Activo
+      <span class="online-pill" title="Seat synchronized and verified with Cloudflare Edge">
+        <span class="pulse-dot"></span> Active Seat
       </span>
     </div>
 
     <div class="meta-section">
       <div class="meta-row">
-        <span class="meta-k">👤 Titular:</span>
+        <span class="meta-k">👤 Licensee:</span>
         <span class="meta-v font-bold">${customerName}</span>
       </div>
       <div class="meta-row">
-        <span class="meta-k">📅 Vigencia:</span>
+        <span class="meta-k">📅 Validity:</span>
         <span class="meta-v ${expInfo.isNear ? 'text-warning' : 'text-success'}">
           ${escapeHtml(expInfo.formatted)} <span class="days-text">${escapeHtml(expInfo.daysLeftText)}</span>
         </span>
       </div>
       <div class="meta-row">
-        <span class="meta-k">🖥️ ID Equipo:</span>
-        <span class="meta-v font-mono" title="Huella física registrada: ${escapeHtml(rawMfp)}">${shortMfp}</span>
+        <span class="meta-k">🖥️ Machine ID:</span>
+        <span class="meta-v font-mono" title="Hardware fingerprint: ${escapeHtml(rawMfp)}">${shortMfp}</span>
       </div>
     </div>
 
     ${cleanKey ? `
     <div class="key-box">
       <div class="key-header">
-        <span class="key-label">CLAVE ASIGNADA</span>
-        <span class="key-shield">🔒 Protegida</span>
+        <span class="key-label">ASSIGNED KEY</span>
+        <span class="key-shield">🔒 Protected</span>
       </div>
       <div class="key-row">
         <code id="licenseDisplay" class="masked-code" data-masked="${maskedKey}" data-real="${cleanKey}">${maskedKey}</code>
         <div class="key-actions">
-          <button id="btnToggleMask" class="icon-btn" title="Mostrar / Ocultar clave real" onclick="toggleMask()">👁️</button>
-          <button id="btnCopyKey" class="icon-btn" title="Copiar clave completa" onclick="copyKey()">📋</button>
+          <button id="btnToggleMask" class="icon-btn" title="Show / hide key" onclick="toggleMask()">👁️</button>
+          <button id="btnCopyKey" class="icon-btn" title="Copy full key" onclick="copyKey()">📋</button>
         </div>
       </div>
-      <div id="copyToast" class="copy-toast" style="display: none;">✓ Copiada al portapapeles</div>
+      <div id="copyToast" class="copy-toast" style="display: none;">✓ Copied to clipboard</div>
     </div>` : ""}
 
     <div class="capabilities-box">
-      <div class="cap-title">Capacidades del Entorno:</div>
+      <div class="cap-title">Environment Capabilities:</div>
       <div class="cap-grid">
-        <div class="cap-item"><span class="check">✓</span> Bloques Ilimitados</div>
-        <div class="cap-item"><span class="check">✓</span> Paralelismo (Parallel)</div>
-        <div class="cap-item"><span class="check">✓</span> Background Asíncrono</div>
+        <div class="cap-item"><span class="check">✓</span> Unlimited Blocks</div>
+        <div class="cap-item"><span class="check">✓</span> Concurrency (Parallel)</div>
+        <div class="cap-item"><span class="check">✓</span> Async Background</div>
         <div class="cap-item"><span class="check">✓</span> Live Debugging</div>
         <div class="cap-item"><span class="check">✓</span> Smart AST Merge</div>
-        <div class="cap-item"><span class="check">✓</span> Generación Docker & Tests</div>
+        <div class="cap-item"><span class="check">✓</span> Docker & Test Gen</div>
       </div>
     </div>
 
     <div class="card-btn-row">
-      <button class="btn btn-secondary btn-sm" onclick="send('activateLicense')" title="Cambiar clave o desconectar puesto">
-        🔄 Cambiar Licencia
+      <button class="btn btn-secondary btn-sm" onclick="send('activateLicense')" title="Change key or switch seat">
+        🔄 Change License
       </button>
-      <button class="btn btn-secondary btn-sm" onclick="send('openPortal')" title="Abrir portal web de gestión de asientos">
-        🌐 Gestionar Puestos
+      <button class="btn btn-secondary btn-sm" onclick="send('openPortal')" title="Open web customer portal">
+        🌐 Manage Seats
       </button>
     </div>
   </div>`
@@ -362,22 +455,22 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       <div class="tier-pill-free">
         <span>⚡ PLAN FREE (Community)</span>
       </div>
-      <span class="limited-pill">Máximo 5 bloques</span>
+      <span class="limited-pill">Max 5 blocks</span>
     </div>
 
     <p class="free-info">
-      Estás utilizando la versión comunitaria local. Ideal para pruebas y pipelines pequeños.
+      You are running the local Community plan. Ideal for testing and smaller pipelines.
     </p>
 
     <div class="limits-box">
-      <div class="limit-row"><span class="limit-check">✓</span> Hasta 5 bloques por pipeline</div>
-      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Paralelismo (Parallel) bloqueado</div>
-      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Tareas en background bloqueadas</div>
-      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Live debugging con breakpoints</div>
+      <div class="limit-row"><span class="limit-check">✓</span> Up to 5 blocks per pipeline</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Concurrency (Parallel) locked</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Background tasks locked</div>
+      <div class="limit-row text-muted"><span class="limit-cross">✕</span> Breakpoints & live debugging</div>
     </div>
 
     <button class="btn btn-upgrade" onclick="send('activateLicense')">
-      ⭐ Activar Licencia Pro
+      ⭐ Activate Pro License
     </button>
   </div>`;
 
@@ -787,41 +880,41 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
   </div>
 
   <button class="btn btn-primary" onclick="send('openCanvas')">
-    🚀 Abrir Lienzo de Bloques (Canvas)
+    🚀 Open Block Canvas
   </button>
 
   <div class="btn-grid">
     <button class="btn btn-secondary btn-sm" onclick="send('newPipeline')">
-      ➕ Nuevo Pipeline
+      ➕ New Pipeline
     </button>
     <button class="btn btn-secondary btn-sm" onclick="send('openDemo')">
-      📂 Demo Oficial
+      📂 Official Demo
     </button>
   </div>
 
   ${licenseCard}
 
   <details class="tech-details" open>
-    <summary class="tech-summary">⚙️ Motor Local & Entorno</summary>
+    <summary class="tech-summary">⚙️ Local Engine & Environment</summary>
     <div class="tech-content">
       <div class="tech-row">
-        <span class="tech-k">Estado Motor:</span>
-        <span class="tech-v text-success">● Activo (PID: ${enginePid})</span>
+        <span class="tech-k">Engine Status:</span>
+        <span class="tech-v text-success">● Active (PID: ${enginePid})</span>
       </div>
       <div class="tech-row">
-        <span class="tech-k">Entorno Python:</span>
+        <span class="tech-k">Python Runtime:</span>
         <span class="tech-v font-mono">${pythonVer}</span>
       </div>
       <div class="tech-row">
-        <span class="tech-k">Canal IPC:</span>
+        <span class="tech-k">IPC Channel:</span>
         <span class="tech-v font-mono" title="${transportType}">${transportType.includes("Unix") ? "Unix Socket" : "HTTP Local"}</span>
       </div>
       <div class="tech-row">
-        <span class="tech-k">Catálogo de Pasos:</span>
-        <span class="tech-v text-accent">196 steps oficiales</span>
+        <span class="tech-k">Steps Catalog:</span>
+        <span class="tech-v text-accent">196 official steps</span>
       </div>
       <button class="btn btn-secondary btn-sm" style="margin-top: 4px;" onclick="send('restartDaemon')">
-        🔄 Reiniciar Motor Local
+        🔄 Restart Local Engine
       </button>
     </div>
   </details>
@@ -840,12 +933,12 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
       if (isMasked) {
         el.textContent = el.getAttribute('data-real');
         btn.textContent = '🙈';
-        btn.title = 'Ocultar clave';
+        btn.title = 'Hide key';
         isMasked = false;
       } else {
         el.textContent = el.getAttribute('data-masked');
         btn.textContent = '👁️';
-        btn.title = 'Mostrar clave real';
+        btn.title = 'Show real key';
         isMasked = true;
       }
     }
@@ -882,7 +975,7 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
 
 function formatExpiration(isoDate?: string): { formatted: string; daysLeftText: string; isNear: boolean } {
   if (!isoDate) {
-    return { formatted: "Permanente / Vitalicia", daysLeftText: "♾️", isNear: false };
+    return { formatted: "Permanent / Lifetime", daysLeftText: "♾️", isNear: false };
   }
   try {
     const d = new Date(isoDate);
@@ -897,11 +990,11 @@ function formatExpiration(isoDate?: string): { formatted: string; daysLeftText: 
     const year = d.getFullYear();
     const formatted = `${day}/${month}/${year}`;
     if (daysLeft < 0) {
-      return { formatted, daysLeftText: `(Expiró hace ${Math.abs(daysLeft)}d)`, isNear: true };
+      return { formatted, daysLeftText: `(Expired ${Math.abs(daysLeft)}d ago)`, isNear: true };
     } else if (daysLeft === 0) {
-      return { formatted, daysLeftText: "(Expira hoy)", isNear: true };
+      return { formatted, daysLeftText: "(Expires today)", isNear: true };
     } else {
-      return { formatted, daysLeftText: `(${daysLeft}d restantes)`, isNear: daysLeft <= 15 };
+      return { formatted, daysLeftText: `(${daysLeft}d left)`, isNear: daysLeft <= 15 };
     }
   } catch {
     return { formatted: isoDate, daysLeftText: "", isNear: false };

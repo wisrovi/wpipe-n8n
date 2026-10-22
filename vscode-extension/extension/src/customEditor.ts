@@ -87,13 +87,18 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     // Listen to messages from Webview
     webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
+        case "ready": {
+          sendInitialData();
+          break;
+        }
+
         case "saveCanvas": {
           const edit = new vscode.WorkspaceEdit();
-          edit.replace(
-            document.uri,
-            new vscode.Range(0, 0, document.lineCount, 0),
-            JSON.stringify(msg.canvasIr, null, 2)
+          const fullRange = new vscode.Range(
+            document.positionAt(0),
+            document.positionAt(document.getText().length)
           );
+          edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
           await vscode.workspace.applyEdit(edit);
           break;
         }
@@ -105,21 +110,30 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           if (res.error === "LIMIT_EXCEEDED") {
             const action = await vscode.window.showWarningMessage(
               `⚠️ ${res.message}`,
-              "Actualizar a WPipe Pro",
-              "Entendido"
+              "Upgrade to WPipe Pro",
+              "Dismiss"
             );
-            if (action === "Actualizar a WPipe Pro") {
+            if (action === "Upgrade to WPipe Pro") {
               vscode.env.openExternal(vscode.Uri.parse(res.details?.upgrade_url || "https://wisrovi.dev"));
             }
-          } else if (res.status === "success" && res.files) {
-            const wsFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+          } else if (res.status === "success" && (res.files_dict || res.files)) {
+            const wsFolder =
+              vscode.workspace.getWorkspaceFolder(document.uri) || vscode.workspace.workspaceFolders?.[0];
             if (wsFolder) {
-              for (const [relPath, content] of Object.entries(res.files)) {
+              const filesMap: Record<string, string> = res.files_dict || {};
+              if (!res.files_dict && Array.isArray(res.files)) {
+                for (const item of res.files) {
+                  if (item && item.path && item.content) {
+                    filesMap[item.path] = item.content;
+                  }
+                }
+              }
+              for (const [relPath, content] of Object.entries(filesMap)) {
                 const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
                 await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
                 await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
               }
-              vscode.window.showInformationMessage(`✅ Pipeline compilado exitosamente (${projectName})`);
+              vscode.window.showInformationMessage(`✅ Pipeline compiled successfully (${projectName})`);
             }
           }
           break;
@@ -247,9 +261,12 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     <div class="logo-badge">W</div>
     <h2 style="color: #f8fafc; font-size: 20px; font-weight: 700;">WPipe Studio</h2>
     <p style="max-width: 440px; font-size: 13px; line-height: 1.6;">
-      Iniciando el lienzo visual de bloques y entorno de desarrollo en <code>${canvasUrl}</code>.
+      Connecting to WPipe Studio visual block canvas at <code>${canvasUrl}</code>.
     </p>
-    <button class="btn-retry" onclick="reloadFrame()">Reconectar Lienzo</button>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+      <button class="btn-retry" onclick="reloadFrame()">Reconnect Local Canvas</button>
+      <button class="btn-retry" style="background: #334155;" onclick="loadCloudFallback()">Open Cloud PWA</button>
+    </div>
   </div>
 
   <script>
@@ -259,6 +276,16 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     const baseUrl = ${JSON.stringify(canvasUrl)};
 
     function reloadFrame() {
+      fallback.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = baseUrl + '/?mode=vscode&t=' + Date.now();
+    }
+
+    function loadCloudFallback() {
+      fallback.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = 'https://studio.wisrovi.dev/?mode=vscode&t=' + Date.now();
+    }
       fallback.style.display = 'none';
       frame.style.display = 'block';
       frame.src = baseUrl + '/?mode=vscode&t=' + Date.now();

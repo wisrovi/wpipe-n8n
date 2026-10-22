@@ -12,10 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/jszip": "^3.4.0",
     "@types/marked": "^5.0.2",
     "@types/prismjs": "^1.26.6",
     "@xyflow/react": "^12.0.0",
     "blockly": "^13.3.0",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.300.0",
     "marked": "^18.1.1",
     "mermaid": "^12.1.0",

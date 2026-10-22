@@ -189,6 +189,76 @@ export function exportProjectToWpipeFile(project: BrowserProject): void {
 }
 
 /**
+ * Automatically synthesize a Blockly serialized workspace state from a list of steps or nodes.
+ */
+export function buildWorkspaceStateFromStepsOrNodes(items: any[]): any {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const isNodes = items.some((it) => it && (it.data || it.node_type));
+  const stepsList = isNodes
+    ? items
+        .filter((n) => {
+          const nt = n.data?.node_type || n.node_type;
+          return nt !== "trigger" && nt !== "response";
+        })
+        .map((n, idx) => ({
+          id: n.id || `step_${idx + 1}`,
+          name: n.data?.step_name || n.data?.label || n.name || n.id,
+          namespace: n.data?.namespace || n.namespace || "wpipe_steps.connectivity",
+        }))
+    : items.map((s, idx) => ({
+        id: s.id || `step_${idx + 1}`,
+        name: s.type || s.name || `Step_${idx + 1}`,
+        namespace: s.namespace || "wpipe_steps.connectivity",
+      }));
+
+  let currentBlock: any = {
+    type: "wpipe_response",
+    id: "block_response",
+    fields: {
+      RESPONSE_TYPE: "http_json",
+      RESPONSE_PARAM: '{"status": "success", "data": context}',
+    },
+  };
+
+  for (let i = stepsList.length - 1; i >= 0; i--) {
+    const s = stepsList[i];
+    currentBlock = {
+      type: "wpipe_step",
+      id: s.id,
+      fields: {
+        STEP_NAME: s.name,
+        NAMESPACE: s.namespace,
+      },
+      next: {
+        block: currentBlock,
+      },
+    };
+  }
+
+  const rootBlock: any = {
+    type: "wpipe_trigger",
+    id: "block_trigger",
+    x: 80,
+    y: 50,
+    fields: {
+      TRIGGER_TYPE: "api",
+      TRIGGER_PARAM: "/run",
+    },
+    next: {
+      block: currentBlock,
+    },
+  };
+
+  return {
+    blocks: {
+      languageVersion: 0,
+      blocks: [rootBlock],
+    },
+  };
+}
+
+/**
  * Import a `.wpipe` file content into a structured BrowserProject.
  */
 export function parseWpipeFileContent(rawContent: string): BrowserProject {
@@ -197,14 +267,23 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
   // Case 1: Structured .wpipe wrapper
   if (parsed.format === "wpipe" && parsed.project) {
     const p = parsed.project;
+    const wsState =
+      p.workspace_state ||
+      p.canvas_ir?.workspace_state ||
+      buildWorkspaceStateFromStepsOrNodes(p.canvas_ir?.nodes || p.steps);
+    const canvasIr = p.canvas_ir
+      ? { ...p.canvas_ir, workspace_state: wsState }
+      : wsState
+      ? { nodes: [], workspace_state: wsState }
+      : null;
     return {
       id: p.id || `proj_imported_${Date.now()}`,
       name: p.name || "imported_pipeline",
-      description: p.description || "Importado desde archivo .wpipe",
+      description: p.description || "Imported from .wpipe file",
       owner_id: "browser_local_user",
       docker_image: p.docker_image || "python:3.11-slim",
       protocol: p.protocol || "fastapi",
-      canvas_ir: p.canvas_ir || null,
+      canvas_ir: canvasIr,
       generated_files: p.generated_files || p.files || [],
       files: p.generated_files || p.files || [],
       node_count: p.canvas_ir?.nodes?.length || 0,
@@ -215,14 +294,18 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
 
   // Case 2: Raw ProjectDetail
   if (parsed.canvas_ir && parsed.name) {
+    const wsState =
+      parsed.workspace_state ||
+      parsed.canvas_ir?.workspace_state ||
+      buildWorkspaceStateFromStepsOrNodes(parsed.canvas_ir?.nodes || parsed.steps);
     return {
       id: parsed.id || `proj_imported_${Date.now()}`,
       name: parsed.name,
-      description: parsed.description || "Importado desde archivo .wpipe",
+      description: parsed.description || "Imported from .wpipe file",
       owner_id: "browser_local_user",
       docker_image: parsed.docker_image || "python:3.11-slim",
       protocol: parsed.protocol || "fastapi",
-      canvas_ir: parsed.canvas_ir,
+      canvas_ir: { ...parsed.canvas_ir, workspace_state: wsState },
       generated_files: parsed.generated_files || parsed.files || [],
       files: parsed.generated_files || parsed.files || [],
       node_count: parsed.canvas_ir?.nodes?.length || 0,
@@ -233,6 +316,7 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
 
   // Case 3: Raw CanvasIR (nodes and edges directly)
   if (Array.isArray(parsed.nodes)) {
+    const wsState = parsed.workspace_state || buildWorkspaceStateFromStepsOrNodes(parsed.nodes);
     return {
       id: parsed.id || `proj_imported_${Date.now()}`,
       name: parsed.name || "imported_pipeline",
@@ -240,7 +324,7 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
       owner_id: "browser_local_user",
       docker_image: parsed.docker_image || "python:3.11-slim",
       protocol: parsed.protocol || "fastapi",
-      canvas_ir: parsed,
+      canvas_ir: { ...parsed, workspace_state: wsState },
       generated_files: parsed.generated_files || parsed.files || [],
       files: parsed.generated_files || parsed.files || [],
       node_count: parsed.nodes.length,
@@ -265,6 +349,7 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
       })),
       { id: "node_response", data: { node_type: "response", label: "Response Cap (HTTP 200)", response_type: "http_json" } },
     ];
+    const wsState = buildWorkspaceStateFromStepsOrNodes(parsed.steps);
     return {
       id: parsed.id || `proj_imported_${Date.now()}`,
       name: parsed.name || "demo_pipeline",
@@ -272,7 +357,7 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
       owner_id: "browser_local_user",
       docker_image: parsed.docker_image || "python:3.11-slim",
       protocol: parsed.protocol || "fastapi",
-      canvas_ir: { nodes },
+      canvas_ir: { nodes, workspace_state: wsState },
       generated_files: [],
       files: [],
       node_count: nodes.length,
@@ -283,8 +368,11 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
 
   // Case 5: Workspace state only or arbitrary pipeline object fallback
   if (parsed && typeof parsed === "object") {
-    const wsState = parsed.workspace_state || (parsed.canvas_ir && parsed.canvas_ir.workspace_state) || null;
     const nodes = (parsed.canvas_ir && parsed.canvas_ir.nodes) || parsed.nodes || [];
+    const wsState =
+      parsed.workspace_state ||
+      (parsed.canvas_ir && parsed.canvas_ir.workspace_state) ||
+      buildWorkspaceStateFromStepsOrNodes(Array.isArray(nodes) ? nodes : parsed.steps);
     return {
       id: parsed.id || `proj_imported_${Date.now()}`,
       name: parsed.name || "pipeline",

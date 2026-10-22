@@ -57,13 +57,16 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
     server_version = "WPipeEngine/1.0.0"
 
     def _is_allowed_origin(self) -> bool:
-        """Check if incoming request Origin is trusted (localhost, 127.0.0.1, or vscode-webview)."""
+        """Check if incoming request Origin is trusted (localhost, 127.0.0.1, studio.wisrovi.dev, or vscode-webview)."""
         origin = self.headers.get("Origin", "")
         if not origin:
             return True  # Native sockets, CLI, curl, local tools without Origin header
         return (
             origin.startswith("http://localhost:")
             or origin.startswith("http://127.0.0.1:")
+            or origin.startswith("https://studio.wisrovi.dev")
+            or origin.startswith("https://wpipe-studio")
+            or origin.endswith(".wisrovi.dev")
             or origin.startswith("vscode-webview://")
             or origin == "null"
         )
@@ -73,8 +76,10 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         if self._is_allowed_origin():
             allowed = origin if origin else "*"
             self.send_header("Access-Control-Allow-Origin", allowed)
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Access-Control-Request-Private-Network")
+            if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Vary", "Origin")
 
     def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
@@ -126,6 +131,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             content_type = "text/css; charset=utf-8"
         elif ext == ".json":
             content_type = "application/json"
+        elif ext == ".webmanifest":
+            content_type = "application/manifest+json"
         elif ext == ".png":
             content_type = "image/png"
         elif ext == ".svg":
@@ -211,6 +218,15 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
                 "name": "William Rodriguez",
                 "role": "admin",
             })
+            return
+
+        elif self.path.startswith("/api/v1/auth/users") or self.path.startswith("/auth/users"):
+            self._send_json(200, [{
+                "id": "local_dev",
+                "username": "william.rodriguez",
+                "name": "William Rodriguez",
+                "role": "admin",
+            }])
             return
 
         elif self.path.startswith("/api/v1/projects"):

@@ -30,9 +30,23 @@ class WorkspaceManager:
         return clean or "unnamed_microservice"
 
     def _find_project_dir(self, project_id: str) -> Path | None:
-        """Find project directory by its ID or exact directory name."""
+        """Find project directory by its ID or exact directory name, strictly contained within root_dir."""
+        if not project_id or not isinstance(project_id, str):
+            return None
+        # Disallow directory traversal sequences
+        if ".." in project_id or "/" in project_id or "\\" in project_id:
+            return None
+
         # 1. Exact match on directory name
-        direct_path = self.root_dir / project_id
+        direct_path = (self.root_dir / project_id).resolve()
+        root_resolved = self.root_dir.resolve()
+        try:
+            if not direct_path.is_relative_to(root_resolved) or direct_path == root_resolved:
+                return None
+        except (AttributeError, ValueError):
+            if not str(direct_path).startswith(str(root_resolved)):
+                return None
+
         if direct_path.is_dir():
             return direct_path
 
@@ -304,9 +318,18 @@ class WorkspaceManager:
         return self.get_project(new_id)
 
     def delete_project(self, project_id: str) -> bool:
-        """Delete project directory completely from filesystem."""
+        """Delete project directory completely from filesystem with strict containment verification."""
         pdir = self._find_project_dir(project_id)
         if not pdir or not pdir.is_dir():
+            return False
+
+        # Extra safety verification: pdir must be strictly a subfolder of root_dir
+        try:
+            resolved_pdir = pdir.resolve()
+            resolved_root = self.root_dir.resolve()
+            if not resolved_pdir.is_relative_to(resolved_root) or resolved_pdir == resolved_root:
+                return False
+        except (AttributeError, ValueError):
             return False
 
         try:
@@ -390,11 +413,25 @@ class WorkspaceManager:
         """Execute a safe shell command inside the project workspace directory."""
         pdir = self._find_project_dir(project_id)
         if not pdir:
-            return {"stdout": "", "stderr": "Project directory not found.", "exit_code": 1, "cwd": ""}
+            return {"stdout": "", "stderr": "Project directory not found or invalid.", "exit_code": 1, "cwd": ""}
+
+        cmd = (command or "").strip()
+        if not cmd:
+            return {"stdout": "", "stderr": "", "exit_code": 0, "cwd": str(pdir)}
+
+        forbidden = ["rm -rf /", ":(){ :|:& };:", "mkfs", "dd if=", "shutdown", "reboot"]
+        for f in forbidden:
+            if f in cmd:
+                return {
+                    "stdout": "",
+                    "stderr": f"Command rejected for security reasons: {f}",
+                    "exit_code": 1,
+                    "cwd": str(pdir),
+                }
 
         try:
             res = subprocess.run(
-                command,
+                cmd,
                 shell=True,
                 cwd=str(pdir),
                 capture_output=True,

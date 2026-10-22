@@ -1,54 +1,107 @@
 # WPipe Studio — VS Code Extension, Native Engine & Cloudflare Licensing
 
-Suite completa para el diseño visual de pipelines WPipe y generación de microservicios Python integrados de forma nativa en **Visual Studio Code**, operando bajo una arquitectura **local-first** con coste de servidor de **0 €/mes** y blindaje comercial contra ingeniería inversa.
+Complete suite for visual WPipe pipeline engineering and production Python microservice generation natively integrated into **Visual Studio Code**, operating under a **local-first** architecture with **0 €/month** server costs and commercial copy protection.
 
-> **Autor**: William Rodriguez (AI Leader & Solutions Architect — [wisrovi.dev](https://wisrovi.dev))  
-> **Ecosistema**: WPipe OS / wisrovi SUITE  
-> **Modelo**: Freemium (≤ 5 bloques Free / Pro ilimitado con tokens Ed25519)
+- **Lead Architect**: William Rodriguez (AI Leader & Solutions Architect — [wisrovi.dev](https://wisrovi.dev))  
+- **Ecosystem**: WPipe OS / wisrovi SUITE  
+- **Licensing Model**: Freemium (≤ 5 blocks Free / Unlimited Pro with Ed25519 cryptographic tokens)
 
 ---
 
-## Tecnologías y Librerías Relevantes
+## 🛠️ Core Technologies and Relevant Libraries
 
-| Componente | Tecnologías y Librerías Clave |
+| Component | Key Technologies & Libraries |
 |---|---|
-| **`cloudfire/`** | **Cloudflare Workers** (servidor de licencias edge), **Cloudflare D1** (SQLite serverless), **Cloudflare R2** (Zero-Egress Object Storage), **WebCrypto API Ed25519** (firmas asimétricas), **TypeScript**, **Wrangler CLI**. |
-| **`daemon_os/`** | **Python 3.11+ / CPython**, **PyCA Cryptography** (verificación de firmas Ed25519), **Unix Domain Sockets** (`socket.AF_UNIX`), **Localhost HTTP** (`127.0.0.1:49152`), **Nuitka / PyInstaller** (AOT compilation a binario cerrado), **Pytest** (suite de 13 pruebas unitarias). |
-| **`extension/`** | **VS Code Extensibility API** (`CustomTextEditorProvider` para `*.wpipe`), **TypeScript 5**, **VS Code Webview API** (lienzo React + Blockly aislado), **Node.js HTTP/IPC**. |
+| **`cloudfire/`** | **Cloudflare Workers** (edge licensing gateway), **Cloudflare D1** (serverless SQLite), **Cloudflare R2** (zero-egress object storage), **WebCrypto API Ed25519** (asymmetric signatures), **TypeScript**, **Wrangler CLI**. |
+| **`daemon_os/`** | **Python 3.11+ / CPython**, **PyCA Cryptography** (Ed25519 cryptographic signature verification), **Unix Domain Sockets** (`socket.AF_UNIX`), **Localhost HTTP / W3C PNA** (`127.0.0.1:49152`), **Nuitka / PyInstaller** (AOT compilation to closed binary), **Pytest** (unit and penetration security test suite). |
+| **`extension/`** | **VS Code Extensibility API** (`CustomTextEditorProvider` for `*.wpipe`), **TypeScript 5**, **VS Code Webview API** (isolated React + Blockly canvas), **Node.js HTTP/IPC**. |
+| **`portal-cloudfire/`** | **React 18**, **Vite**, **TypeScript**, **Tailwind CSS**, **Lucide React**, **Cloudflare Pages** (enterprise client self-service portal). |
+| **`admin-web/`** | **React 18**, **Vite**, **TypeScript**, **Tailwind CSS**, **Lucide React**, **Cloudflare Pages** (super-administrative master console). |
 
 ---
 
-## Estructura del Ecosistema
+## 📁 Ecosystem Structure
 
 ```
 vscode-extension/
-├── cloudfire/                 # Servidor de licencias Serverless (Cloudflare Edge)
-│   ├── wrangler.toml          # Configuración de bindings D1 y R2
-│   ├── schema.sql             # Base de datos D1: licenses, activations, audit_logs
-│   ├── keys.json              # Par de claves asimétricas Ed25519
-│   ├── src/                   # Router HTTP, firmas Ed25519, activación y webhooks
-│   └── scripts/deploy.sh      # Script de despliegue en Cloudflare (api.wisrovi.dev)
+├── cloudfire/                 # Serverless Licensing Server (Cloudflare Edge)
+│   ├── wrangler.toml          # D1 and R2 bindings configuration
+│   ├── schema.sql             # Cloudflare D1 schema: licenses, activations, audit_logs
+│   ├── keys.json              # Ed25519 asymmetric cryptographic keypair
+│   ├── src/                   # HTTP routing, Ed25519 signatures, activations and webhooks
+│   └── scripts/deploy.sh      # Cloudflare deployment script (api.wisrovi.dev)
 │
-├── daemon_os/                 # Motor nativo local de sistema (wpipe-engine)
-│   ├── wpipe_engine/          # Core del daemon: licensing, enforcer freemium, AST compiler
-│   ├── build.sh               # Compilador a binario nativo cerrado
-│   ├── package/               # Empaquetado para SO: systemd, snapcraft.yaml
-│   └── tests/                 # Suite de 13 pruebas unitarias (pytest)
+├── daemon_os/                 # Local native system engine (wpipe-engine)
+│   ├── wpipe_engine/          # Core daemon: licensing, freemium enforcer, AST compiler, IPC
+│   ├── build.sh               # Closed native binary compiler
+│   ├── package/               # OS packaging: systemd, snapcraft.yaml
+│   └── tests/                 # Comprehensive unit and penetration test suite (pytest)
 │
-└── extension/                 # Extensión para Visual Studio Code
-    ├── package.json           # Manifiesto VS Code, comandos y editor *.wpipe
-    ├── src/                   # Lifecycle, gestor del daemon, cliente IPC y Webview
-    └── dist/                  # Bundle TypeScript compilado listo para empaquetar
+├── extension/                 # Visual Studio Code extension
+│   ├── package.json           # VS Code extension manifest, commands, *.wpipe custom editor
+│   ├── src/                   # Extension lifecycle, daemon manager, IPC client, and Webview
+│   └── dist/                  # Compiled TypeScript bundle ready for VSIX packaging
+│
+├── portal-cloudfire/          # Self-service client portal (portal.wisrovi.dev)
+└── admin-web/                 # Super-admin master console (admin.wisrovi.dev)
 ```
 
 ---
 
-## Flujo Operativo y Blindaje en 5 Niveles
+## 🔒 5-Tier Security & Operational Flow
 
-1. **Cliente Fino (VS Code Webview)**: El lienzo visual captura la interacción del usuario pero no sabe compilar código Python; delega la compilación al daemon local mediante IPC.
-2. **Criptografía Asimétrica Ed25519**: El Cloudflare Worker (`api.wisrovi.dev`) firma digitalmente tokens de arrendamiento (*leases*) válidos por 30 días. El daemon verifica matemáticamente la firma con su clave pública integrada sin requerir conexión continua.
-3. **Anclaje al Hardware Físico (Machine Fingerprint)**: El lease se vincula al UUID de la placa base, ID de CPU y MAC del desarrollador. No puede ser transferido a otro equipo.
-4. **Control Freemium Estricto**:
-   - **Modo Free**: Permite hasta 5 bloques en el lienzo. Bloquea el uso de bloques Pro (`Parallel`, `Background`, `AI Step`).
-   - **Modo Pro**: Desbloquea complejidad ilimitada, concurrencia, Smart AST code merge y depuración en vivo.
-5. **Aislamiento y Empaquetado de Sistema (`daemon_os`)**: El motor nativo puede distribuirse como paquete inmutable (`snap`), paquete de sistema (`apt`), o binario cerrado compilado con Nuitka.
+1. **Thin Client (VS Code Webview)**: The visual canvas captures user interactions without compiling Python directly; it securely delegates compilation and AST operations to the local daemon via IPC.
+2. **Ed25519 Cryptographic Verification**: The Cloudflare Worker (`api.wisrovi.dev`) digitally signs 30-day lease tokens. The local daemon mathematically verifies the signature using its embedded public key without requiring permanent network connectivity.
+3. **Machine Hardware Fingerprinting**: Lease tokens are cryptographically bound to motherboard UUID, CPU ID, and MAC address, preventing unauthorized transfer across machines.
+4. **Strict Freemium Enforcement**:
+   - **Free Tier**: Up to 5 blocks on canvas; restricts Pro-tier blocks (`Parallel`, `Background`, `AI Step`).
+   - **Pro Tier**: Unlocks unlimited complexity, concurrency, smart AST code merging, and live debugging.
+5. **System Isolation & OS Packaging (`daemon_os`)**: The engine distributes as an immutable package (`snap`), system package (`apt`), or closed binary compiled with Nuitka.
+
+---
+
+## 🧪 Testing and Verification
+
+### 1. Daemon Unit & Security Tests
+```bash
+cd daemon_os
+pytest tests/ -v
+```
+
+### 2. Cloudfire TypeScript Typecheck
+```bash
+cd cloudfire
+npx tsc --noEmit
+```
+
+### 3. Portal & Admin Builds
+```bash
+cd portal-cloudfire && npm run build
+cd ../admin-web && npm run build
+```
+
+---
+
+## ⚖️ Copyright, Authorship & Intellectual Property Rights
+
+> [!NOTE]
+> **Official Intellectual Property and Attribution Statement**  
+> This project and all associated orchestration models, visual interfaces, and engineering specifications are copyrighted and maintained under the terms below.
+
+### Platform & Engineering Ecosystem
+- **Platform**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE)
+- **Core Engine**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) `>=2.5.13`
+- **Official Portal**: [https://portal.wisrovi.dev](https://portal.wisrovi.dev)
+- **Official Admin**: [https://admin.wisrovi.dev](https://admin.wisrovi.dev)
+
+### Lead Architect & Author Attribution
+- **Lead Author & Solutions Architect**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
+- **Title**: **AI Leader & Solutions Architect**
+- **Website**: [https://wisrovi.dev](https://wisrovi.dev)
+- **Location**: Badajoz, Extremadura, Spain
+- **Mission**: *Bridging advanced artificial intelligence, distributed cloud architectures, and high-performance execution systems.*
+
+### Intellectual Property & Terms of Use
+All software components, visual block representations, topological graph compilation logic, typed DTO contracts, and orchestration abstractions are the exclusive intellectual property of **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Unauthorized removal or alteration of authorship metadata is strictly prohibited.
+
+**Copyright © 2026 wisrovi ([wisrovi.dev](https://wisrovi.dev)). All Rights Reserved.**

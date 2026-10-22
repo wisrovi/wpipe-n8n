@@ -208,11 +208,266 @@ python app/main.py
 ```
 """
 
+        config_py = f"""\"\"\"Application Configuration & Environment Settings.\"\"\"
+import os
+from pydantic import BaseModel, Field
+
+
+class Settings(BaseModel):
+    \"\"\"Core settings loaded from environment variables.\"\"\"
+    service_name: str = Field(default="{project_name}")
+    environment: str = Field(default=os.getenv("ENV", "production"))
+    debug: bool = Field(default=os.getenv("DEBUG", "false").lower() == "true")
+    api_port: int = Field(default=int(os.getenv("PORT", 8000)))
+    wpipe_log_level: str = Field(default=os.getenv("LOG_LEVEL", "INFO"))
+
+
+settings = Settings()
+"""
+
+        dto_init_py = """\"\"\"Data Transfer Objects (DTO) — Dialecto A for WPipe contracts.\"\"\"
+from app.dto.context import PipelineContextDTO
+from app.dto.request import PipelineRequestDTO
+from app.dto.response import PipelineResponseDTO
+
+__all__ = ["PipelineContextDTO", "PipelineRequestDTO", "PipelineResponseDTO"]
+"""
+
+        dto_context_py = """\"\"\"Pipeline Shared Context DTO (Dialecto A contract).\"\"\"
+from typing import Any
+from pydantic import BaseModel, Field
+
+
+class PipelineContextDTO(BaseModel):
+    \"\"\"Strongly typed pipeline context shared across steps.\"\"\"
+    execution_id: str = Field(default="")
+    timestamp: str = Field(default="")
+    url: str | None = None
+    query: str | None = None
+    batch_size: int = 10
+    payload: dict[str, Any] = Field(default_factory=dict)
+    results: list[Any] = Field(default_factory=list)
+    status_code: int = 200
+    is_valid: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+"""
+
+        dto_request_py = """\"\"\"API Ingress Request DTO.\"\"\"
+from typing import Any
+from pydantic import BaseModel, Field
+
+
+class PipelineRequestDTO(BaseModel):
+    \"\"\"Input payload delivered to the pipeline ingress trigger.\"\"\"
+    url: str | None = Field(default=None, description="Target endpoint or resource URL")
+    query: str | None = Field(default=None, description="Search query or execution directive")
+    batch_size: int = Field(default=10, ge=1, le=1000, description="Batch execution size")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Arbitrary custom step parameters")
+"""
+
+        dto_response_py = f"""\"\"\"API Egress Response DTO.\"\"\"
+from typing import Any
+from pydantic import BaseModel, Field
+
+
+class PipelineResponseDTO(BaseModel):
+    \"\"\"Standardized response returned by the microservice after pipeline execution.\"\"\"
+    success: bool = True
+    service: str = "{project_name}"
+    execution_time_ms: float = Field(default=0.0)
+    data: dict[str, Any] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+"""
+
+        states_init_py = """\"\"\"Custom States & Step Definitions for WPipe.\"\"\"
+from app.states.custom_states import custom_cleaner_step, ai_sentiment_step
+from app.states.transforms import normalize_context_step
+
+__all__ = ["custom_cleaner_step", "ai_sentiment_step", "normalize_context_step"]
+"""
+
+        states_base_py = """\"\"\"Abstract Base Step interface for custom class-based steps.\"\"\"
+from abc import ABC, abstractmethod
+from typing import Any
+
+
+class BaseCustomStep(ABC):
+    \"\"\"Base class for custom WPipe step implementations.\"\"\"
+
+    @abstractmethod
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        \"\"\"Execute step logic mutating or enriching context.\"\"\"
+        ...
+"""
+
+        states_custom_py = """\"\"\"User-defined custom states and AI step implementations (@step).\"\"\"
+from wpipe import step
+
+
+@step
+def custom_cleaner_step(context: dict) -> dict:
+    \"\"\"Sanitizes incoming payloads and ensures key normalization.\"\"\"
+    if "url" in context and isinstance(context["url"], str):
+        context["url"] = context["url"].strip()
+    context["is_cleaned"] = True
+    return context
+
+
+@step
+def ai_sentiment_step(context: dict) -> dict:
+    \"\"\"Classifies sentiment or extracts intent using NLP/LLM heuristics.\"\"\"
+    query = context.get("query", "")
+    context["ai_sentiment"] = "positive" if "good" in str(query).lower() else "neutral"
+    context["ai_confidence"] = 0.95
+    return context
+"""
+
+        states_transforms_py = """\"\"\"Data transformations, schema validation & enrichment steps.\"\"\"
+from wpipe import step
+
+
+@step
+def normalize_context_step(context: dict) -> dict:
+    \"\"\"Normalizes default values and sets metadata timestamp.\"\"\"
+    context.setdefault("retry_count", 0)
+    context.setdefault("status_code", 200)
+    context.setdefault("is_valid", True)
+    return context
+"""
+
+        dockerfile = f"""FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+"""
+
+        docker_compose = f"""services:
+  {project_name}:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVICE_NAME={project_name}
+      - ENV=production
+    restart: unless-stopped
+"""
+
+        test_states_py = f"""# Unit Tests for Custom States & Steps
+import sys
+import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+from app.states.custom_states import custom_cleaner_step, ai_sentiment_step
+from app.states.transforms import normalize_context_step
+
+
+def test_custom_cleaner_step():
+    ctx = {{"url": "  https://example.com/api  "}}
+    res = custom_cleaner_step(ctx)
+    assert res["url"] == "https://example.com/api"
+    assert res["is_cleaned"] is True
+
+
+def test_ai_sentiment_step():
+    ctx = {{"query": "This is good news"}}
+    res = ai_sentiment_step(ctx)
+    assert res["ai_sentiment"] == "positive"
+    assert res["ai_confidence"] == 0.95
+
+
+def test_normalize_context_step():
+    ctx = {{}}
+    res = normalize_context_step(ctx)
+    assert res["retry_count"] == 0
+    assert res["status_code"] == 200
+    assert res["is_valid"] is True
+"""
+
+        test_api_py = f"""# Unit Tests for FastAPI Application Endpoints
+import sys
+import pathlib
+import pytest
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health_check():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+
+
+def test_run_pipeline_endpoint():
+    response = client.post("/run", json={{"query": "test query", "batch_size": 5}})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "data" in data
+"""
+
+        makefile = f""".PHONY: run test docker-build docker-run lint
+
+run:
+	python app/main.py
+
+test:
+	pytest tests/ -v --cov=app
+
+docker-build:
+	docker build -t {project_name}:latest .
+
+docker-run:
+	docker run -p 8000:8000 {project_name}:latest
+
+lint:
+	python -m py_compile app/pipelines.py app/main.py
+"""
+
+        run_tests_docker = """#!/usr/bin/env bash
+set -e
+docker run --rm -v "$(pwd):/app" -w /app python:3.11-slim bash -c "pip install -r requirements.txt && pytest tests/ -v"
+"""
+
         return {
             "app/__init__.py": "# Package marker\n",
             "app/pipelines.py": pipeline_py,
             "app/main.py": main_py,
+            "app/core/__init__.py": "# Package marker\n",
+            "app/core/config.py": config_py,
+            "app/dto/__init__.py": dto_init_py,
+            "app/dto/context.py": dto_context_py,
+            "app/dto/request.py": dto_request_py,
+            "app/dto/response.py": dto_response_py,
+            "app/states/__init__.py": states_init_py,
+            "app/states/base.py": states_base_py,
+            "app/states/custom_states.py": states_custom_py,
+            "app/states/transforms.py": states_transforms_py,
+            "tests/__init__.py": "# Package marker\n",
             "tests/test_pipeline.py": test_py,
+            "tests/test_states.py": test_states_py,
+            "tests/test_api.py": test_api_py,
+            "Dockerfile": dockerfile,
+            "docker-compose.yml": docker_compose,
             "requirements.txt": requirements_txt,
+            "Makefile": makefile,
             "README.md": readme_md,
+            "run_tests_docker.sh": run_tests_docker,
         }

@@ -62,15 +62,27 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         if not origin:
             return True  # Native sockets, CLI, curl, local tools without Origin header
-        return (
-            origin.startswith("http://localhost:")
-            or origin.startswith("http://127.0.0.1:")
-            or origin.startswith("https://studio.wisrovi.dev")
-            or origin.startswith("https://wpipe-studio")
-            or origin.endswith(".wisrovi.dev")
-            or origin.startswith("vscode-webview://")
-            or origin == "null"
-        )
+        origin = origin.strip().lower()
+        if origin == "null":
+            return True
+        if origin.startswith("vscode-webview://"):
+            return True
+        # Localhost / loopback on any port
+        if origin.startswith("http://localhost:") or origin == "http://localhost":
+            return True
+        if origin.startswith("http://127.0.0.1:") or origin == "http://127.0.0.1":
+            return True
+        # Strict exact domain matching for wisrovi suites
+        allowed_domains = {
+            "https://studio.wisrovi.dev",
+            "https://admin.wisrovi.dev",
+            "https://portal.wisrovi.dev",
+            "https://wisrovi.dev",
+            "https://wpipe-studio.pages.dev",
+            "https://wpipe-admin.pages.dev",
+            "https://wpipe-portal.pages.dev",
+        }
+        return origin in allowed_domains
 
     def _send_cors_headers(self) -> None:
         origin = self.headers.get("Origin", "")
@@ -112,12 +124,20 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             return {}
 
     def _serve_static(self, rel_path: str) -> bool:
-        """Serve bundled static frontend canvas assets."""
+        """Serve bundled static frontend canvas assets safely without path traversal."""
         clean_rel = rel_path.lstrip("/").split("?")[0]
         if not clean_rel or clean_rel == "index.html":
-            target = CANVAS_STATIC_DIR / "index.html"
+            target = (CANVAS_STATIC_DIR / "index.html").resolve()
         else:
-            target = CANVAS_STATIC_DIR / clean_rel
+            target = (CANVAS_STATIC_DIR / clean_rel).resolve()
+
+        base_dir = CANVAS_STATIC_DIR.resolve()
+        try:
+            if not target.is_relative_to(base_dir):
+                return False
+        except (AttributeError, ValueError):
+            if not str(target).startswith(str(base_dir)):
+                return False
 
         if not target.is_file():
             return False
@@ -168,13 +188,12 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
 
         clean_path = self.path.split("?")[0]
 
-        # 1. Base Health & Status
-        if clean_path in ("/", "/v1/health", "/health"):
-            # If path is "/" and canvas static files exist, serve index.html
-            if self.path == "/" and (CANVAS_STATIC_DIR / "index.html").exists():
-                if self._serve_static("index.html"):
-                    return
+        # 1. Base Health & Canvas Entrypoint
+        if clean_path in ("/", "/index.html") and (CANVAS_STATIC_DIR / "index.html").exists():
+            if self._serve_static("index.html"):
+                return
 
+        if clean_path in ("/", "/v1/health", "/health"):
             self._send_json(200, {
                 "service": "wpipe-engine",
                 "version": "1.0.0",

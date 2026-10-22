@@ -5,6 +5,23 @@
  */
 
 import { verifyEd25519Token, DEFAULT_WISROVI_PUBLIC_KEY_HEX } from "./cryptoVerify";
+import {
+  listBrowserProjects,
+  getBrowserProject,
+  createBrowserProject,
+  updateBrowserProject,
+  duplicateBrowserProject,
+  deleteBrowserProject,
+  exportProjectToWpipeFile,
+  parseWpipeFileContent,
+  BrowserProject,
+} from "./projectStorage";
+
+export {
+  exportProjectToWpipeFile,
+  parseWpipeFileContent,
+  type BrowserProject,
+};
 
 export const DEFAULT_ENGINE_PORT = 49152;
 export const FALLBACK_ENGINE_PORTS = [49152, 49153, 49154];
@@ -197,27 +214,168 @@ export async function executeEngineSimulation(
 }
 
 /**
- * Compile canvas IR to clean Python code via local engine AST
+ * Fetch projects from Local Engine (if connected) with automatic fallback to Browser Storage.
  */
-export async function compileEngineAst(
-  canvasIr: any,
+export async function fetchProjectsHybrid(
+  engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
-): Promise<{ python_code: string; valid: boolean; errors?: string[] }> {
-  const baseUrl = getEngineBaseUrl(port);
-  const resp = await fetch(`${baseUrl}/compile`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      canvas_ir: canvasIr,
-    }),
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => "Compilation request failed");
-    throw new Error(`Error de compilación (${resp.status}): ${errText}`);
+): Promise<{ projects: any[]; source: "engine" | "browser" }> {
+  if (engineConnected) {
+    try {
+      const url = getEngineApiUrl("/api/v1/projects", port);
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data)) {
+          return { projects: data, source: "engine" };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch projects from engine, falling back to browser storage:", e);
+    }
   }
 
-  return await resp.json();
+  // Fallback to browser storage
+  const browserList = listBrowserProjects();
+  return { projects: browserList, source: "browser" };
 }
+
+/**
+ * Load project details from Local Engine with browser fallback.
+ */
+export async function loadProjectHybrid(
+  id: string,
+  engineConnected: boolean,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<{ project: any; source: "engine" | "browser" }> {
+  if (engineConnected) {
+    try {
+      const url = getEngineApiUrl(`/api/v1/projects/${id}`, port);
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        return { project: data, source: "engine" };
+      }
+    } catch (e) {
+      console.warn("Failed to load project from engine, trying browser storage:", e);
+    }
+  }
+
+  const browserProj = getBrowserProject(id);
+  if (browserProj) {
+    return { project: browserProj, source: "browser" };
+  }
+  throw new Error("Proyecto no encontrado");
+}
+
+/**
+ * Save or update project in Local Engine or Browser storage.
+ */
+export async function saveProjectHybrid(
+  data: {
+    id?: string | null;
+    name: string;
+    description?: string;
+    docker_image?: string;
+    protocol?: string;
+    canvas_ir?: any;
+    generated_files?: any[];
+  },
+  engineConnected: boolean,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<{ project: any; source: "engine" | "browser" }> {
+  if (engineConnected) {
+    try {
+      if (data.id && !data.id.startsWith("proj_local_")) {
+        // Update existing engine project
+        const url = getEngineApiUrl(`/api/v1/projects/${data.id}`, port);
+        const resp = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (resp.ok) {
+          const resJson = await resp.json();
+          return { project: resJson, source: "engine" };
+        }
+      } else {
+        // Create new project in engine
+        const url = getEngineApiUrl("/api/v1/projects", port);
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (resp.ok) {
+          const resJson = await resp.json();
+          return { project: resJson, source: "engine" };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to save project to engine, falling back to browser storage:", e);
+    }
+  }
+
+  // Save to browser
+  if (data.id && getBrowserProject(data.id)) {
+    const { id: _, ...rest } = data;
+    const updated = updateBrowserProject(data.id, rest as Partial<BrowserProject>);
+    return { project: updated, source: "browser" };
+  } else {
+    const created = createBrowserProject(data);
+    return { project: created, source: "browser" };
+  }
+}
+
+/**
+ * Duplicate a project either in engine or browser storage.
+ */
+export async function duplicateProjectHybrid(
+  id: string,
+  engineConnected: boolean,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<{ project: any; source: "engine" | "browser" }> {
+  if (engineConnected && !id.startsWith("proj_local_")) {
+    try {
+      const url = getEngineApiUrl(`/api/v1/projects/${id}/duplicate`, port);
+      const resp = await fetch(url, { method: "POST" });
+      if (resp.ok) {
+        const resJson = await resp.json();
+        return { project: resJson, source: "engine" };
+      }
+    } catch (e) {
+      console.warn("Engine duplicate failed, checking browser:", e);
+    }
+  }
+
+  const dup = duplicateBrowserProject(id);
+  if (dup) {
+    return { project: dup, source: "browser" };
+  }
+  throw new Error("No se pudo duplicar el proyecto");
+}
+
+/**
+ * Delete a project either from engine or browser storage.
+ */
+export async function deleteProjectHybrid(
+  id: string,
+  engineConnected: boolean,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<boolean> {
+  if (engineConnected && !id.startsWith("proj_local_")) {
+    try {
+      const url = getEngineApiUrl(`/api/v1/projects/${id}`, port);
+      const resp = await fetch(url, { method: "DELETE" });
+      if (resp.ok) {
+        return true;
+      }
+    } catch (e) {
+      console.warn("Engine delete failed, trying browser:", e);
+    }
+  }
+
+  return deleteBrowserProject(id);
+}
+
+

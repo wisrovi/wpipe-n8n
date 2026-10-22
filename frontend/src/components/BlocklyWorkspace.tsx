@@ -100,6 +100,7 @@ function getStepOptions(repoFilter: string, catFilter: string, searchTerm: strin
         ["📦 HttpRequest (connectivity)", "HttpRequest"],
         ["📦 NmapScanStep (security)", "NmapScanStep"],
         ["📦 MySQLQuery (database)", "MySQLQuery"],
+        ["📦 RedisCacheStep (database)", "RedisCacheStep"],
         ["📦 ImageECamYOLO (vision)", "ImageECamYOLO"],
       ];
     }
@@ -1454,7 +1455,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       }
 
       const blockBgTask = ws.newBlock("wpipe_step");
-      blockBgTask.setFieldValue("RedisGet", "STEP_NAME");
+      blockBgTask.setFieldValue("RedisCacheStep", "STEP_NAME");
       blockBgTask.setFieldValue("wpipe_steps.database", "NAMESPACE");
       blockBgTask.initSvg();
       blockBgTask.render();

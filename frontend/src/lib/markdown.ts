@@ -8,6 +8,19 @@ marked.setOptions({
   breaks: true,
 });
 
+// Configure custom renderer for Mermaid diagrams
+const renderer = new marked.Renderer();
+const origCode = renderer.code.bind(renderer);
+renderer.code = function (token: any) {
+  const text = typeof token === "object" ? token.text : arguments[0];
+  const lang = typeof token === "object" ? token.lang : arguments[1];
+  if (lang === "mermaid") {
+    return `<div class="mermaid my-4 flex justify-center bg-[#181818] p-4 rounded-xl border border-[#3c3c3c] overflow-x-auto text-sky-200">${text}</div>`;
+  }
+  return origCode(token);
+};
+marked.use({ renderer });
+
 /**
  * Renders Markdown into rich, clean HTML styled for VS Code / GitHub previews,
  * including GitHub-style alert callouts ([!IMPORTANT], [!NOTE], [!WARNING], [!TIP]).

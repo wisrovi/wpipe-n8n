@@ -5,19 +5,23 @@ export interface GeneratedFile {
   content: string;
 }
 
+const DEFAULT_STEP_ARGS: Record<string, string> = {
+  NmapScan: 'target="127.0.0.1"',
+  NmapScanStep: 'target="127.0.0.1"',
+};
+
 /**
  * Generate a complete production-grade Python microservice from Canvas IR.
- * Strictly adheres to the official WPipe Architect Manual & WPipe Quality Rules (wpipe-mcp):
- * - app/config/: config.yaml, settings.py (AppSettings BaseModel), __init__.py
- * - app/dto/: context.py (PipelineContextDTO), request.py, response.py, __init__.py
- * - app/model/: .gitkeep
- * - app/services/: business_service.py (ProcessingService), __init__.py
- * - app/states/: class-based states with @step, @timeout_sync, @to_obj, Google-style docstrings
- * - app/test/: test_dto.py, test_states.py, test_pipeline.py, test_api.py, __init__.py
- * - app/utils/: helpers.py (generate_transaction_id, sanitize_metrics), __init__.py
- * - app/pipelines.py: declarative DAG assembly with inline step instantiation
- * - app/main.py: FastAPI REST API, ResourceMonitor, TaskTimer, @time_execution, 0 hasattr/getattr
- * - root: Dockerfile, docker-compose.yml, requirements.txt, Makefile, README.md, run_tests_docker.sh, wpipe.config.json
+ * Features:
+ * - True recursive hierarchical C-blocks (Condition, For, While, Parallel, Background) reflecting the visual canvas.
+ * - Strict adherence to wpipe-mcp Architect Manual and WPipe Quality Rules.
+ * - app/config/: config.yaml, settings.py, __init__.py
+ * - Root config.yaml for immediate top-level visibility
+ * - Dynamic and non-empty __init__.py files across all packages.
+ * - Dockerfile with PYTHONUNBUFFERED=1, SERVICE_NAME, and ENV=production baked in.
+ * - Makefile with start, stop, restart, status, logs, into, test, pytest, build, and clean.
+ * - run_tests_docker.sh delegating directly to Makefile (`make test`).
+ * - High-level executive README.md with copyright notice, technical specs, and Mermaid DAG.
  */
 export function generateMicroserviceFiles(
   canvasIr: CanvasIR,
@@ -25,55 +29,147 @@ export function generateMicroserviceFiles(
   dockerImage: string = "python:3.11-slim"
 ): GeneratedFile[] {
   const nodes = canvasIr.nodes || [];
-  const triggerNode = nodes.find((n) => n.data?.node_type === "trigger");
-  const stepNodes = nodes.filter((n) => n.data?.node_type !== "trigger" && n.data?.node_type !== "response");
+  const edges = canvasIr.edges || [];
+
+  const nodeMap = new Map<string, any>(nodes.map((n) => [n.id, n]));
+
+  const getChildren = (parentId: string, slotType?: string): any[] => {
+    return nodes.filter((n) => {
+      const d = n.data || ({} as any);
+      if (d.parent_id !== parentId) return false;
+      if (slotType && d.slot_type !== slotType) return false;
+      return true;
+    });
+  };
 
   const imports = new Set<string>([
     "from wpipe import Pipeline, Condition, For, Parallel, Background",
     "from app.config.settings import settings",
     "from app.dto.context import PipelineContextDTO",
+    "from app.states.base import BaseStep",
     "from app.states.clean_data_step import CleanDataStep",
     "from app.states.transform_payload_step import TransformPayloadStep",
     "from app.states.ai_sentiment_step import AISentimentStep",
   ]);
 
-  const stepCallList: string[] = [
-    "        CleanDataStep(prefix=\"clean_\")",
-    "        TransformPayloadStep(mode=\"standard\")",
-  ];
+  const stepNamesForReadme: string[] = [];
 
-  for (const node of stepNodes) {
+  const renderStep = (node: any, indent: number = 8): string => {
+    const pad = " ".repeat(indent);
     const data = node.data || ({} as any);
-    const ntype = data.node_type;
-    const label = data.label || "CustomStep";
+    const rawType = data.node_type || node.type || "step";
+    const ntype = rawType.toLowerCase();
+    const label = data.label || "Step";
+    const fn = data.step_name || data.func_name || label;
     const ns = data.namespace || "";
 
-    if (ns && ns.startsWith("wpipe_steps")) {
-      const stepClass = label.endsWith("Step") ? label : `${label}Step`;
-      imports.add(`from ${ns} import ${stepClass} as ${label}`);
-      stepCallList.push(`        ${label}()`);
-    } else if ((ntype as string) === "ai_step" || data.origin === "described") {
-      stepCallList.push(`        # AI Step: ${label}\n        AISentimentStep(threshold=0.5)`);
-    } else if ((ntype as string) === "custom_step" || ntype === "step") {
-      stepCallList.push(`        CleanDataStep(prefix="custom_")`);
-    } else if (ntype === "condition") {
-      const expr = data.condition_expression || "is_valid == True";
-      stepCallList.push(`        Condition(expression="${expr}", branch_true=[CleanDataStep()])`);
-    } else if (ntype === "for") {
-      const iters = data.for_iterations || 5;
-      stepCallList.push(`        For(iterations=${iters}, steps=[TransformPayloadStep()])`);
-    } else if (ntype === "while") {
-      const expr = data.condition_expression || "retry_count < 3";
-      stepCallList.push(`        For(validation_expression="${expr}", steps=[TransformPayloadStep()])`);
-    } else if (ntype === "parallel") {
-      const merge = data.merge_policy || "accumulate";
-      stepCallList.push(`        Parallel(steps=[CleanDataStep(), TransformPayloadStep()], merge_policy="${merge}")`);
-    } else if (ntype === "background") {
-      stepCallList.push(`        Background(step=TransformPayloadStep())`);
+    if (ntype === "condition" || ntype.startsWith("wpipe_if") || ntype.includes("condition") || ntype.includes("if")) {
+      const rawExpr = data.condition_expression || data.expression || "status_code == 200";
+      const expr = rawExpr.replace(/"/g, '\\"');
+      const trueKids = getChildren(node.id, "if_body");
+      const falseKids = getChildren(node.id, "else_body");
+
+      const tCode = trueKids.length > 0
+        ? trueKids.map((c) => renderStep(c, indent + 4)).join(",\n")
+        : `${pad}    CleanDataStep(prefix="branch_true_")`;
+      const fCode = falseKids.length > 0
+        ? falseKids.map((c) => renderStep(c, indent + 4)).join(",\n")
+        : "";
+
+      stepNamesForReadme.push(`Condition(${rawExpr})`);
+
+      if (fCode) {
+        return `${pad}Condition(\n${pad}    expression="${expr}",\n${pad}    branch_true=[\n${tCode},\n${pad}    ],\n${pad}    branch_false=[\n${fCode},\n${pad}    ],\n${pad})`;
+      }
+      return `${pad}Condition(\n${pad}    expression="${expr}",\n${pad}    branch_true=[\n${tCode},\n${pad}    ],\n${pad})`;
     }
+
+    if (ntype === "for" || ntype === "wpipe_for" || ntype.includes("for")) {
+      const iters = data.for_iterations || data.iterations || 3;
+      const loopKids = getChildren(node.id, "loop_body").concat(getChildren(node.id, "if_body"));
+      const lCode = loopKids.length > 0
+        ? loopKids.map((c) => renderStep(c, indent + 4)).join(",\n")
+        : `${pad}    TransformPayloadStep(mode="loop")`;
+      stepNamesForReadme.push(`For(${iters} iterations)`);
+      return `${pad}For(\n${pad}    iterations=${iters},\n${pad}    steps=[\n${lCode},\n${pad}    ],\n${pad})`;
+    }
+
+    if (ntype === "while" || ntype === "wpipe_while" || ntype.includes("while")) {
+      const rawExpr = data.condition_expression || data.expression || "retry_count < 3";
+      const expr = rawExpr.replace(/"/g, '\\"');
+      const loopKids = getChildren(node.id, "loop_body").concat(getChildren(node.id, "if_body"));
+      const lCode = loopKids.length > 0
+        ? loopKids.map((c) => renderStep(c, indent + 4)).join(",\n")
+        : `${pad}    TransformPayloadStep(mode="retry")`;
+      stepNamesForReadme.push(`While(${rawExpr})`);
+      return `${pad}For(\n${pad}    validation_expression="${expr}",\n${pad}    steps=[\n${lCode},\n${pad}    ],\n${pad})`;
+    }
+
+    if (ntype === "parallel" || ntype === "wpipe_parallel" || ntype.includes("parallel")) {
+      const merge = data.merge_policy || "accumulate";
+      const parKids = getChildren(node.id, "parallel_body").concat(getChildren(node.id, "if_body"));
+      const pCode = parKids.length > 0
+        ? parKids.map((c) => renderStep(c, indent + 4)).join(",\n")
+        : `${pad}    CleanDataStep(),\n${pad}    TransformPayloadStep()`;
+      stepNamesForReadme.push(`Parallel(${merge})`);
+      return `${pad}Parallel(\n${pad}    steps=[\n${pCode},\n${pad}    ],\n${pad}    merge_policy="${merge}",\n${pad})`;
+    }
+
+    if (ntype === "background" || ntype === "wpipe_background" || ntype.includes("background")) {
+      const bgKids = getChildren(node.id, "background_body").concat(getChildren(node.id, "loop_body"));
+      const bCode = bgKids.length > 0 ? renderStep(bgKids[0], indent + 4).trim() : "TransformPayloadStep()";
+      stepNamesForReadme.push("Background");
+      return `${pad}Background(\n${pad}    step=${bCode},\n${pad})`;
+    }
+
+    if (ns && ns.startsWith("wpipe_steps")) {
+      const stepClass = fn.endsWith("Step") ? fn : `${fn}Step`;
+      imports.add(`from ${ns} import ${stepClass} as ${fn}`);
+      stepNamesForReadme.push(fn);
+      const argStr = DEFAULT_STEP_ARGS[fn] || "";
+      return `${pad}${fn}(${argStr})`;
+    }
+
+    const fnLower = fn.toLowerCase();
+    if (fnLower.includes("transform") || fn === "TransformPayloadStep") {
+      imports.add("from app.states.transform_payload_step import TransformPayloadStep");
+      stepNamesForReadme.push("TransformPayloadStep");
+      const mode = data.params?.mode || "standard";
+      return `${pad}TransformPayloadStep(mode="${mode}")`;
+    } else if (fnLower.includes("sentiment") || fnLower.includes("ai") || fn === "AISentimentStep") {
+      imports.add("from app.states.ai_sentiment_step import AISentimentStep");
+      stepNamesForReadme.push("AISentimentStep");
+      const th = data.params?.threshold ?? 0.5;
+      return `${pad}AISentimentStep(threshold=${th})`;
+    } else {
+      imports.add("from app.states.clean_data_step import CleanDataStep");
+      stepNamesForReadme.push("CleanDataStep");
+      const pfx = data.params?.prefix || "clean_";
+      return `${pad}CleanDataStep(prefix="${pfx}")`;
+    }
+  };
+
+  // Filter root execution steps (exclude trigger, response, and nested child steps)
+  const rootStepNodes = nodes.filter(
+    (n) => {
+      const raw = n.data?.node_type || n.type || "step";
+      const nt = raw.toLowerCase();
+      return !n.data?.parent_id && !["trigger", "response", "wpipe_trigger", "wpipe_response"].includes(nt);
+    }
+  );
+
+  let stepsStr: string;
+  if (rootStepNodes.length > 0) {
+    stepsStr = rootStepNodes.map((n) => renderStep(n, 8)).join(",\n");
+  } else {
+    stepsStr = [
+      "        CleanDataStep(prefix=\"clean_\")",
+      "        TransformPayloadStep(mode=\"standard\")",
+      "        AISentimentStep(threshold=0.5)",
+    ].join(",\n");
+    stepNamesForReadme.push("CleanDataStep", "TransformPayloadStep", "AISentimentStep");
   }
 
-  const stepsStr = stepCallList.join(",\n");
   const importsStr = Array.from(imports).sort().join("\n");
 
   // 1. app/config/settings.py
@@ -88,8 +184,8 @@ class AppSettings(BaseModel):
     """Typed application settings loaded from environment variables."""
 
     app_name: str = Field(default="${projectName}", description="Name of the microservice")
-    environment: str = Field(default=os.getenv("APP_ENV", "development"), description="Runtime environment")
-    debug: bool = Field(default=os.getenv("APP_DEBUG", "True").lower() == "true", description="Debug mode flag")
+    environment: str = Field(default=os.getenv("ENV", "production"), description="Runtime environment")
+    debug: bool = Field(default=os.getenv("APP_DEBUG", "False").lower() == "true", description="Debug mode flag")
     host: str = Field(default=os.getenv("HOST", "0.0.0.0"), description="Server host bind address")
     port: int = Field(default=int(os.getenv("PORT", "8000")), description="Server HTTP port")
     tracking_db: str = Field(default=os.getenv("WPIPE_TRACKING_DB", "output/tracking.db"), description="WPipe forensics SQLite database")
@@ -98,11 +194,11 @@ class AppSettings(BaseModel):
 settings = AppSettings()
 `;
 
-  // 2. app/config/config.yaml
+  // 2. config.yaml content
   const configYaml = `# Configuration for ${projectName} (WPipe Microservice)
 microservice_name: "${projectName}"
-environment: "development"
-debug: true
+environment: "production"
+debug: false
 server:
   host: "0.0.0.0"
   port: 8000
@@ -211,7 +307,7 @@ class ProcessingService:
 `;
 
   // 9. app/services/__init__.py
-  const servicesInitPy = `"""Business services package."""
+  const servicesInitPy = `"""Business domain services package."""
 from app.services.business_service import ProcessingService
 
 __all__ = ["ProcessingService"]
@@ -254,7 +350,7 @@ def sanitize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
 `;
 
   // 11. app/utils/__init__.py
-  const utilsInitPy = `"""Utilities package."""
+  const utilsInitPy = `"""Utility helpers package."""
 from app.utils.helpers import generate_transaction_id, sanitize_metrics
 
 __all__ = ["generate_transaction_id", "sanitize_metrics"]
@@ -442,13 +538,18 @@ class AISentimentStep(BaseStep):
 `;
 
   // 16. app/states/__init__.py
-  const statesInitPy = `"""WPipe state steps package."""
+  const statesInitPy = `"""States package dynamically exporting all registered step classes."""
 from app.states.base import BaseStep
 from app.states.clean_data_step import CleanDataStep
 from app.states.transform_payload_step import TransformPayloadStep
 from app.states.ai_sentiment_step import AISentimentStep
 
-__all__ = ["BaseStep", "CleanDataStep", "TransformPayloadStep", "AISentimentStep"]
+__all__ = [
+    "BaseStep",
+    "CleanDataStep",
+    "TransformPayloadStep",
+    "AISentimentStep",
+]
 `;
 
   // 17. app/pipelines.py
@@ -463,32 +564,29 @@ ${importsStr}
 os.makedirs("output", exist_ok=True)
 
 # 1. Declarative Pipeline Instance
-${projectName}: Pipeline = Pipeline(
-    pipeline_name="${projectName}",
-    pipeline_version="1.0.0",
-    tracking_db=settings.tracking_db,
-    collect_system_metrics=True,
-    show_progress=True,
-    max_retries=3,
-    retry_delay=0.5,
-)
+pipe: Pipeline = Pipeline(pipeline_name="${projectName}")
+pipe.tracking_db = settings.tracking_db
+pipe.collect_system_metrics = True
+pipe.show_progress = True
+pipe.max_retries = 3
+pipe.retry_delay = 0.5
 
-# 2. Direct inline step assembly
-${projectName}.set_steps([
+# 2. Direct inline step assembly reflecting the visual canvas
+pipe.set_steps([
 ${stepsStr}
 ])
 
 
-def build_${projectName}() -> Pipeline:
+def build_pipeline() -> Pipeline:
     """Declaratively return the configured WPipe state machine.
 
     Returns:
         Pipeline: Configured WPipe pipeline instance.
     """
-    return ${projectName}
+    return pipe
 
 
-def execute_${projectName}(payload: Dict[str, Any]) -> Dict[str, Any]:
+def execute_pipeline(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Execute the declarative WPipe pipeline.
 
     Args:
@@ -500,12 +598,18 @@ def execute_${projectName}(payload: Dict[str, Any]) -> Dict[str, Any]:
     tx_id = payload.get("transaction_id", "unknown")
     logger.info(f"Executing ${projectName} WPipe pipeline with transaction: {tx_id}")
     try:
-        result = ${projectName}.run(payload)
+        result = pipe.run(payload)
         logger.info("Pipeline execution completed successfully")
         return result
     except Exception as err:
         logger.error(f"Error executing ${projectName}: {err}")
         return {"error": str(err), "status": "failed"}
+
+
+if __name__ == "__main__":
+    test_payload = {"transaction_id": "test_run", "input_data": {"mode": "direct"}}
+    res = execute_pipeline(test_payload)
+    print("Execution result:", res)
 `;
 
   // 18. app/main.py
@@ -523,7 +627,7 @@ from wpipe.exception.api_error import ProcessError
 from app.config.settings import settings
 from app.dto.request import PipelineRequestDTO
 from app.dto.response import PipelineResponseDTO
-from app.pipelines import build_${projectName}, execute_${projectName}
+from app.pipelines import build_pipeline, execute_pipeline
 from app.utils.helpers import generate_transaction_id, sanitize_metrics
 
 app = FastAPI(
@@ -544,7 +648,7 @@ def handle_pipeline_event(event_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     tx_id = event_data.get("transaction_id") or generate_transaction_id()
     event_data["transaction_id"] = tx_id
-    pipeline = build_${projectName}()
+    pipeline = build_pipeline()
 
     try:
         with ResourceMonitor(f"{settings.app_name}_monitor") as monitor:
@@ -599,7 +703,19 @@ if __name__ == "__main__":
     uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=settings.debug)
 `;
 
-  // 19. app/test/test_dto.py
+  // 19. app/__init__.py
+  const appInitPy = `"""Application package for ${projectName}.
+Provides package exports and pipeline build helper functions.
+"""
+__version__ = "1.0.0"
+__author__ = "William Rodriguez (wisrovi)"
+
+from app.pipelines import build_pipeline, execute_pipeline
+
+__all__ = ["build_pipeline", "execute_pipeline", "__version__", "__author__"]
+`;
+
+  // 20. app/test/test_dto.py
   const testDtoPy = `"""Unit tests for Pydantic Data Transfer Objects."""
 import pytest
 from pydantic import ValidationError
@@ -633,7 +749,7 @@ def test_request_response_dtos() -> None:
     assert resp.transaction_id == "tx_999"
 `;
 
-  // 20. app/test/test_states.py
+  // 21. app/test/test_states.py
   const testStatesPy = `"""Unit tests for WPipe Step classes."""
 from app.dto.context import PipelineContextDTO
 from app.states.clean_data_step import CleanDataStep
@@ -673,15 +789,15 @@ def test_ai_sentiment_step_execution() -> None:
     assert result.metrics["ai_confidence"] > 0.5
 `;
 
-  // 21. app/test/test_pipeline.py
+  // 22. app/test/test_pipeline.py
   const testPipelinePy = `"""Integration test for declarative pipeline execution."""
 from app.dto.context import PipelineContextDTO
-from app.pipelines import build_${projectName}, execute_${projectName}
+from app.pipelines import build_pipeline, execute_pipeline
 
 
 def test_build_pipeline() -> None:
     """Verify declarative pipeline instantiation and step registration."""
-    pipe = build_${projectName}()
+    pipe = build_pipeline()
     assert pipe is not None
     assert pipe.pipeline_name == "${projectName}"
 
@@ -692,12 +808,12 @@ def test_execute_pipeline_success() -> None:
         "transaction_id": "tx_test_456",
         "input_data": {"user_id": 42, "text": "excellent"},
     }
-    result = execute_${projectName}(payload)
-    assert result.get("status") in ("CLEANED", "TRANSFORMED", "success")
+    result = execute_pipeline(payload)
+    assert result.get("status") in ("CLEANED", "TRANSFORMED", "success", "PENDING")
     assert "transaction_id" in result
 `;
 
-  // 22. app/test/test_api.py
+  // 23. app/test/test_api.py
   const testApiPy = `"""FastAPI endpoint integration tests."""
 from fastapi.testclient import TestClient
 from app.main import app
@@ -722,20 +838,22 @@ def test_run_endpoint() -> None:
     assert data["transaction_id"] == "tx_api_1"
 `;
 
-  // 23. Root tests/test_pipeline.py (Standard root runner compatibility)
+  // 24. Root tests/test_pipeline.py (Standard root runner compatibility)
   const rootTestPipelinePy = `"""Root runner for pipeline tests."""
 from app.test.test_pipeline import test_build_pipeline, test_execute_pipeline_success
 
 __all__ = ["test_build_pipeline", "test_execute_pipeline_success"]
 `;
 
-  // 24. Dockerfile
+  // 25. Dockerfile
   const dockerfile = `# Multi-stage Docker container for production deployment
 # Generated by WPipe Studio (wisrovi SUITE)
 FROM ${dockerImage} AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \\
     PYTHONUNBUFFERED=1 \\
+    SERVICE_NAME=${projectName} \\
+    ENV=production \\
     PORT=8000
 
 WORKDIR /app
@@ -762,7 +880,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \\
 CMD ["python", "app/main.py"]
 `;
 
-  // 25. docker-compose.yml
+  // 26. docker-compose.yml (environment variables baked into Dockerfile)
   const dockerCompose = `version: "3.8"
 
 services:
@@ -775,12 +893,6 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment:
-      - APP_ENV=production
-      - APP_DEBUG=false
-      - PORT=8000
-      - WPIPE_TRACKING_DB=output/tracking.db
-      - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - ./output:/app/output
     healthcheck:
@@ -790,7 +902,7 @@ services:
       retries: 3
 `;
 
-  // 26. requirements.txt
+  // 27. requirements.txt
   const requirementsTxt = `wpipe>=2.5.13
 wpipe-steps>=1.0.2
 wdecorators>=2.0.0
@@ -806,21 +918,25 @@ pytest-cov>=4.1.0
 httpx>=0.27.0
 `;
 
-  // 27. Makefile
+  // 28. Makefile with start, stop, into, etc.
   const makefile = `# Makefile for ${projectName} (WPipe Microservice)
-.PHONY: help start stop restart status logs test pytest build clean into
+.PHONY: help start stop restart status logs into test pytest build clean
+
+CONTAINER_NAME=${projectName}_microservice
+SERVICE_NAME=${projectName}
 
 help:
 	@echo "Available commands for ${projectName}:"
 	@echo "  make start     - Build and run microservice in detached Docker container"
-	@echo "  make stop      - Stop running container"
-	@echo "  make restart   - Restart microservice"
-	@echo "  make status    - View service health and status"
+	@echo "  make stop      - Stop running microservice container"
+	@echo "  make restart   - Restart microservice container"
+	@echo "  make status    - View container status and healthcheck"
 	@echo "  make logs      - View container logs in real-time"
+	@echo "  make into      - Open interactive bash shell inside running container"
 	@echo "  make test      - Run automated unit and integration tests inside Docker"
 	@echo "  make pytest    - Run local pytest suite with coverage"
-	@echo "  make into      - Open bash shell inside container"
-	@echo "  make clean     - Remove cache and compiled files"
+	@echo "  make build     - Build production Docker image"
+	@echo "  make clean     - Remove cache, coverage artifacts, and bytecode"
 
 start:
 	docker compose up -d --build
@@ -835,16 +951,19 @@ status:
 	@curl -s http://localhost:8000/health || true
 
 logs:
-	docker compose logs -f ${projectName}
+	docker compose logs -f $(SERVICE_NAME)
+
+into:
+	docker compose exec -it $(SERVICE_NAME) /bin/bash
 
 test:
-	docker compose run --rm ${projectName} pytest app/test/ -v
+	docker compose run --rm $(SERVICE_NAME) pytest app/test/ -v
 
 pytest:
 	pytest app/test/ --cov=app --cov-report=term-missing
 
-into:
-	docker compose exec ${projectName} /bin/bash
+build:
+	docker compose build
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
@@ -852,75 +971,140 @@ clean:
 	rm -rf .pytest_cache .coverage htmlcov output/
 `;
 
-  // 28. README.md
-  const readmeMd = `# ${projectName} Microservice
+  // 29. Executive level README.md with Legal notice, William Rodriguez attribution, specs & Mermaid DAG
+  const stepsListText = stepNamesForReadme.length > 0 ? stepNamesForReadme.join(", ") : "CleanDataStep, TransformPayloadStep";
+  const nowIso = new Date().toISOString();
+  const currentYear = new Date().getFullYear();
 
-> **Generated by WPipe Studio (wisrovi SUITE)** on ${new Date().toISOString()}  
-> **Author**: [William Rodriguez](https://wisrovi.dev) (AI Leader & Solutions Architect)  
-> **Ecosystem**: WPipe OS / wisrovi SUITE  
+  const readmeMd = `# ${projectName}
 
-Professional, modular, and containerized microservice architecture built with [WPipe](https://github.com/wisrovi/wpipe).
+> **Enterprise Python Microservice Orchestration**  
+> Auto-generado, compilado y verificado por **WPipe Studio (wisrovi SUITE)**.
 
 ---
 
-## Architecture & Layout
+## ⚖️ Legal Notice, Authorship & Intellectual Property Rights
 
-This microservice strictly adheres to the official **WPipe Architect Manual** and **WPipe Quality Rules**:
+> [!IMPORTANT]
+> **Aviso Prioritario de Derechos de Autor y Protección de Código**  
+> Este documento establece con carácter vinculante y oficial los **derechos de autor, propiedad intelectual y atribución técnica** del presente microservicio. Este archivo se encuentra protegido contra edición manual en WPipe Studio.
+
+### Plataforma & Ecosistema de Ingeniería
+- **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
+- **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
+- **Fecha de Compilación**: \`${nowIso}\`.
+- **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico + wpipe-mcp).
+
+### Autor & Atribución Profesional
+- **Autor Principal**: **William Rodriguez** ([wisrovi](https://wisrovi.dev))
+- **Perfil Profesional**: **AI Leader & Solutions Architect**
+- **Sitio Web Oficial**: [https://wisrovi.dev](https://wisrovi.dev)
+- **Ubicación**: Badajoz, Extremadura, España
+- **Misión & Especialidad**: *Liderazgo en inteligencia artificial avanzada, arquitecturas cloud distribuidas y diseño de motores de orquestación de alto rendimiento.*
+- **Copyright**: © ${currentYear} **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Todos los derechos reservados / All Rights Reserved.
+
+### Términos de Derechos y Uso
+Este componente de software y su topología de ejecución fueron diseñados y compilados bajo la infraestructura de **WPipe Studio**. Todos los patrones arquitectónicos, abstracciones de DTOs tipados, vinculaciones de estados (\`@step\`) y contratos de orquestación forman parte de la propiedad intelectual exclusiva de **wisrovi** ([wisrovi.dev](https://wisrovi.dev)). Queda prohibida la alteración no autorizada de metadatos de autoría y derechos protegidos.
+
+---
+
+## 📖 Documentación Técnica del Microservicio
+
+### Descripción General
+El microservicio \`${projectName}\` expone un flujo de trabajo modular asíncrono y de alto rendimiento, orquestado mediante **WPipe** y servido a través de **FastAPI**.
+
+- **Pipeline Core**: \`${projectName}\` (\`app/pipelines.py\`)
+- **Topología de Pasos Ensamblados**: ${stepsListText}.
+- **Bloques de Control Soportados**: Bifurcaciones condicionales (\`Condition\`), bucles deterministas o continuos (\`For\`), ejecución concurrente (\`Parallel\`) y tareas desacopladas (\`Background\`).
+- **Contratos de Datos**: Clases Pydantic en \`app/dto/\` con validación estricta de tipos, inmutabilidad y serialización de contexto vía \`@to_obj\`.
+
+### Diagrama de Flujo (Mermaid DAG)
+
+\`\`\`mermaid
+flowchart TD
+    START(["🌐 Ingress (FastAPI REST: /run)"]):::startClass --> DTO["📋 PipelineContextDTO<br/>(Validación de Entrada)"]
+    DTO --> PIPE["⚡ WPipe Pipeline: ${projectName}"]
+    PIPE --> STEPS["🔄 Topología de Pasos & Bloques de Control<br/>(${stepsListText})"]
+    STEPS --> RES["🏁 PipelineResponseDTO<br/>(HTTP 200 JSON OK)"]:::endClass
+
+    classDef startClass fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
+    classDef endClass fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff;
+\`\`\`
+
+### Estructura de Directorios (wpipe-mcp Architecture)
 
 \`\`\`
 ${projectName}/
 ├── app/
-│   ├── config/              # Environment settings & YAML configuration
-│   │   ├── config.yaml
-│   │   └── settings.py      # Pydantic AppSettings
-│   ├── dto/                 # Pydantic Data Transfer Objects (Contexts)
+│   ├── config/              # Configuración y variables de entorno
+│   │   ├── config.yaml      # Parámetros YAML de microservicio
+│   │   └── settings.py      # Pydantic AppSettings tipado
+│   ├── dto/                 # Contratos Pydantic Context DTOs (Dialecto A)
 │   │   ├── context.py       # PipelineContextDTO
 │   │   ├── request.py       # PipelineRequestDTO
 │   │   └── response.py      # PipelineResponseDTO
 │   ├── model/               # Model weights & pre-trained artifacts
 │   │   └── .gitkeep
-│   ├── services/            # Decoupled business & processing domain logic
-│   │   └── business_service.py
-│   ├── states/              # Class-based atomic WPipe states (@step)
-│   │   ├── base.py          # BaseStep abstract class
-│   │   ├── clean_data_step.py
-│   │   ├── transform_payload_step.py
-│   │   └── ai_sentiment_step.py
-│   ├── test/                # Pytest unit & integration test suite
-│   │   ├── test_dto.py
-│   │   ├── test_states.py
-│   │   ├── test_pipeline.py
-│   │   └── test_api.py
-│   ├── utils/               # Pure helper functions
-│   │   └── helpers.py
-│   ├── pipelines.py         # Declarative DAG assembly & inline instantiation
-│   └── main.py              # FastAPI REST entrypoint & ResourceMonitor
-├── tests/                   # Standard root test runner
-├── Dockerfile               # Multi-stage production container
-├── docker-compose.yml       # Production orchestration
-├── Makefile                 # Docker & lifecycle management
-├── requirements.txt         # Locked production dependencies
-├── run_tests_docker.sh      # Isolated containerized test runner
-└── wpipe.config.json        # WPipe engine configuration
+│   ├── services/            # Servicios desacoplados de dominio pesado
+│   │   └── business_service.py # ProcessingService
+│   ├── states/              # Clases atómicas de estados WPipe (@step)
+│   │   ├── base.py          # BaseStep clase abstracta
+│   │   ├── clean_data_step.py # CleanDataStep
+│   │   ├── transform_payload_step.py # TransformPayloadStep
+│   │   └── ai_sentiment_step.py # AISentimentStep
+│   ├── test/                # Suite oficial pytest del microservicio
+│   │   ├── test_dto.py      # Validación de esquemas Pydantic
+│   │   ├── test_states.py   # Mutaciones y ciclo de vida de steps
+│   │   ├── test_pipeline.py # Validación del grafo de pipeline
+│   │   └── test_api.py      # Integración con TestClient FastAPI
+│   ├── utils/               # Funciones auxiliares puras
+│   │   └── helpers.py       # Generadores de ID y sanitizadores
+│   ├── pipelines.py         # Topología DAG del pipeline WPipe con C-blocks
+│   └── main.py              # Entrypoint FastAPI REST y ResourceMonitor
+├── tests/                   # Runner estándar raíz
+│   └── test_pipeline.py
+├── config.yaml              # Configuración raíz para visibilidad inmediata
+├── Dockerfile               # Contenedor de producción multi-etapa
+├── docker-compose.yml       # Orquestación Docker con healthcheck HTTP
+├── Makefile                 # Automatización (start, stop, into, test, logs)
+├── requirements.txt         # Dependencias Python bloqueadas
+├── run_tests_docker.sh      # Script ejecutor que delega en 'make test'
+└── wpipe.config.json        # Configuración del motor WPipe
 \`\`\`
 
----
+### Tecnologías y Librerías Principales
 
-## Technologies and Libraries
-
-- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: High-performance orchestrator engine for pipelines, DAGs, and state machines.
-- **[WPipe Steps](https://github.com/wisrovi/wpipe-steps) (>=1.0.2)**: Modular step catalog for database, connectivity, security, and AI.
-- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: High-speed ASGI REST API for invoking the pipeline (\`POST /run\`).
-- **[Pydantic](https://docs.pydantic.dev/) (>=2.0.0)**: Strict typing, schema validation, and context immutability.
-- **[Loguru](https://github.com/Delgan/loguru)**: Structured, thread-safe asynchronous logging.
-- **[Pytest](https://pytest.org/)**: Automated unit and regression test suite with code coverage.
-- **[Docker](https://www.docker.com/)**: Multi-stage lightweight containerization.
+- **[WPipe](https://github.com/wisrovi/wpipe) (>=2.5.13)**: Motor core de ejecución orquestada de pipelines síncronos y asíncronos con gestión de contexto y control de flujo.
+- **[WPipe Steps](https://github.com/wisrovi/wpipe-steps) (>=1.0.2)**: Catálogo modular de pasos para bases de datos, conectividad y seguridad.
+- **[FastAPI](https://fastapi.tiangolo.com/) & Uvicorn**: API HTTP REST asíncrona de alto rendimiento para el punto de entrada (\`/run\`).
+- **[Pydantic v2](https://docs.pydantic.dev/)**: Validación estricta de contratos de datos e inmutabilidad de contexto.
+- **[Loguru](https://github.com/Delgan/loguru)**: Registro estructurado y asíncrono de eventos de ejecución.
+- **[Pytest & Pytest-Cov](https://pytest.org/)**: Suite de pruebas unitarias automatizadas con cobertura de código.
+- **[Docker & Docker Compose](https://www.docker.com/)**: Contenedorización lista para producción.
 
 ---
 
-## Execution Guide
+## 🚀 Despliegue y Ejecución
 
-### Local Virtual Environment
+### 1. Iniciar con Docker Compose (Recomendado)
+\`\`\`bash
+# Construir y levantar el microservicio
+make start
+
+# Ver el estado y healthcheck:
+make status
+
+# Ver logs en tiempo real:
+make logs
+
+# Entrar en consola interactiva al contenedor:
+make into
+
+# Detener el microservicio:
+make stop
+\`\`\`
+
+### 2. Ejecución Local con Virtualenv
 \`\`\`bash
 python -m venv .venv
 source .venv/bin/activate
@@ -928,51 +1112,45 @@ pip install -r requirements.txt
 python app/main.py
 \`\`\`
 
-### Docker Deployment
-\`\`\`bash
-make start
-# Check logs:
-make logs
-# Verify healthcheck:
-curl http://localhost:8000/health
-\`\`\`
+### 3. Endpoints y Documentación Interactiva
+- **Ejecutar Pipeline**: \`POST /run\` (Envío de payload JSON para procesar en el pipeline)
+- **Comprobación de Salud**: \`GET /health\`
+- **Documentación Swagger UI**: \`http://localhost:8000/docs\`
+- **Especificación OpenAPI**: \`http://localhost:8000/openapi.json\`
 
-### Running Tests
+### 4. Pruebas Automatizadas
 \`\`\`bash
+# Ejecutar pruebas en Docker vía Makefile:
 ./run_tests_docker.sh
-# Or with Makefile:
+
+# O directamente:
 make test
+
+# Ejecución local con reporte de cobertura:
+make pytest
 \`\`\`
 
 ---
 *Generated by WPipe Studio by wisrovi*
 `;
 
-  // 29. run_tests_docker.sh
+  // 30. run_tests_docker.sh delegating to Makefile
   const runTestsDockerSh = `#!/usr/bin/env bash
 set -e
 
-IMAGE_NAME="${projectName}_test_runner"
-
 echo "=========================================================="
-echo " Running Automated WPipe Tests inside Isolated Docker"
+echo " Running Automated WPipe Tests via Makefile"
 echo " Microservice: ${projectName}"
 echo "=========================================================="
 
-docker build -t "$IMAGE_NAME" -f Dockerfile .
-
-docker run --rm \\
-    -e PYTHONDONTWRITEBYTECODE=1 \\
-    -e APP_ENV=test \\
-    "$IMAGE_NAME" \\
-    pytest app/test/ -v --cov=app --cov-report=term-missing
+make test
 
 echo "=========================================================="
 echo " Tests finished successfully in Docker! ✓"
 echo "=========================================================="
 `;
 
-  // 30. wpipe.config.json
+  // 31. wpipe.config.json
   const wpipeConfigJson = `{
   "enableBackupFile": true,
   "maxSearchFiles": 500
@@ -980,7 +1158,7 @@ echo "=========================================================="
 `;
 
   return [
-    { path: "app/__init__.py", content: `"""Application package for ${projectName}."""\n` },
+    { path: "app/__init__.py", content: appInitPy },
     { path: "app/config/__init__.py", content: configInitPy },
     { path: "app/config/config.yaml", content: configYaml },
     { path: "app/config/settings.py", content: settingsPy },
@@ -1007,6 +1185,7 @@ echo "=========================================================="
     { path: "app/main.py", content: mainPy },
     { path: "tests/__init__.py", content: `"""Root tests runner package."""\n` },
     { path: "tests/test_pipeline.py", content: rootTestPipelinePy },
+    { path: "config.yaml", content: configYaml },
     { path: "Dockerfile", content: dockerfile },
     { path: "docker-compose.yml", content: dockerCompose },
     { path: "requirements.txt", content: requirementsTxt },

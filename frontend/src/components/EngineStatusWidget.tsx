@@ -1,26 +1,35 @@
 import React, { useState } from "react";
 import { EngineStatus } from "../lib/engineBridge";
 import { ConnectEngineModal } from "./ConnectEngineModal";
+import { ProLicenseModal } from "./ProLicenseModal";
 
-export { ConnectEngineModal };
+export { ConnectEngineModal, ProLicenseModal };
 
 interface EngineStatusWidgetProps {
   status: EngineStatus;
   onRecheck: (port?: number) => void;
   showProBadge?: boolean;
   onOpenModal?: () => void;
+  onOpenProModal?: () => void;
 }
 
 export const LicenseProBadge: React.FC<{ status: EngineStatus; onClick?: () => void }> = ({
   status,
   onClick,
 }) => {
-  if (!status.isPro) return null;
   return (
     <button
       onClick={onClick}
-      className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm transition cursor-pointer"
-      title={`Licencia Pro activa para ${status.customerName || "Enterprise"} (Click para detalles del motor)`}
+      className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-sm transition cursor-pointer ${
+        status.isPro
+          ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40"
+          : "bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-700/60"
+      }`}
+      title={
+        status.isPro
+          ? `PRO License Active: ${status.customerName || "Enterprise"} (Click for details)`
+          : "WPipe Studio PRO (Click to view features & license)"
+      }
     >
       <span>👑</span>
       <span className="font-extrabold tracking-wide">PRO</span>

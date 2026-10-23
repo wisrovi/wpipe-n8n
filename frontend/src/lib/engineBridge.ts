@@ -1,21 +1,20 @@
 /**
  * WPipe Studio - Web-to-Local Engine Bridge
  * Connects the web frontend to the local wpipe-engine daemon at 127.0.0.1:49152
+ *
+ * Security model (UI only):
+ * - Everything with value (code generation, real simulation, project persistence) happens
+ *   inside wpipe-engine, which enforces plan limits server-side. The browser never decides.
+ * - Plan limits shown in the UI come from the engine's signed lease token, re-verified here
+ *   with WebCrypto against the embedded wisrovi public key. A fake local server cannot
+ *   upgrade the UI with its own key, and even if the UI were tampered with in DevTools the
+ *   engine would still reject the operation.
+ *
  * Author: William Rodriguez (wisrovi.dev)
  */
 
 import { verifyEd25519Token, DEFAULT_WISROVI_PUBLIC_KEY_HEX } from "./cryptoVerify";
-import {
-  listBrowserProjects,
-  getBrowserProject,
-  createBrowserProject,
-  updateBrowserProject,
-  duplicateBrowserProject,
-  deleteBrowserProject,
-  exportProjectToWpipeFile,
-  parseWpipeFileContent,
-  BrowserProject,
-} from "./projectStorage";
+import { exportProjectToWpipeFile, parseWpipeFileContent, BrowserProject } from "./projectStorage";
 
 export {
   exportProjectToWpipeFile,
@@ -25,6 +24,52 @@ export {
 
 export const DEFAULT_ENGINE_PORT = 49152;
 export const FALLBACK_ENGINE_PORTS = [49152, 49153, 49154];
+
+/** Plan limits (mirrors wpipe_engine.core.entitlements). Display-only in the browser. */
+export interface Entitlements {
+  max_blocks: number | null;
+  parallel_blocks: boolean;
+  background_blocks: boolean;
+  ai_steps: boolean;
+  real_simulation: boolean;
+  zip_export: boolean;
+  max_projects: number | null;
+}
+
+export const FREE_ENTITLEMENTS: Entitlements = {
+  max_blocks: 5,
+  parallel_blocks: false,
+  background_blocks: false,
+  ai_steps: false,
+  real_simulation: true,
+  zip_export: true,
+  max_projects: null,
+};
+
+const UNLIMITED_ENTITLEMENTS: Entitlements = {
+  max_blocks: null,
+  parallel_blocks: true,
+  background_blocks: true,
+  ai_steps: true,
+  real_simulation: true,
+  zip_export: true,
+  max_projects: null,
+};
+
+/** Resolve display entitlements from a *signature-verified* token payload. */
+export function resolveEntitlements(plan: string | undefined, ent: any): Entitlements {
+  const key = (plan || "free").toLowerCase();
+  const base: Entitlements = key === "free" ? { ...FREE_ENTITLEMENTS } : { ...UNLIMITED_ENTITLEMENTS };
+  if (ent && typeof ent === "object") {
+    (["parallel_blocks", "background_blocks", "ai_steps", "real_simulation", "zip_export"] as const).forEach((k) => {
+      if (typeof ent[k] === "boolean") base[k] = ent[k];
+    });
+    (["max_blocks", "max_projects"] as const).forEach((k) => {
+      if (k in ent && (ent[k] === null || (Number.isInteger(ent[k]) && ent[k] >= 0))) base[k] = ent[k];
+    });
+  }
+  return base;
+}
 
 export interface EngineStatus {
   connected: boolean;
@@ -39,30 +84,61 @@ export interface EngineStatus {
   port: number;
   verifiedCryptographically: boolean;
   stepsCount: number;
+  entitlements: Entitlements;
   message?: string;
   error?: string;
 }
 
 export interface SimulationResult {
-  status: "success" | "error";
+  status: "success" | "error" | "paused";
   duration_ms: number;
-  step_timeline: Array<{
-    step: string;
+  steps_timeline: Array<{
+    node_id?: string;
+    label?: string;
     duration_ms: number;
     status: string;
-    output?: any;
-    error?: string;
   }>;
-  context_egress: Record<string, any>;
-  logs: string[];
+  output_context: Record<string, any>;
+  paused_breakpoint?: string | null;
   error?: string;
+}
+
+/** Raised when an operation needs a running wpipe-engine. */
+export class EngineRequiredError extends Error {
+  constructor(message = "This action requires the local wpipe-engine (127.0.0.1:49152).") {
+    super(message);
+    this.name = "EngineRequiredError";
+  }
+}
+
+/** Raised when wpipe-engine rejects an operation because of plan limits (HTTP 403). */
+export class EngineLimitError extends Error {
+  details: any;
+  constructor(message: string, details: any) {
+    super(message);
+    this.name = "EngineLimitError";
+    this.details = details;
+  }
+}
+
+/** Parse an engine error response into a typed error. */
+async function toEngineError(resp: Response, fallback: string): Promise<Error> {
+  let body: any = null;
+  try {
+    body = await resp.json();
+  } catch {
+    body = null;
+  }
+  if (resp.status === 403 && body && body.error === "LIMIT_EXCEEDED") {
+    return new EngineLimitError(body.message || "Plan limit exceeded", body.details || {});
+  }
+  return new Error(body?.message || `${fallback} (HTTP ${resp.status})`);
 }
 
 /**
  * Get active engine base URL (e.g. http://127.0.0.1:49152)
  */
 export function getEngineBaseUrl(port: number = DEFAULT_ENGINE_PORT): string {
-  // If running embedded in the engine canvas or local dev, use window.location if appropriate
   if (
     typeof window !== "undefined" &&
     (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") &&
@@ -85,6 +161,22 @@ export function getEngineApiUrl(path: string, port: number = DEFAULT_ENGINE_PORT
     return path;
   }
   return `http://127.0.0.1:${port}${path}`;
+}
+
+/** Disconnected status: no engine means Free display limits and no value-producing actions. */
+export function disconnectedEngineStatus(port: number = DEFAULT_ENGINE_PORT): EngineStatus {
+  return {
+    connected: false,
+    tier: "free",
+    isPro: false,
+    customerName: "Guest",
+    port,
+    verifiedCryptographically: false,
+    stepsCount: 0,
+    entitlements: { ...FREE_ENTITLEMENTS },
+    message: "Design mode (no local engine)",
+    error: "wpipe-engine is not responding on 127.0.0.1",
+  };
 }
 
 /**
@@ -130,31 +222,30 @@ export async function probeEngineStatus(
         }
       }
 
-      // Cryptographic verification of lease token if provided
+      // Only a token signed by the embedded wisrovi key upgrades the UI. The engine-provided
+      // public key is deliberately ignored so a fake local server cannot self-sign "Pro".
       let verifiedCrypto = false;
-      let verifiedTier = licenseData.tier || "free";
+      let verifiedTier: EngineStatus["tier"] = "free";
+      let entitlements: Entitlements = { ...FREE_ENTITLEMENTS };
+      let customerName = "Local Engine (Free)";
       if (licenseData.signed_token) {
-        const cryptoResult = await verifyEd25519Token(
-          licenseData.signed_token,
-          licenseData.public_key_hex || DEFAULT_WISROVI_PUBLIC_KEY_HEX
-        );
-        if (cryptoResult.valid) {
+        const cryptoResult = await verifyEd25519Token(licenseData.signed_token, DEFAULT_WISROVI_PUBLIC_KEY_HEX);
+        if (cryptoResult.valid && cryptoResult.payload) {
           verifiedCrypto = true;
           verifiedTier = cryptoResult.tier;
+          entitlements = resolveEntitlements(cryptoResult.payload.plan, cryptoResult.payload.ent);
+          customerName = cryptoResult.payload.name || licenseData.customer_name || "Licensed Developer";
         }
-      } else if (licenseData.is_pro) {
-        // If engine reports pro without signature, note unverified state
-        verifiedCrypto = false;
       }
 
-      const isPro = verifiedTier === "pro" || verifiedTier === "team" || verifiedTier === "enterprise";
+      const isPro = verifiedCrypto && verifiedTier !== "free";
 
       return {
         connected: true,
         tier: verifiedTier,
         isPro,
-        customerName: licenseData.customer_name || "Desarrollador",
-        licenseKey: licenseData.license_key,
+        customerName,
+        licenseKey: verifiedCrypto ? licenseData.license_key : undefined,
         machineFingerprint: licenseData.machine_fingerprint,
         pid: health.pid || licenseData.engine?.pid,
         engineVersion: health.version || "1.0.0",
@@ -162,29 +253,19 @@ export async function probeEngineStatus(
         port,
         verifiedCryptographically: verifiedCrypto,
         stepsCount,
-        message: licenseData.message || "Motor local conectado",
+        entitlements,
+        message: licenseData.message || "Local engine connected",
       };
     } catch {
       // Try next port
     }
   }
 
-  // If no ports responded, return disconnected mode
-  return {
-    connected: false,
-    tier: "free",
-    isPro: false,
-    customerName: "Invitado",
-    port: preferredPort,
-    verifiedCryptographically: false,
-    stepsCount: 0,
-    message: "Modo Diseño (Sin motor local)",
-    error: "wpipe-engine no responde en 127.0.0.1",
-  };
+  return disconnectedEngineStatus(preferredPort);
 }
 
 /**
- * Execute simulation on the local engine
+ * Execute a real simulation on the local engine (limits enforced by the engine).
  */
 export async function executeEngineSimulation(
   canvasIr: any,
@@ -192,84 +273,94 @@ export async function executeEngineSimulation(
   breakpoints: string[] = [],
   port: number = DEFAULT_ENGINE_PORT
 ): Promise<SimulationResult> {
-  const baseUrl = getEngineBaseUrl(port);
-  const resp = await fetch(`${baseUrl}/simulate`, {
+  const resp = await fetch(getEngineApiUrl("/api/v1/pipeline/simulate", port), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      canvas_ir: canvasIr,
-      input_payload: inputPayload,
-      breakpoints,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ canvas_ir: canvasIr, input_payload: inputPayload, breakpoints }),
   });
-
   if (!resp.ok) {
-    const errText = await resp.text().catch(() => "Simulation request failed");
-    throw new Error(`Error en el motor local (${resp.status}): ${errText}`);
+    throw await toEngineError(resp, "Local engine simulation failed");
   }
-
   return await resp.json();
 }
 
 /**
- * Fetch projects from Local Engine (if connected) with automatic fallback to Browser Storage.
+ * Compile the canvas into microservice files on the local engine (limits enforced by the engine).
+ */
+export async function compileOnEngine(
+  canvasIr: any,
+  projectName: string,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<{ path: string; content: string }[]> {
+  const resp = await fetch(getEngineApiUrl("/api/v1/pipeline/compile", port), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ canvas_ir: canvasIr, project_name: projectName }),
+  });
+  if (!resp.ok) {
+    throw await toEngineError(resp, "Local engine compilation failed");
+  }
+  const data = await resp.json();
+  if (Array.isArray(data?.files)) return data.files;
+  if (data?.files && typeof data.files === "object") {
+    return Object.entries(data.files).map(([path, content]) => ({ path, content: String(content) }));
+  }
+  return [];
+}
+
+/**
+ * Generic JSON call to the engine. Throws EngineRequiredError when the engine is offline.
+ */
+export async function engineJson(
+  path: string,
+  init: RequestInit = {},
+  engineConnected: boolean,
+  port: number = DEFAULT_ENGINE_PORT
+): Promise<any> {
+  if (!engineConnected) throw new EngineRequiredError();
+  const resp = await fetch(getEngineApiUrl(path, port), {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+  });
+  if (!resp.ok) {
+    throw await toEngineError(resp, `Engine request failed: ${path}`);
+  }
+  return await resp.json();
+}
+
+/**
+ * List projects stored by the local engine (~/.wpipe/workspaces). No engine = no projects.
  */
 export async function fetchProjectsHybrid(
   engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
-): Promise<{ projects: any[]; source: "engine" | "browser" }> {
-  if (engineConnected) {
-    try {
-      const url = getEngineApiUrl("/api/v1/projects", port);
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (Array.isArray(data)) {
-          return { projects: data, source: "engine" };
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to fetch projects from engine, falling back to browser storage:", e);
-    }
+): Promise<{ projects: any[]; source: "engine" | "none" }> {
+  if (!engineConnected) {
+    return { projects: [], source: "none" };
   }
-
-  // Fallback to browser storage
-  const browserList = listBrowserProjects();
-  return { projects: browserList, source: "browser" };
+  try {
+    const data = await engineJson("/api/v1/projects", {}, true, port);
+    return { projects: Array.isArray(data) ? data : [], source: "engine" };
+  } catch (e) {
+    console.warn("Failed to fetch projects from engine:", e);
+    return { projects: [], source: "none" };
+  }
 }
 
 /**
- * Load project details from Local Engine with browser fallback.
+ * Load project details from the local engine.
  */
 export async function loadProjectHybrid(
   id: string,
   engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
-): Promise<{ project: any; source: "engine" | "browser" }> {
-  if (engineConnected) {
-    try {
-      const url = getEngineApiUrl(`/api/v1/projects/${id}`, port);
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const data = await resp.json();
-        return { project: data, source: "engine" };
-      }
-    } catch (e) {
-      console.warn("Failed to load project from engine, trying browser storage:", e);
-    }
-  }
-
-  const browserProj = getBrowserProject(id);
-  if (browserProj) {
-    return { project: browserProj, source: "browser" };
-  }
-  throw new Error("Proyecto no encontrado");
+): Promise<{ project: any; source: "engine" }> {
+  const data = await engineJson(`/api/v1/projects/${encodeURIComponent(id)}`, {}, engineConnected, port);
+  return { project: data, source: "engine" };
 }
 
 /**
- * Save or update project in Local Engine or Browser storage.
+ * Create or update a project in the local engine. The engine regenerates the files itself.
  */
 export async function saveProjectHybrid(
   data: {
@@ -283,99 +374,43 @@ export async function saveProjectHybrid(
   },
   engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
-): Promise<{ project: any; source: "engine" | "browser" }> {
-  if (engineConnected) {
-    try {
-      if (data.id && !data.id.startsWith("proj_local_")) {
-        // Update existing engine project
-        const url = getEngineApiUrl(`/api/v1/projects/${data.id}`, port);
-        const resp = await fetch(url, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (resp.ok) {
-          const resJson = await resp.json();
-          return { project: resJson, source: "engine" };
-        }
-      } else {
-        // Create new project in engine
-        const url = getEngineApiUrl("/api/v1/projects", port);
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (resp.ok) {
-          const resJson = await resp.json();
-          return { project: resJson, source: "engine" };
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to save project to engine, falling back to browser storage:", e);
-    }
-  }
-
-  // Save to browser
-  if (data.id && getBrowserProject(data.id)) {
-    const { id: _, ...rest } = data;
-    const updated = updateBrowserProject(data.id, rest as Partial<BrowserProject>);
-    return { project: updated, source: "browser" };
-  } else {
-    const created = createBrowserProject(data);
-    return { project: created, source: "browser" };
-  }
+): Promise<{ project: any; source: "engine" }> {
+  const isUpdate = Boolean(data.id && !data.id.startsWith("proj_local_"));
+  const path = isUpdate ? `/api/v1/projects/${encodeURIComponent(data.id as string)}` : "/api/v1/projects";
+  const resJson = await engineJson(
+    path,
+    { method: isUpdate ? "PUT" : "POST", body: JSON.stringify(data) },
+    engineConnected,
+    port
+  );
+  return { project: resJson, source: "engine" };
 }
 
 /**
- * Duplicate a project either in engine or browser storage.
+ * Duplicate a project in the local engine.
  */
 export async function duplicateProjectHybrid(
   id: string,
   engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
-): Promise<{ project: any; source: "engine" | "browser" }> {
-  if (engineConnected && !id.startsWith("proj_local_")) {
-    try {
-      const url = getEngineApiUrl(`/api/v1/projects/${id}/duplicate`, port);
-      const resp = await fetch(url, { method: "POST" });
-      if (resp.ok) {
-        const resJson = await resp.json();
-        return { project: resJson, source: "engine" };
-      }
-    } catch (e) {
-      console.warn("Engine duplicate failed, checking browser:", e);
-    }
-  }
-
-  const dup = duplicateBrowserProject(id);
-  if (dup) {
-    return { project: dup, source: "browser" };
-  }
-  throw new Error("No se pudo duplicar el proyecto");
+): Promise<{ project: any; source: "engine" }> {
+  const resJson = await engineJson(
+    `/api/v1/projects/${encodeURIComponent(id)}/duplicate`,
+    { method: "POST" },
+    engineConnected,
+    port
+  );
+  return { project: resJson, source: "engine" };
 }
 
 /**
- * Delete a project either from engine or browser storage.
+ * Delete a project from the local engine.
  */
 export async function deleteProjectHybrid(
   id: string,
   engineConnected: boolean,
   port: number = DEFAULT_ENGINE_PORT
 ): Promise<boolean> {
-  if (engineConnected && !id.startsWith("proj_local_")) {
-    try {
-      const url = getEngineApiUrl(`/api/v1/projects/${id}`, port);
-      const resp = await fetch(url, { method: "DELETE" });
-      if (resp.ok) {
-        return true;
-      }
-    } catch (e) {
-      console.warn("Engine delete failed, trying browser:", e);
-    }
-  }
-
-  return deleteBrowserProject(id);
+  await engineJson(`/api/v1/projects/${encodeURIComponent(id)}`, { method: "DELETE" }, engineConnected, port);
+  return true;
 }
-
-

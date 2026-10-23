@@ -4,6 +4,10 @@
   "description": "Visual block-based pipeline designer and microservice generator for WPipe inside VS Code.",
   "version": "1.0.0",
   "publisher": "wisrovi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wisrovi/wpipe-studio.git"
+  },
   "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.80.0"
@@ -118,7 +122,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
-  "author": "William Rodriguez <wisrovi@wisrovi.dev> (https://wisrovi.dev)",
+  "author": "William Rodriguez <wisrovi.rodriguez@gmail.com> (https://wisrovi.dev)",
   "license": "Proprietary",
   "devDependencies": {
     "@types/node": "^20.0.0",

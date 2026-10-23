@@ -16,7 +16,7 @@ from typing import Any
 
 from wpipe_engine.core.compiler import ASTCompiler
 from wpipe_engine.core.licensing import LicenseManager
-from wpipe_engine.core.limiter import check_compilation_limits
+from wpipe_engine.core.limiter import enforce_entitlements
 from wpipe_engine.core.runner import LocalRunner
 from wpipe_engine.core.workspace import WorkspaceManager
 
@@ -112,6 +112,76 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self._send_cors_headers()
         self.end_headers()
+
+    def _license_status(self) -> dict[str, Any]:
+        """Verified license status (entitlements come only from the signed lease token)."""
+        license_mgr: LicenseManager = self.server.license_mgr  # type: ignore
+        return license_mgr.get_status()
+
+    def _gate(self, canvas_ir: Any, action: str) -> bool:
+        """Enforce plan entitlements. Sends the 400/403 response and returns False when denied."""
+        allowed, status_code, error_body = enforce_entitlements(canvas_ir, self._license_status(), action)
+        if not allowed:
+            self._send_json(status_code, error_body)
+        return allowed
+
+    def _project_quota_ok(self) -> bool:
+        """Enforce ``max_projects`` from the verified entitlements. Sends 403 when exceeded."""
+        workspace_mgr: WorkspaceManager = self.server.workspace_mgr  # type: ignore
+        ent = self._license_status().get("entitlements") or {}
+        max_projects = ent.get("max_projects")
+        if max_projects is not None and len(workspace_mgr.list_projects()) >= max_projects:
+            self._send_json(403, {
+                "error": "LIMIT_EXCEEDED",
+                "message": f"Your plan allows up to {max_projects} local projects.",
+                "details": {"code": "LIMIT_PROJECT_COUNT_EXCEEDED", "max_allowed": max_projects,
+                            "upgrade_url": "https://wisrovi.dev"},
+                "is_pro": False,
+            })
+            return False
+        return True
+
+    def _compile_files(self, canvas_ir: dict[str, Any], project_name: str) -> dict[str, str]:
+        """Compile canvas IR server-side. Returns an empty mapping on compiler failure."""
+        compiler: ASTCompiler = self.server.compiler  # type: ignore
+        try:
+            files = compiler.compile_canvas(canvas_ir, project_name=project_name)
+        except Exception:
+            return {}
+        if isinstance(files, dict):
+            return {str(k): v for k, v in files.items()}
+        if isinstance(files, list):
+            return {f.get("path", ""): f.get("content", "") for f in files if isinstance(f, dict)}
+        return {}
+
+    @staticmethod
+    def _client_file_map(raw: Any) -> dict[str, Any]:
+        """Normalize client-submitted files to ``{path: content}``."""
+        if isinstance(raw, dict):
+            return {str(k): v for k, v in raw.items()}
+        out: dict[str, Any] = {}
+        if isinstance(raw, list):
+            for f in raw:
+                if isinstance(f, dict):
+                    path = f.get("path") or f.get("name") or ""
+                    if path:
+                        out[str(path)] = f.get("content", "")
+        return out
+
+    def _identity(self) -> dict[str, Any]:
+        """Local identity derived from the verified license holder (never a hardcoded admin)."""
+        status = self._license_status()
+        if status.get("verified") and status.get("customer_name"):
+            name = str(status["customer_name"])
+            return {
+                "id": f"lic_{str(status.get('license_key', ''))[-8:] or 'holder'}",
+                "username": name.lower().replace(" ", "."),
+                "name": name,
+                "role": "pro" if status.get("is_pro") else "user",
+                "verified": True,
+            }
+        return {"id": "engine_local", "username": "local.engine", "name": "Local Engine (Free)",
+                "role": "free", "verified": False}
 
     def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", 0))
@@ -217,6 +287,21 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, status)
             return
 
+        elif clean_path in ("/v1/capabilities", "/api/v1/capabilities"):
+            status = license_mgr.get_status()
+            self._send_json(200, {
+                "engine": True,
+                "tier": status.get("tier", "free"),
+                "is_pro": bool(status.get("is_pro")),
+                "verified": bool(status.get("verified")),
+                "entitlements": status.get("entitlements", {}),
+                "customer_name": status.get("customer_name"),
+                # UI-only hints. Browsers re-verify the signed token with WebCrypto before trusting it.
+                "signed_token": status.get("signed_token"),
+                "public_key_hex": status.get("public_key_hex"),
+            })
+            return
+
         # 2. Step Catalog Endpoints (for the Canvas palette)
         elif self.path.startswith("/api/v1/catalog/steps") or self.path.startswith("/v1/catalog/steps"):
             if STEPS_CATALOG_FILE.exists():
@@ -233,23 +318,9 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, ["triggers", "connectivity", "databases", "ai", "security", "control"])
             return
 
-        # 3. Transparent Local Auth (Developer profile, 0 login friction)
-        elif self.path.startswith("/api/v1/auth/me") or self.path.startswith("/auth/me"):
-            self._send_json(200, {
-                "id": "local_dev",
-                "username": "william.rodriguez",
-                "name": "William Rodriguez",
-                "role": "admin",
-            })
-            return
-
-        elif self.path.startswith("/api/v1/auth/users") or self.path.startswith("/auth/users"):
-            self._send_json(200, [{
-                "id": "local_dev",
-                "username": "william.rodriguez",
-                "name": "William Rodriguez",
-                "role": "admin",
-            }])
+        # 3. Local identity: derived from the verified license holder (no hardcoded admin profile)
+        elif clean_path in ("/api/v1/auth/me", "/auth/me"):
+            self._send_json(200, self._identity())
             return
 
         # 4. Local Projects & Workspace Management
@@ -302,17 +373,11 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         body = self._read_json_body()
         clean_path = self.path.split("?")[0]
 
-        # 0. Local Dev Auth Login
+        # 0. Password logins are not handled by the local engine (identity = verified license holder)
         if clean_path in ("/api/v1/auth/login", "/auth/login"):
-            self._send_json(200, {
-                "token": "local_dev_token",
-                "user": {
-                    "id": "local_dev",
-                    "username": "william.rodriguez",
-                    "name": "William Rodriguez",
-                    "role": "admin",
-                },
-            })
+            self._send_json(410, {"error": "LOGIN_NOT_SUPPORTED",
+                                  "message": "The local engine derives identity from the verified license.",
+                                  "user": self._identity()})
             return
 
         # 1. Local Projects Creation & Operations
@@ -322,19 +387,26 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             docker_img = body.get("docker_image", "python:3.11-slim")
             proto = body.get("protocol", "fastapi")
             canvas_ir = body.get("canvas_ir")
-            gen_files = body.get("generated_files")
-            if not gen_files and canvas_ir:
-                try:
-                    gen_files = compiler.compile_canvas(canvas_ir, project_name=name)
-                except Exception:
-                    pass
+
+            if not self._project_quota_ok():
+                return
+            gen_files: dict[str, Any] = {}
+            if canvas_ir is not None:
+                if not self._gate(canvas_ir, "save_project"):
+                    return
+                # Files are always generated by the engine itself. Client edits are only kept
+                # for paths the engine generated, so no externally produced code can be injected.
+                gen_files = self._compile_files(canvas_ir, name)
+                for path, content in self._client_file_map(body.get("generated_files")).items():
+                    if path in gen_files:
+                        gen_files[path] = content
             proj = workspace_mgr.create_project(
                 name=name,
                 description=desc,
                 docker_image=docker_img,
                 protocol=proto,
                 canvas_ir=canvas_ir,
-                generated_files=gen_files,
+                generated_files=gen_files or None,
             )
             self._send_json(201, proj)
             return
@@ -344,6 +416,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             subpath = clean_path[len(prefix):]
             parts = [p for p in subpath.split("/") if p]
             if len(parts) >= 2 and parts[1] == "duplicate":
+                if not self._project_quota_ok():
+                    return
                 dup = workspace_mgr.duplicate_project(parts[0])
                 if dup:
                     self._send_json(200, dup)
@@ -361,6 +435,13 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             elif len(parts) >= 2 and parts[1] == "terminal":
                 res = workspace_mgr.execute_terminal(parts[0], body.get("command", ""))
                 self._send_json(200, res)
+                return
+            elif len(parts) >= 2 and parts[1] == "run-tests":
+                proj = workspace_mgr.get_project(parts[0])
+                if not proj:
+                    self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": parts[0]})
+                    return
+                self._send_json(200, runner.run_pytest(Path(proj["workspace_dir"])))
                 return
 
         # 2. License Activation
@@ -386,15 +467,7 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
 
             # Enforce Free vs Pro limits
             lic_status = license_mgr.get_status()
-            allowed, limit_msg, details = check_compilation_limits(canvas_ir, lic_status)
-
-            if not allowed:
-                self._send_json(403, {
-                    "error": "LIMIT_EXCEEDED",
-                    "message": limit_msg,
-                    "details": details,
-                    "is_pro": False,
-                })
+            if not self._gate(canvas_ir, "compile"):
                 return
 
             try:
@@ -420,6 +493,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             input_payload = body.get("input_payload", {})
             breakpoints = body.get("breakpoints", [])
 
+            if not self._gate(canvas_ir, "simulate"):
+                return
             res = runner.run_simulation(canvas_ir, input_payload, breakpoints)
             self._send_json(200, res)
 
@@ -457,6 +532,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             canvas_ir = body.get("canvas_ir") or body
             project_name = body.get("project_name", "main_pipeline")
             existing_code = body.get("existing_pipeline_code", "")
+            if not self._gate(canvas_ir, "transform"):
+                return
             try:
                 files_dict = compiler.compile_canvas(
                     canvas_ir,
@@ -480,7 +557,16 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "MISSING_WORKSPACE_DIR"})
                 return
 
-            res = runner.run_pytest(Path(ws_path))
+            target = Path(ws_path).resolve()
+            try:
+                inside = target.is_relative_to(workspace_mgr.root_dir.resolve())
+            except (AttributeError, ValueError):
+                inside = False
+            if not inside:
+                self._send_json(403, {"error": "WORKSPACE_OUTSIDE_ROOT",
+                                      "message": "Tests can only run inside ~/.wpipe/workspaces."})
+                return
+            res = runner.run_pytest(target)
             self._send_json(200, res)
 
         else:
@@ -498,7 +584,26 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
         if clean_path.startswith("/api/v1/projects/") or clean_path.startswith("/v1/projects/"):
             prefix = "/api/v1/projects/" if clean_path.startswith("/api/v1/projects/") else "/v1/projects/"
             project_id = clean_path[len(prefix):].split("/")[0]
-            updated = workspace_mgr.update_project(project_id, body)
+            existing = workspace_mgr.get_project(project_id)
+            if not existing:
+                self._send_json(404, {"error": "PROJECT_NOT_FOUND", "id": project_id})
+                return
+
+            data = dict(body)
+            allowed_paths = workspace_mgr.list_project_file_paths(project_id)
+            client_files = self._client_file_map(body.get("generated_files"))
+            if "canvas_ir" in body:
+                if not self._gate(body.get("canvas_ir"), "save_project"):
+                    return
+                compiled = self._compile_files(body["canvas_ir"], body.get("name") or existing.get("name", "main_pipeline"))
+                allowed_paths |= set(compiled)
+                merged = dict(compiled)
+                merged.update({p: c for p, c in client_files.items() if p in allowed_paths})
+                data["generated_files"] = merged
+            elif client_files:
+                # Edits only to files that already exist in the engine-managed project.
+                data["generated_files"] = client_files
+            updated = workspace_mgr.update_project(project_id, data, allowed_paths=allowed_paths)
             if updated:
                 self._send_json(200, updated)
             else:

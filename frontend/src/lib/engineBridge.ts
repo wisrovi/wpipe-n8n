@@ -376,10 +376,24 @@ export async function saveProjectHybrid(
   port: number = DEFAULT_ENGINE_PORT
 ): Promise<{ project: any; source: "engine" }> {
   const isUpdate = Boolean(data.id && !data.id.startsWith("proj_local_"));
-  const path = isUpdate ? `/api/v1/projects/${encodeURIComponent(data.id as string)}` : "/api/v1/projects";
+  if (isUpdate) {
+    try {
+      const updated = await engineJson(
+        `/api/v1/projects/${encodeURIComponent(data.id as string)}`,
+        { method: "PUT", body: JSON.stringify(data) },
+        engineConnected,
+        port
+      );
+      return { project: updated, source: "engine" };
+    } catch (err: any) {
+      // Imported .wpipe files carry ids that may not exist in this engine yet: create them instead.
+      if (!(err instanceof Error) || !/HTTP 404/.test(err.message)) throw err;
+    }
+  }
+  const { id: _ignored, ...createBody } = data;
   const resJson = await engineJson(
-    path,
-    { method: isUpdate ? "PUT" : "POST", body: JSON.stringify(data) },
+    "/api/v1/projects",
+    { method: "POST", body: JSON.stringify(createBody) },
     engineConnected,
     port
   );

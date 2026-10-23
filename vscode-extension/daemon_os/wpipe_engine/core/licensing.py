@@ -19,6 +19,13 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 
 import threading
 
+from wpipe_engine.core.entitlements import (
+    FREE_ENTITLEMENTS,
+    is_unlimited,
+    resolve_entitlements,
+    to_legacy_features,
+)
+
 # Embedded Ed25519 Public Key (32-byte raw hex) paired with Cloudflare Worker
 DEFAULT_PUBLIC_KEY_HEX = "470531dc5170a830ff8028efa9e400b3717965404a28626ffa9cdbe3404e9ed1"
 DEFAULT_LICENSE_SERVER_URL = os.environ.get("WPIPE_LICENSE_SERVER_URL", "https://api.wisrovi.dev")
@@ -119,10 +126,12 @@ def verify_lease_token(
     except Exception as e:
         return False, payload, f"Firma criptográfica inválida o adulterada: {e}"
 
-    # 2. Check Machine Fingerprint Binding
+    # 2. Check Machine Fingerprint Binding (mandatory: unbound tokens could be replayed anywhere)
     target_fp = expected_fingerprint or compute_machine_fingerprint()
     token_fp = payload.get("mfp", "")
-    if token_fp and token_fp != target_fp:
+    if not token_fp:
+        return False, payload, "El token de licencia no está vinculado a ninguna máquina (mfp ausente)."
+    if token_fp != target_fp:
         return False, payload, "El token de licencia pertenece a otra máquina física."
 
     # 3. Check Expiration & Grace Period
@@ -246,101 +255,80 @@ class LicenseManager:
             pass
         return False
 
+    def _free_status(self, mfp: str, message: str, **extra: Any) -> dict[str, Any]:
+        """Build a Free-tier status. Used whenever no verified lease token is available."""
+        ent = dict(FREE_ENTITLEMENTS)
+        status: dict[str, Any] = {
+            "tier": "free",
+            "is_pro": False,
+            "verified": False,
+            "max_blocks": ent["max_blocks"],
+            "entitlements": ent,
+            "features": to_legacy_features(ent),
+            "machine_fingerprint": mfp,
+            "message": message,
+            "upgrade_url": "https://wisrovi.dev",
+        }
+        status.update(extra)
+        return status
+
     def get_status(self) -> dict[str, Any]:
-        """Return current licensing status (Free vs Pro)."""
+        """Return current licensing status (Free vs Pro).
+
+        Entitlements are derived exclusively from the Ed25519-verified lease token. The
+        optional signed ``ent`` claim (issued from the D1 ``plan_entitlements`` table) can
+        narrow or widen the plan defaults; unsigned local data is never trusted for limits.
+        """
         mfp = compute_machine_fingerprint()
 
         if not self.license_file.exists():
-            return {
-                "tier": "free",
-                "is_pro": False,
-                "max_blocks": 5,
-                "features": {
-                    "unlimited_blocks": False,
-                    "parallel_blocks": False,
-                    "background_tasks": False,
-                    "ai_steps": False,
-                    "live_debugging": False,
-                },
-                "machine_fingerprint": mfp,
-                "message": "Plan Gratuito / Community (Máximo 5 bloques por pipeline)",
-                "upgrade_url": "https://wisrovi.dev",
-            }
+            return self._free_status(mfp, "Free / Community plan (maximum 5 blocks per pipeline)")
 
         try:
             data = json.loads(self.license_file.read_text(encoding="utf-8"))
             if data.get("status") == "seats_exceeded":
-                return {
-                    "tier": "free",
-                    "is_pro": False,
-                    "max_blocks": 5,
-                    "license_key": data.get("license_key", ""),
-                    "features": {
-                        "unlimited_blocks": False,
-                        "parallel_blocks": False,
-                        "background_tasks": False,
-                        "ai_steps": False,
-                        "live_debugging": False,
-                    },
-                    "machine_fingerprint": mfp,
-                    "message": f"Capa Free Activa: Todos los asientos Pro de tu equipo ({data.get('active_seats', '?')}/{data.get('max_seats', '?')}) están en uso. Libera un puesto en https://portal.wisrovi.dev.",
-                    "upgrade_url": "https://portal.wisrovi.dev",
-                }
+                return self._free_status(
+                    mfp,
+                    f"Free tier active: all Pro seats of your team "
+                    f"({data.get('active_seats', '?')}/{data.get('max_seats', '?')}) are in use. "
+                    f"Release a seat at https://portal.wisrovi.dev.",
+                    license_key=data.get("license_key", ""),
+                    upgrade_url="https://portal.wisrovi.dev",
+                )
 
             lease_token = data.get("lease_token", "")
             is_valid, payload, msg = verify_lease_token(
                 lease_token, self.public_key_hex, expected_fingerprint=mfp
             )
 
-            if is_valid:
-                plan = payload.get("plan", "pro")
-                exp_dt = datetime.fromtimestamp(payload.get("exp", 0), timezone.utc)
-                return {
-                    "tier": plan,
-                    "is_pro": True,
-                    "license_key": payload.get("lic", data.get("license_key", "")),
-                    "customer_name": data.get("customer_name", "Developer"),
-                    "max_blocks": None,  # Unlimited
-                    "features": {
-                        "unlimited_blocks": True,
-                        "parallel_blocks": True,
-                        "background_tasks": True,
-                        "ai_steps": True,
-                        "live_debugging": True,
-                    },
-                    "machine_fingerprint": mfp,
-                    "lease_expires_at": exp_dt.isoformat(),
-                    "activated_at": data.get("activated_at"),
-                    "is_floating": data.get("is_floating", True),
-                    "signed_token": lease_token,
-                    "public_key_hex": self.public_key_hex,
-                    "message": f"Plan {plan.capitalize()} Activo — {msg}",
-                }
-            else:
-                return {
-                    "tier": "free",
-                    "is_pro": False,
-                    "max_blocks": 5,
-                    "features": {
-                        "unlimited_blocks": False,
-                        "parallel_blocks": False,
-                        "background_tasks": False,
-                        "ai_steps": False,
-                        "live_debugging": False,
-                    },
-                    "machine_fingerprint": mfp,
-                    "message": f"Licencia inactiva o degradada: {msg}",
-                    "upgrade_url": "https://wisrovi.dev",
-                }
-        except Exception as e:
+            if not is_valid:
+                return self._free_status(mfp, f"License inactive or downgraded: {msg}")
+
+            plan = str(payload.get("plan") or "free").lower()
+            ent = resolve_entitlements(plan, payload.get("ent"))
+            unlimited = is_unlimited(ent)
+            is_paid_plan = plan != "free"
+            exp_dt = datetime.fromtimestamp(payload.get("exp", 0), timezone.utc)
             return {
-                "tier": "free",
-                "is_pro": False,
-                "max_blocks": 5,
+                "tier": plan,
+                "is_pro": is_paid_plan,
+                "verified": True,
+                "license_key": payload.get("lic", data.get("license_key", "")),
+                "customer_name": payload.get("name") or data.get("customer_name", "Developer"),
+                "max_blocks": ent.get("max_blocks"),
+                "entitlements": ent,
+                "unlimited": unlimited,
+                "features": to_legacy_features(ent),
                 "machine_fingerprint": mfp,
-                "message": f"Error al leer licencia local: {e}",
-                "upgrade_url": "https://wisrovi.dev",
+                "lease_expires_at": exp_dt.isoformat(),
+                "activated_at": data.get("activated_at"),
+                "is_floating": data.get("is_floating", True),
+                "signed_token": lease_token,
+                "public_key_hex": self.public_key_hex,
+                "message": f"Plan {plan.capitalize()} active — {msg}",
             }
+        except Exception as e:
+            return self._free_status(mfp, f"Error reading local license: {e}")
 
     def activate_with_key(self, license_key: str, hostname: Optional[str] = None) -> tuple[bool, str]:
         """Activate license key against Cloudflare Edge API and store lease token locally."""

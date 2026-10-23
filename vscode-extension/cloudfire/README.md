@@ -86,6 +86,18 @@ npx wrangler secret put LICENSE_PRIVATE_KEY
 
 ---
 
+## Plan Entitlements (database-driven limits)
+
+Free / Pro limits live in the D1 table `plan_entitlements` (`max_blocks`, `parallel_blocks`, `background_blocks`, `ai_steps`, `real_simulation`, `zip_export`, `max_projects`). When issuing a lease (`/v1/license/lease`, `/v1/license/activate`) the Worker loads the row for the license plan (`src/entitlements.ts`) and embeds it as the **signed** `ent` claim, together with the holder `name`. wpipe-engine enforces these limits only after verifying the Ed25519 signature, so changing what a plan includes is a single row update — no redeploy.
+
+```bash
+# Non-destructive migration for an existing database
+npm run d1:migrate:entitlements          # remote (production)
+npm run d1:migrate:entitlements:local    # local dev
+```
+
+If the table does not exist yet, the Worker falls back to built-in defaults (Free = 5 blocks, Pro = unlimited) so token issuance never breaks.
+
 ## Endpoints de la API
 
 ### 1. Salud del Servicio

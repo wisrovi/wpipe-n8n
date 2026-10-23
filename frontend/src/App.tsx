@@ -26,6 +26,10 @@ import {
   toggleBlockBreakpoint,
   globalBreakpoints,
   updateBreakpointVisuals,
+  setCanvasLimits,
+  setCanvasLimitViolationHandler,
+  getWorkspaceBlockCount,
+  CanvasLimitViolation,
 } from "./components/BlocklyWorkspace";
 import mermaid from "mermaid";
 import Prism from "prismjs";
@@ -108,6 +112,12 @@ import {
   EngineStatus,
   DEFAULT_ENGINE_PORT,
   getEngineApiUrl,
+  disconnectedEngineStatus,
+  compileOnEngine,
+  executeEngineSimulation,
+  engineJson,
+  EngineLimitError,
+  EngineRequiredError,
   fetchProjectsHybrid,
   loadProjectHybrid,
   saveProjectHybrid,
@@ -117,7 +127,6 @@ import {
   parseWpipeFileContent,
 } from "./lib/engineBridge";
 import JSZip from "jszip";
-import { generateMicroserviceFiles } from "./lib/microserviceGenerator";
 
 export interface UserProfile {
   id: string;
@@ -157,15 +166,6 @@ export interface ProjectDetail {
   updated_at: string;
 }
 
-export const DEFAULT_DEV_USER: UserProfile = {
-  id: "local_dev",
-  username: "william.rodriguez",
-  name: "William Rodriguez",
-  role: "admin",
-  avatar: "",
-  avatar_color: "#0284c7",
-  created_at: "2026-01-01T00:00:00.000Z",
-};
 
 interface ParamSpec {
   name: string;
@@ -578,24 +578,47 @@ export default function App() {
 
   // 8. Web-to-Local Engine Bridge & Licensing Status
   const [engineStatus, setEngineStatus] = useState<EngineStatus>({
-    connected: false,
-    tier: "free",
-    isPro: false,
-    customerName: "Invitado",
-    port: DEFAULT_ENGINE_PORT,
-    verifiedCryptographically: false,
-    stepsCount: 0,
-    message: "Detectando motor local...",
+    ...disconnectedEngineStatus(DEFAULT_ENGINE_PORT),
+    message: "Detecting local engine...",
   });
+  // Canvas plan-limit UX state (authoritative enforcement happens inside wpipe-engine)
+  const [canvasBlockCount, setCanvasBlockCount] = useState<number>(4);
+  const [limitNotice, setLimitNotice] = useState<{ title: string; message: string; needsEngine?: boolean } | null>(null);
+  const [filesFromEngine, setFilesFromEngine] = useState<boolean>(false);
+
+  const showEngineRequired = (action: string) => {
+    setLimitNotice({
+      title: "Local Engine Required (wpipe-engine)",
+      message: `${action} requires the local wpipe-engine running on this machine (127.0.0.1:49152). Code generation, real simulation and project storage only happen inside the engine.`,
+      needsEngine: true,
+    });
+  };
+
+  const handleEngineError = (err: any, action: string): boolean => {
+    if (err instanceof EngineLimitError) {
+      const d = err.details || {};
+      const title = d.code === "PRO_FEATURE_REQUIRED" ? "PRO Feature Required" : "Plan Limit Reached";
+      setLimitNotice({ title, message: err.message });
+      setStatusMessage(`🔒 ${title}: ${err.message}`);
+      return true;
+    }
+    if (err instanceof EngineRequiredError) {
+      showEngineRequired(action);
+      return true;
+    }
+    return false;
+  };
   const [showEngineModal, setShowEngineModal] = useState<boolean>(false);
   const [showProModal, setShowProModal] = useState<boolean>(false);
 
   const checkEngine = async (preferredPort?: number) => {
     const status = await probeEngineStatus(preferredPort || engineStatus.port);
     setEngineStatus(status);
-    if (status.connected && status.customerName && status.customerName !== "Invitado" && status.customerName !== "Developer") {
+    const hasSession = Boolean(localStorage.getItem("studio_session_token"));
+    if (status.connected && status.verifiedCryptographically) {
+      // Identity of the verified license holder (signed token), never a hardcoded profile.
       setCurrentUser((prev) => {
-        if (!prev || prev.id === "guest" || prev.id === "local_dev") {
+        if (!prev || prev.id === "engine_user") {
           return {
             id: "engine_user",
             username: status.customerName.toLowerCase().replace(/\s+/g, "."),
@@ -605,6 +628,8 @@ export default function App() {
         }
         return prev;
       });
+    } else if (!hasSession) {
+      setCurrentUser((prev) => (prev && prev.id !== "engine_user" ? prev : null));
     }
   };
 
@@ -613,6 +638,52 @@ export default function App() {
     const interval = setInterval(() => checkEngine(), 20000);
     return () => clearInterval(interval);
   }, []);
+
+  // Mirror the (signature-verified) plan limits into the canvas guards. UX only: the engine
+  // re-checks every compile / simulation / save against the signed entitlements.
+  useEffect(() => {
+    setCanvasLimits({
+      max_blocks: engineStatus.entitlements.max_blocks,
+      parallel_blocks: engineStatus.entitlements.parallel_blocks,
+      background_blocks: engineStatus.entitlements.background_blocks,
+      ai_steps: engineStatus.entitlements.ai_steps,
+    });
+    setCanvasBlockCount(getWorkspaceBlockCount());
+  }, [engineStatus.entitlements]);
+
+  useEffect(() => {
+    setCanvasLimitViolationHandler((v: CanvasLimitViolation) => {
+      const proNames: Record<string, string> = {
+        wpipe_parallel: "Parallel",
+        wpipe_background: "Background",
+        wpipe_ai_step: "AI Step",
+      };
+      if (v.code === "PRO_FEATURE_REQUIRED") {
+        setLimitNotice({
+          title: "PRO Feature Required",
+          message: `The '${proNames[v.blockType || ""] || v.blockType}' block requires a verified WPipe Pro license in the local wpipe-engine.`,
+        });
+      } else {
+        setLimitNotice({
+          title: "Free Plan Limit Reached",
+          message: `The Free plan allows up to ${v.max} blocks per pipeline. Activate a Pro license in wpipe-engine to design unlimited pipelines.`,
+        });
+      }
+      setCanvasBlockCount(getWorkspaceBlockCount());
+    });
+    return () => setCanvasLimitViolationHandler(null);
+  }, []);
+
+  // Refresh engine-dependent data whenever the engine connects or disconnects.
+  useEffect(() => {
+    fetchUserProjects();
+    if (activeMainTab === "python") handleSyncPythonCode();
+    if (!engineStatus.connected) {
+      setGeneratedFiles([]);
+      setFilesFromEngine(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineStatus.connected, engineStatus.verifiedCryptographically]);
 
   // Synchronized Tab Switching for Unified Activity Bar & Sub-Header Tabs
   const switchMainTab = (tab: "code" | "simulation" | "flowchart" | "python") => {
@@ -756,14 +827,15 @@ export default function App() {
   const [categorySearch, setCategorySearch] = useState<string>("");
 
   // Multi-Tenant User & Projects State
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(DEFAULT_DEV_USER);
+  // No identity until a real session or a verified engine license provides one.
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(() => localStorage.getItem("studio_session_token"));
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(false);
   const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
   const [userProjects, setUserProjects] = useState<ProjectSummary[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
-  const [storageSource, setStorageSource] = useState<"engine" | "browser" | "cloud">("engine");
+  const [storageSource, setStorageSource] = useState<"engine" | "none">("none");
 
   // Natural Login / Register Form State
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
@@ -996,15 +1068,22 @@ export default function App() {
     }, 150);
   }, []);
 
-  // Synchronize Python Preview with current workspace blocks
+  // Synchronize Python Preview with current workspace blocks (generated ONLY by wpipe-engine)
   const handleSyncPythonCode = () => {
+    if (!engineStatus.connected) {
+      setGeneratedFiles([]);
+      setFilesFromEngine(false);
+      setStatusMessage("🔒 Python microservice generation requires the local wpipe-engine.");
+      return;
+    }
     setPreviewLoading(true);
-    setStatusMessage("Sincronizando microservicio Python con el lienzo actual...");
+    setStatusMessage("Generating the Python microservice in the local engine...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
 
-    const applyFiles = (files: { path: string; content: string }[]) => {
-      if (files && files.length > 0) {
+    compileOnEngine(canvasIr, projectName, engineStatus.port)
+      .then((files) => {
         setGeneratedFiles(files);
+        setFilesFromEngine(files.length > 0);
         setSelectedFileIdx(0);
         if (githubViewingFile) {
           const updatedView = files.find((f: any) => f.path === githubViewingFile.path);
@@ -1013,44 +1092,14 @@ export default function App() {
             setEditingFileContent(updatedView.content);
           }
         }
-        setStatusMessage("Microservicio Python actualizado con los bloques del lienzo ✓");
-      }
-    };
-
-    fetch(getEngineApiUrl("/api/v1/pipeline/compile", engineStatus.port), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        canvas_ir: canvasIr,
-        project_name: projectName,
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+        setStatusMessage("Python microservice regenerated by wpipe-engine ✓");
       })
-      .then((data) => {
-        let files: { path: string; content: string }[] = [];
-        if (data && data.files) {
-          if (Array.isArray(data.files)) {
-            files = data.files;
-          } else if (typeof data.files === "object") {
-            files = Object.entries(data.files).map(([path, content]) => ({
-              path,
-              content: content as string,
-            }));
-          }
+      .catch((err) => {
+        setGeneratedFiles([]);
+        setFilesFromEngine(false);
+        if (!handleEngineError(err, "Generating the microservice")) {
+          setStatusMessage(`Engine compilation error: ${err.message}`);
         }
-        if (files.length > 0) {
-          applyFiles(files);
-        } else {
-          const fallbackFiles = generateMicroserviceFiles(canvasIr, projectName, customDockerImage);
-          applyFiles(fallbackFiles);
-        }
-      })
-      .catch(() => {
-        const fallbackFiles = generateMicroserviceFiles(canvasIr, projectName, customDockerImage);
-        applyFiles(fallbackFiles);
       })
       .finally(() => {
         setPreviewLoading(false);
@@ -1206,41 +1255,14 @@ export default function App() {
     return headers;
   };
 
-  // Check Active Session Token and Load Identity on Mount
+  // Check Active Session Token and Load Identity on Mount.
+  // Without a real session the visitor is a guest; identity can also come from the verified engine license.
   useEffect(() => {
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
     const token = localStorage.getItem("studio_session_token");
 
     if (!token) {
-      setCurrentUser(DEFAULT_DEV_USER);
+      setCurrentUser(null);
       setIsCheckingAuth(false);
-      fetchUserProjects();
-
-      if (isVSCode) {
-        fetch("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: "william.rodriguez", password: "admin123" }),
-        })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (data && data.user) {
-              localStorage.setItem("studio_session_token", data.token);
-              localStorage.setItem("studio_user_id", data.user.id);
-              setSessionToken(data.token);
-              setCurrentUser(data.user);
-              fetchUserProjects(data.user.id, data.token);
-            }
-          })
-          .catch(() => {});
-      }
-
-      fetch("/api/v1/auth/users")
-        .then((res) => (res.ok ? res.json() : []))
-        .then((users: UserProfile[]) => {
-          if (Array.isArray(users) && users.length > 0) setAvailableUsers(users);
-        })
-        .catch(() => {});
       return;
     }
 
@@ -1252,29 +1274,22 @@ export default function App() {
     })
       .then((res) => {
         if (!res.ok) throw new Error("Invalid session token");
+        const cType = res.headers.get("content-type") || "";
+        if (!cType.includes("application/json")) throw new Error("No auth backend");
         return res.json();
       })
       .then((user: UserProfile) => {
         setCurrentUser(user);
         setSessionToken(token);
         localStorage.setItem("studio_user_id", user.id);
-        fetchUserProjects(user.id, token);
       })
       .catch(() => {
-        // Token was invalid or server offline: fallback smoothly to default local dev profile
         localStorage.removeItem("studio_session_token");
         setSessionToken(null);
-        setCurrentUser(DEFAULT_DEV_USER);
-        fetchUserProjects();
+        setCurrentUser(null);
       })
       .finally(() => {
         setIsCheckingAuth(false);
-        fetch("/api/v1/auth/users")
-          .then((res) => (res.ok ? res.json() : []))
-          .then((users: UserProfile[]) => {
-            if (Array.isArray(users) && users.length > 0) setAvailableUsers(users);
-          })
-          .catch(() => {});
       });
   }, []);
 
@@ -1313,15 +1328,9 @@ export default function App() {
             }
           }
           if (msg.license) {
-            setEngineStatus((prev) => ({
-              ...prev,
-              connected: true,
-              tier: msg.license.tier || "free",
-              isPro: Boolean(msg.license.is_pro),
-              customerName: msg.license.customer_name || "VS Code Developer",
-              licenseKey: msg.license.license_key,
-              machineFingerprint: msg.license.machine_fingerprint,
-            }));
+            // Never trust license flags sent through postMessage: re-probe the engine and
+            // verify its signed token instead (any parent frame could forge this message).
+            checkEngine();
           }
         } catch (err: any) {
           console.warn("Failed to load initial VS Code pipeline:", err);
@@ -1375,8 +1384,12 @@ export default function App() {
 
   // Open / Load a Microservice Project into Workspace
   const handleOpenProject = async (projectId: string) => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Opening microservices");
+      return;
+    }
     try {
-      setStatusMessage("Cargando microservicio...");
+      setStatusMessage("Loading microservice...");
       const res = await loadProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       const project: ProjectDetail = res.project;
       setActiveProjectId(project.id);
@@ -1396,7 +1409,8 @@ export default function App() {
       }
       loadSimulationHistory(project.id);
       loadProjectEnv(project.id);
-      setStatusMessage(`Microservicio '${project.name}' cargado con éxito (${res.source === "engine" ? "Local PC" : "Navegador"}) ✓`);
+      setFilesFromEngine(files.length > 0);
+      setStatusMessage(`Microservice '${project.name}' loaded from Local PC ✓`);
       setShowProjectsModal(false);
     } catch (err: any) {
       setStatusMessage(`Error: ${err.message}`);
@@ -1405,45 +1419,40 @@ export default function App() {
 
   // 1. Simulation History Loader
   const loadSimulationHistory = async (projId: string) => {
+    if (!engineStatus.connected) return;
     try {
-      const res = await fetch(`/api/v1/projects/${projId}/simulations`, {
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSimulationHistory(data);
-      }
+      const data = await engineJson(`/api/v1/projects/${projId}/simulations`, {}, true, engineStatus.port);
+      if (Array.isArray(data)) setSimulationHistory(data);
     } catch {}
   };
 
   // 2. Environment Variables (.env) Loader & Saver
   const loadProjectEnv = async (projId: string) => {
+    if (!engineStatus.connected) return;
     try {
-      const res = await fetch(`/api/v1/projects/${projId}/env`, {
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setEnvVars(data.variables || []);
-      }
+      const data = await engineJson(`/api/v1/projects/${projId}/env`, {}, true, engineStatus.port);
+      setEnvVars(data.variables || []);
     } catch {}
   };
 
   const handleSaveEnv = async () => {
     if (!activeProjectId) return;
+    if (!engineStatus.connected) {
+      showEngineRequired("Saving .env variables");
+      return;
+    }
     setIsSavingEnv(true);
     try {
-      const res = await fetch(`/api/v1/projects/${activeProjectId}/env`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ variables: envVars }),
-      });
-      if (res.ok) {
-        setStatusMessage("Variables .env guardadas con éxito ✓");
-        setShowEnvModal(false);
-      }
+      await engineJson(
+        `/api/v1/projects/${activeProjectId}/env`,
+        { method: "POST", body: JSON.stringify({ variables: envVars }) },
+        true,
+        engineStatus.port
+      );
+      setStatusMessage(".env variables saved ✓");
+      setShowEnvModal(false);
     } catch (e: any) {
-      setStatusMessage(`Error guardando .env: ${e.message}`);
+      setStatusMessage(`Error saving .env: ${e.message}`);
     } finally {
       setIsSavingEnv(false);
     }
@@ -1471,13 +1480,22 @@ export default function App() {
       return;
     }
 
+    if (!engineStatus.connected) {
+      setTerminalHistory((prev) => [
+        ...prev,
+        { command: cmd, stdout: "", stderr: "The terminal requires the local wpipe-engine (127.0.0.1:49152).", exit_code: 1 },
+      ]);
+      setIsExecutingTerminal(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/v1/projects/${activeProjectId}/terminal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const data = await res.json();
+      const data = await engineJson(
+        `/api/v1/projects/${activeProjectId}/terminal`,
+        { method: "POST", body: JSON.stringify({ command: cmd }) },
+        true,
+        engineStatus.port
+      );
       setTerminalHistory((prev) => [
         ...prev,
         { command: cmd, stdout: data.stdout, stderr: data.stderr, exit_code: data.exit_code, cwd: data.cwd },
@@ -1498,15 +1516,20 @@ export default function App() {
       setStatusMessage("Selecciona o crea un microservicio para ejecutar pruebas unitarias.");
       return;
     }
+    if (!engineStatus.connected) {
+      showEngineRequired("Running the test suite");
+      return;
+    }
     setIsTestingRunning(true);
     setBottomPanelOpen(true);
     setBottomPanelTab("tests");
     try {
-      const res = await fetch(`/api/v1/projects/${activeProjectId}/run-tests`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
+      const data = await engineJson(
+        `/api/v1/projects/${activeProjectId}/run-tests`,
+        { method: "POST" },
+        true,
+        engineStatus.port
+      );
       setTestRunData(data);
       setStatusMessage(`Tests completados: ${data.passed}/${data.total} pasados en ${data.duration_sec}s`);
     } catch (e: any) {
@@ -1548,23 +1571,23 @@ export default function App() {
 
   // 6. Live Split View Workspace Sync & VS Code Document Auto-Save
   const handleWorkspaceChanged = (ws: any) => {
+    setCanvasBlockCount(getWorkspaceBlockCount());
     if (isSplitView) {
-      try {
+      if (!engineStatus.connected) {
+        setLivePipelineCode("# Live Python preview requires the local wpipe-engine (127.0.0.1:49152).");
+      } else {
         const cIr = getCanvasIRFromBlocklyWorkspace(catalog);
-        fetch("/api/v1/pipeline/compile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(cIr),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            const pipeFile = data.files?.find((f: any) => f.path === "app/pipeline.py");
-            if (pipeFile) {
-              setLivePipelineCode(pipeFile.content);
-            }
+        compileOnEngine(cIr, projectName, engineStatus.port)
+          .then((files) => {
+            const pipeFile = files.find((f) => f.path === "app/pipelines.py" || f.path === "app/pipeline.py");
+            if (pipeFile) setLivePipelineCode(pipeFile.content);
           })
-          .catch(() => {});
-      } catch {}
+          .catch((err) => {
+            if (err instanceof EngineLimitError) {
+              setLivePipelineCode(`# 🔒 ${err.message}`);
+            }
+          });
+      }
     }
 
     // Auto-sync canvas changes to VS Code document in VS Code mode
@@ -1605,6 +1628,10 @@ export default function App() {
 
   // Save Current Microservice into Local Workspace (Hybrid Engine / Browser)
   const handleSaveProject = async () => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Saving microservices");
+      return;
+    }
     setIsSavingProject(true);
     setStatusMessage("Guardando microservicio...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
@@ -1631,9 +1658,9 @@ export default function App() {
         setActiveProjectId(res.project.id);
       }
       await fetchUserProjects();
-      setStatusMessage(`Microservicio '${projectName}' guardado ✓ (${res.source === "engine" ? "Local PC ~/.wpipe" : "Navegador"})`);
+      setStatusMessage(`Microservice '${projectName}' saved ✓ (Local PC ~/.wpipe)`);
     } catch (err: any) {
-      setStatusMessage(`Error guardando: ${err.message}`);
+      if (!handleEngineError(err, "Saving microservices")) setStatusMessage(`Error saving: ${err.message}`);
     } finally {
       setIsSavingProject(false);
     }
@@ -1654,6 +1681,10 @@ export default function App() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjectName.trim()) return;
+    if (!engineStatus.connected) {
+      showEngineRequired("Creating microservices");
+      return;
+    }
     try {
       const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
       const workspaceState = getWorkspaceStateJson();
@@ -1681,28 +1712,36 @@ export default function App() {
       setIsCreatingProject(false);
       setNewProjectName("");
       setNewProjectDesc("");
-      setStatusMessage(`Microservicio '${created.name}' creado con éxito (${res.source === "engine" ? "Local PC ~/.wpipe" : "Navegador"}) ✓`);
+      setStatusMessage(`Microservice '${created.name}' created (Local PC ~/.wpipe) ✓`);
       setShowProjectsModal(false);
     } catch (err: any) {
-      setStatusMessage(`Error al crear: ${err.message}`);
+      if (!handleEngineError(err, "Creating microservices")) setStatusMessage(`Error creating: ${err.message}`);
     }
   };
 
   // Duplicate an Existing Microservice
   const handleDuplicateProject = async (projectId: string) => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Duplicating microservices");
+      return;
+    }
     try {
-      setStatusMessage("Duplicando microservicio...");
+      setStatusMessage("Duplicating microservice...");
       const res = await duplicateProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       await fetchUserProjects();
       setStatusMessage(`Microservicio duplicado como '${res.project?.name || "copia"}' ✓`);
     } catch (err: any) {
-      setStatusMessage(`Error al duplicar: ${err.message}`);
+      if (!handleEngineError(err, "Duplicating microservices")) setStatusMessage(`Error duplicating: ${err.message}`);
     }
   };
 
   // Delete an Existing Microservice
   const handleDeleteProject = async (projectId: string, projName: string) => {
-    if (!window.confirm(`¿Estás seguro de eliminar permanentemente el microservicio '${projName}'?`)) return;
+    if (!engineStatus.connected) {
+      showEngineRequired("Deleting microservices");
+      return;
+    }
+    if (!window.confirm(`Permanently delete the microservice '${projName}'?`)) return;
     try {
       await deleteProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       if (activeProjectId === projectId) {
@@ -1775,20 +1814,23 @@ export default function App() {
         const files = (project.generated_files && project.generated_files.length > 0)
           ? project.generated_files
           : (project.files || []);
-        if (files.length > 0) {
-          setGeneratedFiles(files);
-          setSelectedFileIdx(0);
-        }
+        void files;
         if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
           loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
         }
-        // Save imported project
-        await saveProjectHybrid(project, engineStatus.connected, engineStatus.port);
-        await fetchUserProjects();
-        setStatusMessage(`Archivo '${file.name}' importado con éxito ✓`);
+        // The design is always loaded on the canvas; persisting it needs the engine (limits re-applied there).
+        setGeneratedFiles([]);
+        setFilesFromEngine(false);
+        if (engineStatus.connected) {
+          await saveProjectHybrid(project, true, engineStatus.port);
+          await fetchUserProjects();
+          setStatusMessage(`Design '${file.name}' imported and saved in the local engine ✓`);
+        } else {
+          setStatusMessage(`Design '${file.name}' loaded on the canvas (connect wpipe-engine to save it as a project) ✓`);
+        }
         setShowProjectsModal(false);
       } catch (err: any) {
-        alert(`Error al importar archivo .wpipe: ${err.message}`);
+        if (!handleEngineError(err, "Importing .wpipe projects")) alert(`Error importing .wpipe file: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -1885,12 +1927,6 @@ export default function App() {
       setRegisterRole("");
       setStatusMessage(`Cuenta creada para ${data.user.name} ✓`);
 
-      // Refresh users list
-      fetch("/api/v1/auth/users")
-        .then((r) => (r.ok ? r.json() : []))
-        .then((users: UserProfile[]) => setAvailableUsers(users))
-        .catch(() => {});
-
       // Load user projects and immediately show projects modal
       await fetchUserProjects(data.user.id, data.token);
       setShowProjectsModal(true);
@@ -1921,7 +1957,7 @@ export default function App() {
     localStorage.removeItem("studio_session_token");
     localStorage.removeItem("studio_user_id");
     setSessionToken(null);
-    setCurrentUser(DEFAULT_DEV_USER);
+    setCurrentUser(null);
     setActiveProjectId(null);
     fetchUserProjects();
     setShowUserMenu(false);
@@ -2159,6 +2195,10 @@ export default function App() {
 
   // Perform Dry-Run Quality Verification
   const handleDryRun = async () => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Quality verification (Dry-Run)");
+      return;
+    }
     setDryRunLoading(true);
     setStatusMessage("Ejecutando compuertas de calidad AST y verificación de contratos...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
@@ -2185,21 +2225,8 @@ export default function App() {
         return;
       }
       throw new Error(`HTTP ${res.status}`);
-    } catch {
-      const stepNodes = (canvasIr.nodes || []).filter(
-        (n) => n.data?.node_type !== "trigger" && n.data?.node_type !== "response"
-      );
-      setVerificationModal({
-        status: "passed",
-        gates: {
-          ast_syntax_check: true,
-          input_contract_reads: true,
-          output_contract_writes: true,
-          flow_connectivity: stepNodes.length > 0,
-          wpipe_decorators_valid: true,
-        },
-      });
-      setStatusMessage("Verificación de sintaxis completada con éxito ✓");
+    } catch (err: any) {
+      setStatusMessage(`Verification failed in the local engine: ${err.message}`);
     } finally {
       setDryRunLoading(false);
     }
@@ -2207,6 +2234,14 @@ export default function App() {
 
   // Generate and download microservice ZIP (Client-Side JSZip with 0 latency & Offline Support)
   const handleGenerateZip = async () => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Downloading the microservice ZIP");
+      return;
+    }
+    if (!engineStatus.entitlements.zip_export) {
+      setLimitNotice({ title: "PRO Feature Required", message: "ZIP export is not included in your plan." });
+      return;
+    }
     setZipLoading(true);
     setStatusMessage("Generando paquete ZIP del microservicio...");
 
@@ -2241,11 +2276,16 @@ export default function App() {
     }
 
     try {
-      let filesToZip = generatedFiles;
+      // Only files produced by wpipe-engine are packaged (limits enforced by the engine).
+      let filesToZip = filesFromEngine ? generatedFiles : [];
       if (!filesToZip || filesToZip.length === 0) {
         const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
-        filesToZip = generateMicroserviceFiles(canvasIr, projectName, customDockerImage);
+        filesToZip = await compileOnEngine(canvasIr, projectName, engineStatus.port);
         setGeneratedFiles(filesToZip);
+        setFilesFromEngine(filesToZip.length > 0);
+      }
+      if (filesToZip.length === 0) {
+        throw new Error("The engine returned no files");
       }
 
       const zip = new JSZip();
@@ -2265,7 +2305,7 @@ export default function App() {
       setStatusMessage(`Descargado con éxito: ${projectName}.zip (${filesToZip.length} archivos) ✓`);
     } catch (err: any) {
       console.error("ZIP Generation error:", err);
-      setStatusMessage(`Error generando ZIP: ${err.message}`);
+      if (!handleEngineError(err, "Downloading the microservice ZIP")) setStatusMessage(`Error generating ZIP: ${err.message}`);
     } finally {
       setZipLoading(false);
     }
@@ -2381,14 +2421,14 @@ export default function App() {
 
   // Copy Python Main Code
   const handleCopyPythonCode = async () => {
+    if (!engineStatus.connected) {
+      showEngineRequired("Copying generated Python code");
+      setActiveMenu(null);
+      return;
+    }
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
     try {
-      const res = await fetch(getEngineApiUrl("/api/v1/pipeline/transform"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(canvasIr),
-      });
-      const data = await res.json();
+      const data = { files: await compileOnEngine(canvasIr, projectName, engineStatus.port) };
       const mainFile = data.files?.find((f: any) => f.path === "app/main.py" || f.path.endsWith("main.py"));
       if (mainFile) {
         await navigator.clipboard.writeText(mainFile.content);
@@ -2398,7 +2438,7 @@ export default function App() {
         setStatusMessage("Código Python copiado al portapapeles ✓");
       }
     } catch (err: any) {
-      setStatusMessage(`Error al copiar código: ${err.message}`);
+      if (!handleEngineError(err, "Copying generated Python code")) setStatusMessage(`Error copying code: ${err.message}`);
     }
     setActiveMenu(null);
   };
@@ -2442,13 +2482,20 @@ export default function App() {
   };
 
   // SIMULATION ENGINE: Green Flag 🏁 and Stop 🛑
+  // - With wpipe-engine: real simulation executed (and limit-checked) by the engine.
+  // - Without engine: FAKE demo animation with synthetic data, explicitly labelled as such.
   const handleStartSimulation = async () => {
     if (isSimulating) return;
+    const liveEngine = engineStatus.connected;
+    const tag = liveEngine ? "[ENGINE]" : "[FAKE-DEMO]";
     setIsSimulating(true);
     simulationAbortRef.current = false;
-    setStatusMessage("🏁 Simulation started: Running pipeline step-by-step...");
+    setStatusMessage(
+      liveEngine
+        ? "🏁 Live simulation started in the local wpipe-engine..."
+        : "🏁 FAKE demo simulation started (synthetic data, no Python is executed)..."
+    );
 
-    // Parse initial input payload
     let initialContext: Record<string, any> = {};
     try {
       initialContext = JSON.parse(testPayloadText);
@@ -2457,56 +2504,48 @@ export default function App() {
     }
 
     setSimContext(initialContext);
-    setSimLogs([{ time: new Date().toLocaleTimeString(), level: "INFO", msg: `🏁 Pipeline '${projectName}' initialized.` }]);
-
-    // Fetch execution sequence from backend
-    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
-    let stepsToRun: any[] = [];
-
-    const dryRunUrl = getEngineApiUrl("/api/v1/pipeline/dry-run", engineStatus.port);
-
-    try {
-      const res = await fetch(dryRunUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(canvasIr),
+    const startLogs = [{ time: new Date().toLocaleTimeString(), level: "INFO", msg: `${tag} 🏁 Pipeline '${projectName}' initialized.` }];
+    if (!liveEngine) {
+      startLogs.push({
+        time: new Date().toLocaleTimeString(),
+        level: "WARN",
+        msg: `${tag} ⚠️ No local engine detected: this is a FAKE demonstration with synthetic values (max 5 steps). Install and start wpipe-engine for a real simulation.`,
       });
-      const data = await res.json();
-      stepsToRun = data.simulation_steps || [];
-    } catch {
-      stepsToRun = [];
     }
+    setSimLogs(startLogs);
 
-    if (!stepsToRun || stepsToRun.length === 0) {
-      stepsToRun = (canvasIr.nodes || [])
-        .filter((n) => n.data?.node_type !== "trigger" && n.data?.node_type !== "response")
-        .map((n) => ({
-          id: n.id,
-          name: n.data?.label || "Paso",
-          reads: n.data?.contract?.reads || [],
-          writes: n.data?.contract?.writes || [],
-          origin: n.data?.origin || "custom",
-        }));
-      if (stepsToRun.length === 0 && (canvasIr.nodes || []).length > 0) {
-        stepsToRun = canvasIr.nodes.map((n) => ({
-          id: n.id,
-          name: n.data?.label || "Paso",
-          reads: n.data?.contract?.reads || [],
-          writes: n.data?.contract?.writes || [],
-          origin: n.data?.origin || "custom",
-        }));
+    const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+    const breakpointList = Array.from(globalBreakpoints);
+
+    // Real run on the engine first (the engine enforces plan limits and may answer 403).
+    let engineResult: Awaited<ReturnType<typeof executeEngineSimulation>> | null = null;
+    if (liveEngine) {
+      try {
+        engineResult = await executeEngineSimulation(canvasIr, initialContext, breakpointList, engineStatus.port);
+      } catch (err: any) {
+        setIsSimulating(false);
+        if (!handleEngineError(err, "Running a real simulation")) {
+          setStatusMessage(`Engine simulation error: ${err.message}`);
+        }
+        setSimLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), level: "ERROR", msg: `${tag} ❌ ${err.message}` }]);
+        return;
       }
     }
 
-    // Check block count against tier
-    if (canvasIr.nodes.length > 5 && !engineStatus.isPro) {
+    let stepsToRun: any[] = (canvasIr.nodes || [])
+      .filter((n) => n.data?.node_type !== "trigger" && n.data?.node_type !== ("response" as any))
+      .map((n) => ({
+        id: n.id,
+        name: n.data?.label || "Step",
+        reads: n.data?.contract?.reads || [],
+        writes: n.data?.contract?.writes || [],
+      }));
+
+    const timeline = engineResult?.steps_timeline || [];
+    if (!liveEngine && stepsToRun.length > 5) {
       setSimLogs((prev) => [
         ...prev,
-        {
-          time: new Date().toLocaleTimeString(),
-          level: "WARN",
-          msg: "⚠️ Capa Free limitada a 5 bloques. Ejecutando los primeros 5 pasos. Activa una licencia PRO en wpipe-engine para ejecución ilimitada.",
-        },
+        { time: new Date().toLocaleTimeString(), level: "WARN", msg: `${tag} Demo limited to the first 5 steps.` },
       ]);
       stepsToRun = stepsToRun.slice(0, 5);
     }
@@ -2517,31 +2556,29 @@ export default function App() {
       return;
     }
 
-    // Initialize step cards
-    const initialSimSteps: SimStepResult[] = stepsToRun.map((s) => ({
-      id: s.id,
-      name: s.name,
+    const initialSimSteps: SimStepResult[] = stepsToRun.map((st) => ({
+      id: st.id,
+      name: st.name,
       status: "idle",
       durationMs: 0,
-      reads: s.reads || [],
-      writes: s.writes || [],
+      reads: st.reads || [],
+      writes: st.writes || [],
     }));
     setSimSteps(initialSimSteps);
 
-    let currentContext = { ...initialContext };
-    const stepDelay = turboMode ? 100 : 700;
+    let currentContext: Record<string, any> = { ...initialContext };
+    const stepDelay = turboMode ? 100 : 600;
     const simStartTime = Date.now();
 
     for (let i = 0; i < stepsToRun.length; i++) {
       if (simulationAbortRef.current) {
-        setSimLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), level: "WARN", msg: "🛑 Simulation stopped by user." }]);
+        setSimLogs((prev) => [...prev, { time: new Date().toLocaleTimeString(), level: "WARN", msg: `${tag} 🛑 Simulation stopped by user.` }]);
         highlightBlocklyBlock("", "idle");
         break;
       }
 
       const currentStep = stepsToRun[i];
 
-      // Check for Breakpoint pause
       const isBp = globalBreakpoints.has(currentStep.name) || globalBreakpoints.has(currentStep.id);
       if (isBp) {
         setIsPausedAtBreakpoint(true);
@@ -2555,7 +2592,7 @@ export default function App() {
           {
             time: new Date().toLocaleTimeString(),
             level: "WARN",
-            msg: `⏸ Pausado en punto de interrupción (Breakpoint): ${currentStep.name}. Pulsa Continuar (F5) o Siguiente Paso (F10).`,
+            msg: `${tag} ⏸ Paused at breakpoint: ${currentStep.name}. Press Continue (F5).`,
           },
         ]);
         await new Promise<void>((resolve) => {
@@ -2564,83 +2601,75 @@ export default function App() {
         setIsPausedAtBreakpoint(false);
       }
 
-      // Mark running
       highlightBlocklyBlock(currentStep.name, "running");
-      setSimSteps((prev) =>
-        prev.map((item, idx) => (idx === i ? { ...item, status: "running" } : item))
-      );
-      setCpuUsage(Math.floor(25 + Math.random() * 45));
-      setRamUsage((r) => r + Math.floor(Math.random() * 6));
+      setSimSteps((prev) => prev.map((item, idx) => (idx === i ? { ...item, status: "running" } : item)));
       setSimLogs((prev) => [
         ...prev,
-        { time: new Date().toLocaleTimeString(), level: "INFO", msg: `▶ Executing step: ${currentStep.name}...` },
+        { time: new Date().toLocaleTimeString(), level: "INFO", msg: `${tag} ▶ Executing step: ${currentStep.name}...` },
       ]);
 
       await new Promise((resolve) => setTimeout(resolve, stepDelay));
-
       if (simulationAbortRef.current) break;
 
-      // Simulate output writes
-      const duration = Math.floor(40 + Math.random() * 80);
+      let duration: number;
       const stepOutput: Record<string, any> = {};
-      if (currentStep.writes && currentStep.writes.length > 0) {
-        currentStep.writes.forEach((w: string) => {
-          stepOutput[w] = `result_${w}_${Math.floor(Math.random() * 1000)}`;
+      if (liveEngine) {
+        const real = timeline.find((t) => t.node_id === currentStep.id) || timeline[i];
+        duration = Math.round(real?.duration_ms ?? 0);
+      } else {
+        // Synthetic values: clearly marked as fake demo data.
+        duration = Math.floor(40 + Math.random() * 80);
+        const keys = currentStep.writes && currentStep.writes.length > 0 ? currentStep.writes : [`${String(currentStep.name).toLowerCase()}_out`];
+        keys.forEach((w: string) => {
+          stepOutput[w] = `fake_demo_${w}`;
           currentContext[w] = stepOutput[w];
         });
-      } else {
-        currentContext[`${currentStep.name.toLowerCase()}_out`] = "completed";
+        setSimContext({ ...currentContext });
       }
 
-      setSimContext({ ...currentContext });
-
-      // Mark success
       highlightBlocklyBlock(currentStep.name, "success");
       setSimSteps((prev) =>
-        prev.map((item, idx) =>
-          idx === i ? { ...item, status: "success", durationMs: duration, outputData: stepOutput } : item
-        )
+        prev.map((item, idx) => (idx === i ? { ...item, status: "success", durationMs: duration, outputData: stepOutput } : item))
       );
-
       setSimLogs((prev) => [
         ...prev,
-        {
-          time: new Date().toLocaleTimeString(),
-          level: "SUCCESS",
-          msg: `✓ Step ${currentStep.name} completed in ${duration}ms.`,
-        },
+        { time: new Date().toLocaleTimeString(), level: "SUCCESS", msg: `${tag} ✓ Step ${currentStep.name} completed in ${duration}ms.` },
       ]);
+    }
+
+    if (liveEngine && engineResult && !simulationAbortRef.current) {
+      currentContext = engineResult.output_context || currentContext;
+      setSimContext({ ...currentContext });
     }
 
     setCpuUsage(0);
     setIsSimulating(false);
-    setStatusMessage(simulationAbortRef.current ? "🛑 Simulation aborted" : "✓ Simulation finished successfully!");
+    setStatusMessage(
+      simulationAbortRef.current
+        ? "🛑 Simulation aborted"
+        : liveEngine
+          ? "✓ Live engine simulation finished"
+          : "✓ FAKE demo finished — install wpipe-engine for a real simulation"
+    );
 
-    // Persist completed simulation run to PostgreSQL
+    // Persist completed live runs in the engine project history (never for fake demos).
     const totalSimDuration = Date.now() - simStartTime;
-    if (activeProjectId) {
-      try {
-        const simRecord = {
-          status: simulationAbortRef.current ? "aborted" : "success",
-          duration_ms: totalSimDuration,
-          input_payload: initialContext,
-          output_context: currentContext,
-          steps_timeline: stepsToRun.map((s) => ({ step: s.name, status: "success" })),
-          logs: simLogs.map((l) => `[${l.level}] ${l.msg}`).join("\n"),
-        };
-        fetch(`/api/v1/projects/${activeProjectId}/simulations`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-          body: JSON.stringify(simRecord),
-        })
-          .then((res) => (res.ok ? res.json() : null))
-          .then((saved) => {
-            if (saved) {
-              setSimulationHistory((prev) => [saved, ...prev]);
-            }
-          })
-          .catch(() => {});
-      } catch {}
+    if (liveEngine && activeProjectId) {
+      const simRecord = {
+        status: simulationAbortRef.current ? "aborted" : "success",
+        duration_ms: engineResult?.duration_ms ?? totalSimDuration,
+        input_payload: initialContext,
+        output_context: currentContext,
+        steps_timeline: timeline,
+      };
+      engineJson(
+        `/api/v1/projects/${activeProjectId}/simulations`,
+        { method: "POST", body: JSON.stringify(simRecord) },
+        true,
+        engineStatus.port
+      )
+        .then(() => loadSimulationHistory(activeProjectId))
+        .catch(() => {});
     }
   };
 
@@ -2656,12 +2685,31 @@ export default function App() {
       {
         time: new Date().toLocaleTimeString(),
         level: "WARN",
-        msg: "🛑 Simulación detenida por el usuario.",
+        msg: "🛑 Simulation stopped by user.",
       },
     ]);
-    setStatusMessage("🛑 Simulación detenida por el usuario");
+    setStatusMessage("🛑 Simulation stopped by user");
     setCpuUsage(0);
   };
+
+  // Simulation mode labels: real engine run vs explicitly FAKE browser demo
+  const simStartLabel = engineStatus.connected ? "Run Simulation (Live Engine) 🏁" : "Demo Simulation (FAKE) 🏁";
+  const fakeSimBanner = !engineStatus.connected ? (
+    <div
+      data-testid="fake-sim-banner"
+      className="p-3 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-100 text-[11px] leading-relaxed shadow-md"
+    >
+      <div className="font-black text-amber-300 text-xs mb-1">⚠️ FAKE / DEMO SIMULATION — NO LOCAL ENGINE DETECTED</div>
+      This is a browser demonstration with synthetic values (max 5 steps). No Python code is executed and
+      the results are not real. For a real simulation, install and start <span className="font-mono font-bold">wpipe-engine</span> on this machine.
+      <button
+        onClick={() => setShowEngineModal(true)}
+        className="mt-2 block px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-[11px] cursor-pointer"
+      >
+        Install / Connect wpipe-engine
+      </button>
+    </div>
+  ) : null;
 
   // Group steps for categories
   const officialSteps = catalog.filter((s) => s.repo === "Official");
@@ -3308,8 +3356,10 @@ export default function App() {
                   >
                     <Play size={14} className="fill-current text-emerald-400" />
                     <div>
-                      <div className="font-bold">Start Simulation (🏁)</div>
-                      <div className="text-[10px] text-gray-400">Step-by-step pipeline execution</div>
+                      <div className="font-bold">{simStartLabel}</div>
+                      <div className="text-[10px] text-gray-400">
+                        {engineStatus.connected ? "Executed by the local wpipe-engine" : "Synthetic demo data — install wpipe-engine for real runs"}
+                      </div>
                     </div>
                   </button>
                 ) : (
@@ -3547,7 +3597,8 @@ export default function App() {
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 border border-gray-700/80 text-xs text-gray-200 hover:text-white transition shadow-sm cursor-pointer group"
-              title={`Account: ${currentUser?.name || "Developer"} (@${currentUser?.username || "dev"})`}
+              data-testid="account-button"
+              title={currentUser ? `Account: ${currentUser.name} (@${currentUser.username})` : "Guest — no session and no verified engine license"}
             >
               <div
                 className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
@@ -3557,10 +3608,10 @@ export default function App() {
               </div>
               <div className="hidden md:flex flex-col text-left leading-none">
                 <span className="font-bold text-[11px] text-gray-100 group-hover:text-sky-300 transition max-w-[110px] truncate">
-                  Account
+                  {currentUser ? currentUser.name : "Guest"}
                 </span>
                 <span className="text-[9px] text-sky-400 font-mono max-w-[110px] truncate">
-                  {currentUser?.role ? currentUser.role.toUpperCase() : "DEV"}
+                  {currentUser ? currentUser.role.toUpperCase() : engineStatus.connected ? "LOCAL ENGINE" : "NO ENGINE"}
                 </span>
               </div>
               <ChevronDown size={11} className="text-gray-400 group-hover:text-gray-200" />
@@ -3575,16 +3626,20 @@ export default function App() {
                       className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white shadow-md"
                       style={{ backgroundColor: getUserColor(currentUser) }}
                     >
-                      {(currentUser?.name || "W")[0].toUpperCase()}
+                      {(currentUser?.name || "G")[0].toUpperCase()}
                     </div>
                     <div className="overflow-hidden">
-                      <div className="font-bold text-xs text-white truncate">{currentUser?.name || "Developer"}</div>
-                      <div className="text-[10px] font-mono text-sky-400 truncate">@{currentUser?.username || "dev"}</div>
-                      <div className="text-[10px] text-gray-400 truncate">{currentUser?.role || "Developer"}</div>
+                      <div className="font-bold text-xs text-white truncate">{currentUser?.name || "Guest"}</div>
+                      <div className="text-[10px] font-mono text-sky-400 truncate">
+                        {currentUser ? `@${currentUser.username}` : "Not signed in"}
+                      </div>
+                      <div className="text-[10px] text-gray-400 truncate">
+                        {currentUser ? currentUser.role : engineStatus.connected ? "Local engine (unlicensed)" : "No local engine detected"}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-2 text-[10px] font-mono text-gray-400 bg-gray-950 px-2 py-1 rounded border border-gray-800/80 truncate">
-                    📁 media/workspaces/{currentUser?.id}/
+                    {engineStatus.connected ? "📁 ~/.wpipe/workspaces/" : "🔒 Projects require wpipe-engine"}
                   </div>
                 </div>
 
@@ -3771,7 +3826,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowProjectsModal(true)}
-                title={currentUser ? `Usuario: ${currentUser.name} (${currentUser.role})` : "Iniciar Sesión"}
+                title={currentUser ? `User: ${currentUser.name} (${currentUser.role})` : "Guest (no session)"}
                 className="w-full h-11 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition relative"
               >
                 {currentUser ? (
@@ -4074,16 +4129,29 @@ export default function App() {
                           b.badge.toLowerCase().includes(q)
                         );
                       })
-                      .map((b) => (
+                      .map((b) => {
+                        const ent = engineStatus.entitlements;
+                        const proLocked =
+                          (b.id === "parallel" && !ent.parallel_blocks) ||
+                          (b.id === "background" && !ent.background_blocks) ||
+                          (b.id === "ai_step" && !ent.ai_steps);
+                        return (
                         <div
                           key={b.id}
+                          data-testid={`palette-${b.id}`}
                           onClick={(e) => {
                             e.stopPropagation();
+                            const before = getWorkspaceBlockCount();
                             b.action();
+                            if (getWorkspaceBlockCount() === before && b.cat !== "trigger") {
+                              setStatusMessage(`🔒 '${b.name}' was not added: plan limit or PRO feature`);
+                            }
+                            setCanvasBlockCount(getWorkspaceBlockCount());
                           }}
                           onMouseEnter={(e) => handleBlockMouseEnter(b, e)}
                           onMouseLeave={handleBlockMouseLeave}
-                          className="group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                          title={proLocked ? "🔒 PRO feature: requires a verified Pro license in wpipe-engine" : undefined}
+                          className={`group relative cursor-pointer select-none transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] ${proLocked ? "opacity-60" : ""}`}
                         >
                           {b.isHat ? (
                             <div className="w-12 h-2.5 rounded-t-full -mb-1 ml-3 bg-amber-500 border-t border-l border-r border-amber-300/80 shadow-sm" />
@@ -4106,13 +4174,20 @@ export default function App() {
                                 </span>
                               </div>
                             </div>
-                            <div className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-white/90 text-xs font-bold group-hover:bg-white/20 transition shrink-0 ml-1 shadow-sm">
-                              +
-                            </div>
+                            {proLocked ? (
+                              <div className="px-1.5 h-6 rounded-lg bg-black/40 flex items-center justify-center text-amber-300 text-[10px] font-black shrink-0 ml-1 shadow-sm border border-amber-400/40">
+                                🔒 PRO
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-white/90 text-xs font-bold group-hover:bg-white/20 transition shrink-0 ml-1 shadow-sm">
+                                +
+                              </div>
+                            )}
                           </div>
                           <div className="w-5 h-1.5 rounded-t-sm -mt-0.5 ml-4 bg-[#252526] border-t border-l border-r border-[#1e1e1e]" />
                         </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -4249,7 +4324,7 @@ export default function App() {
                   <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
                     <div className="flex items-center gap-2">
                       <Play size={14} className="text-emerald-400" />
-                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Simulación</span>
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Simulation</span>
                     </div>
                     <button
                       onClick={() => setShowSidebar(false)}
@@ -4260,14 +4335,20 @@ export default function App() {
                     </button>
                   </div>
 
+                  {fakeSimBanner}
                   <div className="space-y-2">
                     {!isSimulating ? (
                       <button
                         onClick={handleStartSimulation}
-                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 border border-emerald-400 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+                        data-testid="sim-start-sidebar"
+                        className={`w-full py-2 border text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition cursor-pointer ${
+                          engineStatus.connected
+                            ? "bg-emerald-600 hover:bg-emerald-500 border-emerald-400"
+                            : "bg-amber-600 hover:bg-amber-500 border-amber-400"
+                        }`}
                       >
                         <Play size={14} className="fill-current" />
-                        <span>Iniciar Simulación (🏁)</span>
+                        <span>{simStartLabel}</span>
                       </button>
                     ) : (
                       <button
@@ -4275,7 +4356,7 @@ export default function App() {
                         className="w-full py-2 bg-rose-600 hover:bg-rose-500 border border-rose-400 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-md transition cursor-pointer animate-pulse"
                       >
                         <Square size={13} className="fill-current" />
-                        <span>Detener Simulación (🛑)</span>
+                        <span>Stop Simulation (🛑)</span>
                       </button>
                     )}
 
@@ -4285,7 +4366,7 @@ export default function App() {
                         setSimContext({});
                         setSimSteps([]);
                         setSimLogs([]);
-                        setStatusMessage("Simulación reiniciada");
+                        setStatusMessage("Simulation reset");
                       }}
                       className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer border border-[#3c3c3c]"
                     >
@@ -4740,6 +4821,33 @@ export default function App() {
                   onBlockSelected={handleBlockSelected}
                   onWorkspaceChange={handleWorkspaceChanged}
                 />
+                {/* Plan block counter (display only; the engine enforces the signed limit) */}
+                {(() => {
+                  const max = engineStatus.entitlements.max_blocks;
+                  const atLimit = max !== null && canvasBlockCount >= max;
+                  const over = max !== null && canvasBlockCount > max;
+                  return (
+                    <div
+                      data-testid="block-counter"
+                      className={`absolute top-3 right-3 z-20 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold border shadow-lg backdrop-blur-sm pointer-events-none ${
+                        max === null
+                          ? "bg-emerald-950/80 text-emerald-300 border-emerald-700/70"
+                          : over
+                            ? "bg-red-950/85 text-red-300 border-red-700/70"
+                            : atLimit
+                              ? "bg-amber-950/85 text-amber-300 border-amber-700/70"
+                              : "bg-slate-900/85 text-slate-200 border-slate-700/70"
+                      }`}
+                      title={
+                        max === null
+                          ? "Verified PRO license: unlimited blocks"
+                          : "Free plan limit. The local engine rejects pipelines above this limit."
+                      }
+                    >
+                      Blocks {canvasBlockCount} / {max === null ? "∞" : max} · {max === null ? "PRO" : engineStatus.connected ? "Free" : "Free · No Engine"}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Live Split View (Canvas + Python Code side-by-side) */}
@@ -4875,20 +4983,24 @@ export default function App() {
           <div className="flex-1 flex overflow-hidden bg-[#07090e]">
             {/* Left Column: Controls, Ingress Payload, Context State Inspector */}
             <div className="w-[45%] border-r border-gray-800/80 bg-[#0c101c] flex flex-col p-4 space-y-4 overflow-y-auto custom-modal-scrollbar">
+              {fakeSimBanner}
               {/* Header Controls */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-gray-950/80 border border-gray-800/80 shadow-md">
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleStartSimulation}
                     disabled={isSimulating}
+                    data-testid="sim-start-stage"
                     className={`px-3.5 py-2 rounded-lg border flex items-center gap-2 text-xs font-bold shadow-md transition cursor-pointer ${
                       isSimulating
                         ? "bg-emerald-950/40 border-emerald-900 text-emerald-600 opacity-60 cursor-not-allowed"
-                        : "bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white active:scale-95 shadow-emerald-950/60"
+                        : engineStatus.connected
+                          ? "bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white active:scale-95 shadow-emerald-950/60"
+                          : "bg-amber-600 hover:bg-amber-500 border-amber-400 text-white active:scale-95"
                     }`}
                   >
                     <Play size={14} className="fill-current" />
-                    <span>Iniciar Simulación (🏁)</span>
+                    <span>{simStartLabel}</span>
                   </button>
 
                   <button
@@ -4901,7 +5013,7 @@ export default function App() {
                     }`}
                   >
                     <Square size={13} className="fill-current" />
-                    <span>Detener (🛑)</span>
+                    <span>Stop (🛑)</span>
                   </button>
                 </div>
 
@@ -4911,7 +5023,7 @@ export default function App() {
                     setSimContext({});
                     setSimSteps([]);
                     setSimLogs([]);
-                    setStatusMessage("Simulación reiniciada");
+                    setStatusMessage("Simulation reset");
                   }}
                   className="px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                 >
@@ -6409,7 +6521,7 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 font-heading">
-                      Mis Microservicios & Proyectos
+                      My Microservices & Projects
                     </h3>
                     {storageSource === "engine" ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 flex items-center gap-1 shadow-sm">
@@ -6417,15 +6529,15 @@ export default function App() {
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 flex items-center gap-1 shadow-sm">
-                        <ShieldCheck size={11} /> 🌐 Navegador Offline (IndexedDB)
+                        <ShieldCheck size={11} /> 🔒 Local Engine Required
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-gray-400">
                     {storageSource === "engine" ? (
-                      <>Tus microservicios físicos en disco (<span className="font-mono text-[11px] text-sky-400/90">~/.wpipe/workspaces/</span>) sincronizados con tu sistema.</>
+                      <>Your microservices stored on disk (<span className="font-mono text-[11px] text-sky-400/90">~/.wpipe/workspaces/</span>) by the local engine.</>
                     ) : (
-                      <>Proyectos locales en la memoria de este navegador. Conecta el daemon local para guardarlos en disco.</>
+                      <>Projects are created, stored and generated by the local wpipe-engine. Start the engine on this machine to manage microservices.</>
                     )}
                   </p>
                 </div>
@@ -6788,64 +6900,7 @@ export default function App() {
                   <span>{authLoading ? "Autenticando..." : "Iniciar Sesión"}</span>
                 </button>
 
-                {/* Quick Presets / Demo Accounts */}
-                <div className="pt-2 border-t border-gray-800/80">
-                  <span className="text-[10px] font-bold text-gray-400 block mb-1.5 text-center uppercase tracking-wider">
-                    Cuentas de prueba rápidas:
-                  </span>
-                  <div className="space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleNaturalLogin(undefined, "william.rodriguez", "admin123")}
-                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-sky-600 flex items-center justify-center text-[10px] font-bold text-white">
-                          WR
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">William R.</div>
-                          <div className="text-[10px] text-gray-500 font-mono">@william.rodriguez</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">admin123 →</span>
-                    </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleNaturalLogin(undefined, "developer", "dev123")}
-                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] font-bold text-white">
-                          DE
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">Dev Team</div>
-                          <div className="text-[10px] text-gray-500 font-mono">@developer</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">dev123 →</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleNaturalLogin(undefined, "guest", "guest123")}
-                      className="w-full p-2 rounded-lg bg-gray-950/80 hover:bg-sky-950/40 border border-gray-800 hover:border-sky-600/50 flex items-center justify-between text-left transition group cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] font-bold text-white">
-                          GU
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-gray-200 group-hover:text-sky-300">Invitado</div>
-                          <div className="text-[10px] text-gray-500 font-mono">@guest</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono text-gray-400 group-hover:text-sky-400">guest123 →</span>
-                    </button>
-                  </div>
-                </div>
               </form>
             )}
 
@@ -7464,7 +7519,7 @@ export default function App() {
                 }}
                 onKeyDown={(e) => {
                   const filtered = [
-                    { id: "run-sim", title: "Simulación: Iniciar Ejecución (🏁 F5)", category: "Pipeline", action: () => handleStartSimulation() },
+                    { id: "run-sim", title: "Simulation: Start (🏁 F5)", category: "Pipeline", action: () => handleStartSimulation() },
                     { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", action: () => handleStopSimulation() },
                     { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", action: () => setIsSplitView((prev) => !prev) },
                     { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", action: () => setBottomPanelOpen((prev) => !prev) },
@@ -7508,7 +7563,7 @@ export default function App() {
             <div className="max-h-80 overflow-y-auto p-1 divide-y divide-[#2a2a2a] custom-modal-scrollbar">
               {(() => {
                 const commands = [
-                  { id: "run-sim", title: "Simulación: Iniciar Ejecución (🏁 F5)", category: "Pipeline", icon: <Play size={13} className="text-emerald-400" />, action: () => handleStartSimulation() },
+                  { id: "run-sim", title: "Simulation: Start (🏁 F5)", category: "Pipeline", icon: <Play size={13} className="text-emerald-400" />, action: () => handleStartSimulation() },
                   { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", icon: <Square size={13} className="text-rose-400" />, action: () => handleStopSimulation() },
                   { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", icon: <Split size={13} className="text-sky-400" />, action: () => setIsSplitView((prev) => !prev) },
                   { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", icon: <Terminal size={13} className="text-emerald-400" />, action: () => setBottomPanelOpen((prev) => !prev) },
@@ -7811,6 +7866,56 @@ export default function App() {
         onClose={() => setShowProModal(false)}
         status={engineStatus}
       />
+
+      {/* 17. PLAN LIMIT / ENGINE REQUIRED NOTICE (display only; the engine is the enforcer) */}
+      {limitNotice && (
+        <div
+          data-testid="limit-notice"
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-[200]"
+          onClick={() => setLimitNotice(null)}
+        >
+          <div
+            className="bg-[#0b0f19] border border-amber-600/70 rounded-2xl max-w-md w-full p-5 space-y-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🔒</span>
+              <h3 className="text-base font-extrabold text-amber-300">{limitNotice.title}</h3>
+            </div>
+            <p className="text-xs text-gray-300 leading-relaxed">{limitNotice.message}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {(limitNotice.needsEngine || !engineStatus.connected) && (
+                <button
+                  onClick={() => {
+                    setLimitNotice(null);
+                    setShowEngineModal(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  Install / Connect wpipe-engine
+                </button>
+              )}
+              {!limitNotice.needsEngine && (
+                <button
+                  onClick={() => {
+                    setLimitNotice(null);
+                    setShowProModal(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold cursor-pointer"
+                >
+                  👑 Upgrade to PRO
+                </button>
+              )}
+              <button
+                onClick={() => setLimitNotice(null)}
+                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

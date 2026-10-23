@@ -25,7 +25,7 @@ The **WPipe Studio** ecosystem integrates high-performance, enterprise-grade tec
 | Layer | Key Technologies & Libraries |
 |---|---|
 | **Frontend & PWA** | **React 18** (concurrent rendering), **TypeScript** (strict type safety), **Vite** (fast HMR and bundling), **Tailwind CSS** (utility-first dark design system), **Google Blockly** (`blockly`, visual Scratch 3.0 puzzle canvas), **Mermaid JS** & **D3** (reactive directed acyclic graph visualization with pan & zoom), **PrismJS** (syntax highlighting overlay for Python, YAML, Dockerfile, Makefile, JSON), **Marked** (GFM Markdown rendering engine), **Lucide React** (VS Code icon set), **PWA Service Worker** (`sw.js` for offline cache), **WebCrypto API** (native Ed25519 cryptographic token verification). |
-| **Backend & Local Daemon** | **FastAPI** (asynchronous Python 3.11 web framework), **Uvicorn** (ASGI server), **WPipe** (`>=2.5.13`, core pipeline orchestration engine), **WPipe Engine Daemon** (system service running on `127.0.0.1:49152` and Unix Domain Sockets `/tmp/wpipe.sock` with W3C Private Network Access), **WPipe Steps** (`>=1.0.2`, official 197-step pack catalog), **Pydantic v2 & Pydantic-Settings** (schema validation and settings management), **WPostgreSQL** (Data Access Layer with Pydantic models and connection pooling), **WSQLite** (lightweight persistence fallback), **Psycopg 3 & Psycopg-Pool** (PostgreSQL driver with thread-safe connection pooling), **Pytest & Pytest-Cov** (test runner and coverage). |
+| **Backend & Local Daemon** | **Entitlement Enforcer** (`core/limiter.py` + `core/entitlements.py`, signed D1 plan limits), **FastAPI** (asynchronous Python 3.11 web framework), **Uvicorn** (ASGI server), **WPipe** (`>=2.5.13`, core pipeline orchestration engine), **WPipe Engine Daemon** (system service running on `127.0.0.1:49152` and Unix Domain Sockets `/tmp/wpipe.sock` with W3C Private Network Access), **WPipe Steps** (`>=1.0.2`, official 197-step pack catalog), **Pydantic v2 & Pydantic-Settings** (schema validation and settings management), **WPostgreSQL** (Data Access Layer with Pydantic models and connection pooling), **WSQLite** (lightweight persistence fallback), **Psycopg 3 & Psycopg-Pool** (PostgreSQL driver with thread-safe connection pooling), **Pytest & Pytest-Cov** (test runner and coverage). |
 | **Infrastructure & Edge Cloud** | **Cloudflare Pages** (`studio.wisrovi.dev` and `wpipe-studio.pages.dev`), **Docker & Docker Compose** (multi-container orchestration), **PostgreSQL 15** (relational database), **PgAdmin 4** (web management console on port 1717), **Nginx Alpine** (lightweight production web server and reverse proxy), **Persistent Host Volumes** (`./media` for microservices and `./enviroment/db` for database data). |
 
 ### Architectural Highlights
@@ -68,6 +68,23 @@ WPipe Studio features an integrated **VS Code-inspired** workspace:
    - Breakpoint debugging (`🔴`) pausing execution on demand with `F5` (Continue) and `F10` (Step).
 6. **Retractable Multi-Tab Bottom Panel (`Ctrl+\``)**:
    - 6 functional tabs: `TERMINAL` (interactive bash shell), `OUTPUT` (execution logs), `PROBLEMAS` (linter and AST syntax diagnostics), `DEBUGGER` (breakpoints and state inspection), `TESTS` (pytest suite runner), and `HISTORY` (persisted simulation run logs).
+
+---
+
+## Engine-Gated Features & Tamper-Proof Licensing
+
+`studio.wisrovi.dev` behaves differently depending on whether the local **wpipe-engine** (`127.0.0.1:49152`) is running:
+
+| Capability | Without engine | With engine (Free) | With engine (verified Pro) |
+|---|---|---|---|
+| Identity shown | `Guest · No Engine` | `Local Engine` | Verified license holder |
+| Canvas blocks | Max 5 (UX guard) | Max 5 (enforced by engine) | Limits from signed `ent` claim |
+| Parallel / Background / AI Step | 🔒 PRO | 🔒 PRO (engine `403`) | Allowed |
+| Simulation | `Demo Simulation (FAKE)` with banner and `[FAKE-DEMO]` logs | Real engine simulation (`[ENGINE]`) | Real engine simulation |
+| Python microservice / ZIP / projects / terminal / tests | 🔒 Local Engine Required | Generated and stored by the engine | Generated and stored by the engine |
+| Export / import `.wpipe` design | ✅ (design only) | ✅ (limits re-applied on save) | ✅ |
+
+**Why DevTools cannot bypass it:** the browser no longer contains a code generator or project storage. Everything with value happens inside the engine, which checks every request against the entitlements of an Ed25519-signed lease token (issued by the Cloudflare Worker from the D1 `plan_entitlements` table and bound to the machine fingerprint). UI flags such as `isPro` are display-only: the frontend re-verifies the token with WebCrypto against the embedded wisrovi public key, and the engine ignores any `is_pro` sent in request bodies.
 
 ---
 

@@ -16,7 +16,7 @@ def test_free_tier_within_limits_allowed():
     }
     allowed, msg, details = check_compilation_limits(canvas, free_license)
     assert allowed is True
-    assert "válido" in msg.lower()
+    assert "allowed" in msg.lower()
 
 
 def test_free_tier_exceeding_max_blocks_rejected():
@@ -64,4 +64,4 @@ def test_pro_tier_unlimited_blocks_and_parallel_allowed():
     allowed, msg, details = check_compilation_limits(canvas, pro_license)
     assert allowed is True
     assert details == {}
-    assert "ilimitada" in msg.lower()
+    assert "unlimited" in msg.lower()

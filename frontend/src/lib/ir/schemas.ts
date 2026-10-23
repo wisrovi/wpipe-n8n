@@ -33,6 +33,7 @@ export const NodeDataSchema = z.object({
   parent_id: z.string().nullable().optional(),
   slot_type: z.enum(["if_body", "else_body", "loop_body", "parallel_body", "background_body"]).nullable().optional(),
   has_else: z.boolean().nullable().optional(),
+  block_type: z.string().nullable().optional(),
 });
 export type NodeData = z.infer<typeof NodeDataSchema>;
 

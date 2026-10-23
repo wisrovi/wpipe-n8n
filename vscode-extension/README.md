@@ -56,7 +56,8 @@ vscode-extension/
 4. **Strict Freemium Enforcement**:
    - **Free Tier**: Up to 5 blocks on canvas; restricts Pro-tier blocks (`Parallel`, `Background`, `AI Step`).
    - **Pro Tier**: Unlocks unlimited complexity, concurrency, smart AST code merging, and live debugging.
-5. **System Isolation & OS Packaging (`daemon_os`)**: The engine distributes as an immutable package (`snap`), system package (`apt`), or closed binary compiled with Nuitka.
+5. **Single Enforcement Point**: every value-producing engine endpoint (`compile`, `transform`, `simulate`, project create/update/duplicate) is gated by `enforce_entitlements`. Limits come from the signed `ent` claim (D1 `plan_entitlements`), never from the browser or request bodies.
+6. **System Isolation & OS Packaging (`daemon_os`)**: The engine distributes as an immutable package (`snap`), system package (`apt`), or closed binary compiled with Nuitka.
 
 ---
 

@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from wpipe_engine.core.limiter import classify_node, is_ai_step
+
 DEFAULT_STEP_CONSTRUCTOR_ARGS: dict[str, dict[str, Any]] = {
     "NmapScan": {"target": "127.0.0.1"},
     "NmapScanStep": {"target": "127.0.0.1"},
@@ -78,13 +80,13 @@ class ASTCompiler:
         def render_step(node: dict[str, Any], indent: int = 8) -> str:
             pad = " " * indent
             data = node.get("data", {})
-            raw_type = data.get("node_type") or node.get("type", "step")
-            ntype = raw_type.lower()
+            # Shared classifier: guarantees the limiter judges exactly what is rendered here.
+            kind = classify_node(node)
             label = data.get("label", "Step")
             fn = data.get("step_name") or data.get("func_name") or label
             ns = data.get("namespace", "")
 
-            if ntype in ("condition", "wpipe_if", "wpipe_if_else") or "if" in ntype or "condition" in ntype:
+            if kind == "condition":
                 raw_expr = data.get("condition_expression") or data.get("expression") or "status_code == 200"
                 expr = raw_expr.replace('"', '\\"')
                 true_kids = get_children(node.get("id", ""), "if_body")
@@ -98,14 +100,14 @@ class ASTCompiler:
                     return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad}    branch_false=[\n{f_code},\n{pad}    ],\n{pad})'
                 return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad})'
 
-            if ntype in ("for", "wpipe_for") or "for" in ntype:
+            if kind == "for":
                 iters = data.get("for_iterations") or data.get("iterations") or 3
                 loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
                 l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids) if loop_kids else f'{pad}    TransformPayloadStep(mode="loop")'
                 step_names_for_readme.append(f"For({iters} iterations)")
                 return f'{pad}For(\n{pad}    iterations={iters},\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
 
-            if ntype in ("while", "wpipe_while") or "while" in ntype:
+            if kind == "while":
                 raw_expr = data.get("condition_expression") or data.get("expression") or "retry_count < 3"
                 expr = raw_expr.replace('"', '\\"')
                 loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
@@ -113,14 +115,14 @@ class ASTCompiler:
                 step_names_for_readme.append(f"While({raw_expr})")
                 return f'{pad}For(\n{pad}    validation_expression="{expr}",\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
 
-            if ntype in ("parallel", "wpipe_parallel") or "parallel" in ntype:
+            if kind == "parallel":
                 merge = data.get("merge_policy", "accumulate")
                 par_kids = get_children(node.get("id", ""), "parallel_body") or get_children(node.get("id", ""), "if_body")
                 p_code = ",\n".join(render_step(c, indent + 4) for c in par_kids) if par_kids else f'{pad}    CleanDataStep(),\n{pad}    TransformPayloadStep()'
                 step_names_for_readme.append(f"Parallel({merge})")
                 return f'{pad}Parallel(\n{pad}    steps=[\n{p_code},\n{pad}    ],\n{pad}    merge_policy="{merge}",\n{pad})'
 
-            if ntype in ("background", "wpipe_background") or "background" in ntype:
+            if kind == "background":
                 bg_kids = get_children(node.get("id", ""), "background_body") or get_children(node.get("id", ""), "loop_body")
                 b_code = render_step(bg_kids[0], indent + 4).strip() if bg_kids else "TransformPayloadStep()"
                 step_names_for_readme.append("Background")
@@ -147,7 +149,7 @@ class ASTCompiler:
                 step_names_for_readme.append("TransformPayloadStep")
                 mode = data.get("params", {}).get("mode", "standard")
                 return f'{pad}TransformPayloadStep(mode="{mode}")'
-            elif "sentiment" in fn_lower or "ai" in fn_lower or fn == "AISentimentStep":
+            elif is_ai_step(node):
                 imports.add("from states.ai_sentiment_step import AISentimentStep")
                 step_names_for_readme.append("AISentimentStep")
                 th = data.get("params", {}).get("threshold", 0.5)

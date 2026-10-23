@@ -63,6 +63,71 @@ class WorkspaceManager:
                         pass
         return None
 
+    def _safe_target(self, pdir: Path, rel_path: str) -> Path | None:
+        """Resolve a project-relative file path, rejecting anything that escapes ``pdir``."""
+        if not rel_path or not isinstance(rel_path, str):
+            return None
+        if rel_path.startswith(("/", "\\")) or ".." in Path(rel_path).parts:
+            return None
+        target = (pdir / rel_path).resolve()
+        base = pdir.resolve()
+        try:
+            if not target.is_relative_to(base) or target == base:
+                return None
+        except (AttributeError, ValueError):
+            return None
+        if target.name in ("meta.json", "canvas_ir.json", "simulations.json"):
+            return None
+        return target
+
+    def _write_generated_files(
+        self,
+        pdir: Path,
+        generated_files: Any,
+        allowed_paths: set[str] | None = None,
+    ) -> int:
+        """Write generated files safely inside ``pdir``.
+
+        Args:
+            pdir: Project directory.
+            generated_files: ``{path: content}`` mapping or ``[{"path", "content"}]`` list.
+            allowed_paths: When given, only these relative paths may be written (used to let
+                users keep edits to engine-generated files without injecting new ones).
+
+        Returns:
+            Number of files written.
+        """
+        items: list[tuple[str, Any]] = []
+        if isinstance(generated_files, dict):
+            items = list(generated_files.items())
+        elif isinstance(generated_files, list):
+            for f in generated_files:
+                if isinstance(f, dict):
+                    items.append((f.get("path") or f.get("name") or "", f.get("content", "")))
+
+        written = 0
+        for rel_path, content in items:
+            if allowed_paths is not None and rel_path not in allowed_paths:
+                continue
+            target = self._safe_target(pdir, rel_path)
+            if target is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
+            written += 1
+        return written
+
+    def list_project_file_paths(self, project_id: str) -> set[str]:
+        """Return the set of relative file paths currently stored in a project."""
+        pdir = self._find_project_dir(project_id)
+        if not pdir:
+            return set()
+        paths: set[str] = set()
+        for fpath in pdir.rglob("*"):
+            if fpath.is_file() and fpath.name not in ("meta.json", "canvas_ir.json", "simulations.json"):
+                paths.add(str(fpath.relative_to(pdir)))
+        return paths
+
     def list_projects(self) -> list[dict[str, Any]]:
         """List all microservice projects found in ~/.wpipe/workspaces/."""
         projects: list[dict[str, Any]] = []
@@ -206,23 +271,9 @@ class WorkspaceManager:
         if canvas_ir:
             (pdir / "canvas_ir.json").write_text(json.dumps(canvas_ir, indent=2), encoding="utf-8")
 
-        # Write generated files
+        # Write generated files (path traversal safe)
         if generated_files:
-            if isinstance(generated_files, dict):
-                for fpath, content in generated_files.items():
-                    target = pdir / fpath
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
-            elif isinstance(generated_files, list):
-                for f in generated_files:
-                    if isinstance(f, dict):
-                        fpath = f.get("path") or f.get("name") or ""
-                        if not fpath:
-                            continue
-                        target = pdir / fpath
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        content = f.get("content", "")
-                        target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
+            self._write_generated_files(pdir, generated_files)
 
         # Write default .env if not exists
         env_file = pdir / ".env"
@@ -231,8 +282,16 @@ class WorkspaceManager:
 
         return self.get_project(proj_id) or meta
 
-    def update_project(self, project_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        """Update existing project canvas_ir, files and meta."""
+    def update_project(
+        self,
+        project_id: str,
+        data: dict[str, Any],
+        allowed_paths: set[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Update existing project canvas_ir, files and meta.
+
+        ``allowed_paths`` restricts which generated files may be (over)written.
+        """
         pdir = self._find_project_dir(project_id)
         if not pdir:
             return None
@@ -262,22 +321,7 @@ class WorkspaceManager:
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
         if "generated_files" in data:
-            gen_files = data["generated_files"]
-            if isinstance(gen_files, dict):
-                for fpath, content in gen_files.items():
-                    target = pdir / fpath
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
-            elif isinstance(gen_files, list):
-                for f in gen_files:
-                    if isinstance(f, dict):
-                        fpath = f.get("path") or f.get("name") or ""
-                        if not fpath:
-                            continue
-                        target = pdir / fpath
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        content = f.get("content", "")
-                        target.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
+            self._write_generated_files(pdir, data["generated_files"], allowed_paths=allowed_paths)
 
         return self.get_project(meta.get("id", project_id))
 

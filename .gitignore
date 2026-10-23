@@ -15,7 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
 lib64/
+node_modules/
 parts/
 sdist/
 var/
@@ -24,13 +26,17 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.vsix
 MANIFEST
 
 # PyInstaller
-#   Usually these files are written by a python script from a template
-#   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!vscode-extension/daemon_os/wpipe-engine.spec
+
+# Built canvas assets (generated via frontend npm run build)
+vscode-extension/daemon_os/wpipe_engine/canvas_static/
+vscode-extension/extension/media/canvas/
 
 # Installer logs
 pip-log.txt
@@ -216,3 +222,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Superpowers scratch workspaces (SDD ledger, briefs, review packages)
+.superpowers/
+
+# Studio local runtime workspaces and databases
+backend/data/
+media/*
+!media/.gitkeep

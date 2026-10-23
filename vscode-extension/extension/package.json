@@ -1,0 +1,128 @@
+{
+  "name": "wpipe-studio-vscode",
+  "displayName": "WPipe Studio — Visual Pipeline Canvas & Compiler",
+  "description": "Visual block-based pipeline designer and microservice generator for WPipe inside VS Code.",
+  "version": "1.0.0",
+  "publisher": "wisrovi",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other",
+    "Linters"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCustomEditor:wpipe.canvasEditor",
+    "onCommand:wpipe.openCanvas",
+    "onCommand:wpipe.newPipeline",
+    "onCommand:wpipe.activateLicense",
+    "onView:wpipe.sidebarView"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wpipe-studio-container",
+          "title": "WPipe Studio",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "wpipe-studio-container": [
+        {
+          "type": "webview",
+          "id": "wpipe.sidebarView",
+          "name": "WPipe Studio"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "wpipe.openCanvas",
+        "title": "WPipe: Open Block Canvas",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.newPipeline",
+        "title": "WPipe: Create New Visual Pipeline",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.activateLicense",
+        "title": "WPipe: Activate Pro License Key",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.checkLicenseStatus",
+        "title": "WPipe: Check License Status",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.compileCurrentPipeline",
+        "title": "WPipe: Compile Pipeline to Python",
+        "category": "WPipe"
+      },
+      {
+        "command": "wpipe.startDaemon",
+        "title": "WPipe: Start Native Engine (wpipe-engine)",
+        "category": "WPipe"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "wpipe.canvasEditor",
+        "displayName": "WPipe Pipeline Canvas",
+        "selector": [
+          {
+            "filenamePattern": "*.wpipe"
+          },
+          {
+            "filenamePattern": "*.wpipe.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "WPipe Studio",
+      "properties": {
+        "wpipe.daemonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the wpipe-engine executable binary (leave empty to auto-detect)."
+        },
+        "wpipe.daemonTransport": {
+          "type": "string",
+          "enum": ["auto", "socket", "http"],
+          "default": "auto",
+          "description": "IPC transport protocol to communicate with local daemon."
+        },
+        "wpipe.apiEndpoint": {
+          "type": "string",
+          "default": "https://api.wisrovi.dev",
+          "description": "Cloudflare license authority endpoint."
+        },
+        "wpipe.canvasUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:49152",
+          "description": "Base URL of the WPipe Studio visual canvas frontend (defaults to local http://127.0.0.1:49152 served by wpipe-engine, fallback to https://studio.wisrovi.dev)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "author": "William Rodriguez <wisrovi@wisrovi.dev> (https://wisrovi.dev)",
+  "license": "Proprietary",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.0"
+  }
+}

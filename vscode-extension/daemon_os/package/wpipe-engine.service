@@ -1,0 +1,13 @@
+[Unit]
+Description=WPipe Studio Native Engine & Licensing Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=%I
+ExecStart=/usr/local/bin/wpipe-engine daemon --socket /tmp/wpipe.sock
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WPipe Studio | Design Pipelines Visually. Ship Production Python Microservices in Minutes.</title>
+
+    <!-- SEO & Meta Tags -->
+    <meta name="description" content="WPipe Studio turns a visual block canvas into a verified, production-ready Python microservice: FastAPI + WPipe DAG + Pydantic DTOs + Docker + Makefile + Pytest. 36 files, 6 quality gates, minutes instead of weeks.">
+    <meta name="keywords" content="wpipe studio, visual pipeline builder, python microservice generator, fastapi generator, low-code python, blockly, dag, vs code extension, wpipe, wisrovi">
+    <meta name="author" content="William Steve Rodriguez Villamizar (wisrovi)">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="WPipe Studio — Weeks of backend plumbing, done in minutes">
+    <meta property="og:description" content="Drag blocks. Simulate live. Generate a 36-file, test-verified Python microservice. Local-first, VS Code native.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/wisrovi/wpipe-studio">
+    <meta property="og:image" content="docs/marketing/wpipe_studio_ide_full.webp">
+    <meta property="og:site_name" content="WPipe Studio">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@wisrovi">
+    <meta name="twitter:title" content="WPipe Studio | Visual Pipelines → Production Microservices">
+
+    <!-- Favicon (Procedural SVG) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' style='stop-color:%2322c55e'/><stop offset='100%25' style='stop-color:%2306b6d4'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23g)'/><rect x='18' y='22' width='34' height='16' rx='5' fill='white'/><rect x='30' y='44' width='40' height='16' rx='5' fill='white' opacity='.85'/><rect x='42' y='66' width='40' height='14' rx='5' fill='white' opacity='.7'/></svg>">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            /* Palette: code-dark surfaces + "run green" accent (matches the wisrovi.dev Studio CTA) */
+            --primary: #22c55e;
+            --primary-strong: #16a34a;
+            --primary-glow: rgba(34, 197, 94, 0.35);
+            --secondary: #06b6d4;
+            --secondary-glow: rgba(6, 182, 212, 0.3);
+            --violet: #a78bfa;
+            --amber: #f59e0b;
+            --danger: #f87171;
+            --bg-deep: #030712;
+            --bg-elev: #0b1120;
+            --bg-card: rgba(15, 23, 42, 0.72);
+            --bg-card-hover: rgba(30, 41, 59, 0.85);
+            --text-main: #f8fafc;
+            --text-dim: #a3b1c6;
+            --text-muted: #7c8aa0;
+            --border: rgba(148, 163, 184, 0.14);
+            --border-highlight: rgba(34, 197, 94, 0.45);
+
+            --gradient-linear: linear-gradient(135deg, #22c55e 0%, #06b6d4 100%);
+            --gradient-mesh: radial-gradient(at 8% 0%, rgba(34, 197, 94, 0.13) 0, transparent 45%),
+                             radial-gradient(at 95% 12%, rgba(6, 182, 212, 0.12) 0, transparent 45%),
+                             radial-gradient(at 50% 100%, rgba(167, 139, 250, 0.08) 0, transparent 50%);
+            --shadow-neo: 0 25px 50px -12px rgba(0, 0, 0, 0.65);
+            --shadow-glow: 0 0 34px var(--primary-glow);
+
+            --ease: cubic-bezier(0.4, 0, 0.2, 1);
+            --transition: all 0.25s var(--ease);
+            --container-max: 1220px;
+            --radius-lg: 24px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-deep);
+            background-image: var(--gradient-mesh);
+            background-attachment: fixed;
+            color: var(--text-main);
+            line-height: 1.6;
+            font-size: 16px;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; }
+        :focus-visible { outline: 3px solid var(--secondary); outline-offset: 3px; border-radius: 8px; }
+        .container { max-width: var(--container-max); margin: 0 auto; padding: 0 1.5rem; }
+        section { padding: 110px 0; position: relative; }
+        h1, h2, h3, h4 { font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .gradient-text {
+            background: var(--gradient-linear);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .eyebrow {
+            display: inline-flex; align-items: center; gap: .5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: .8rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+        .section-header { text-align: center; margin-bottom: 4rem; }
+        .section-header h2 { font-size: clamp(2.1rem, 4.5vw, 3.4rem); margin-bottom: 1.25rem; }
+        .section-header p { color: var(--text-dim); font-size: 1.15rem; max-width: 720px; margin: 0 auto; }
+        .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: .7rem;
+            min-height: 52px; padding: 0 1.9rem;
+            border-radius: 14px; font-weight: 700; font-size: 1.05rem;
+            text-decoration: none; cursor: pointer; border: 1px solid transparent;
+            transition: var(--transition);
+        }
+        .btn-main { background: var(--gradient-linear); color: #04130a; box-shadow: var(--shadow-glow); }
+        .btn-main:hover { transform: translateY(-3px); box-shadow: 0 0 46px var(--primary-glow); }
+        .btn-outline { background: rgba(255,255,255,0.02); color: var(--text-main); border-color: var(--border); }
+        .btn-outline:hover { border-color: var(--primary); background: rgba(34,197,94,0.07); transform: translateY(-3px); }
+        .btn-sm { min-height: 42px; padding: 0 1.2rem; font-size: .92rem; border-radius: 999px; }
+
+        /* Navigation */
+        nav {
+            position: fixed; top: 0; width: 100%; z-index: 1000;
+            padding: 1.1rem 0; transition: var(--transition);
+            border-bottom: 1px solid transparent;
+        }
+        nav.scrolled { background: rgba(3, 7, 18, 0.86); backdrop-filter: blur(16px); padding: .75rem 0; border-color: var(--border); }
+        .nav-content { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+        .logo { display: flex; align-items: center; gap: .7rem; font-size: 1.3rem; font-weight: 800; text-decoration: none; }
+        .logo-mark {
+            width: 36px; height: 36px; border-radius: 10px; background: var(--gradient-linear);
+            display: grid; place-items: center; color: #04130a; font-size: 1rem; box-shadow: var(--shadow-glow);
+        }
+        .logo small { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--primary); font-weight: 700; border: 1px solid var(--border-highlight); padding: .1rem .45rem; border-radius: 6px; }
+        .nav-links { display: flex; gap: 2rem; align-items: center; }
+        .nav-links a:not(.btn) { text-decoration: none; color: var(--text-dim); font-weight: 600; font-size: .95rem; transition: var(--transition); }
+        .nav-links a:not(.btn):hover { color: var(--primary); }
+
+        /* Hero */
+        .hero { padding: 150px 0 80px; }
+        .hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 3.5rem; align-items: center; }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: .6rem;
+            background: rgba(34, 197, 94, 0.09); border: 1px solid var(--border-highlight);
+            padding: .45rem 1.1rem; border-radius: 100px; color: var(--primary);
+            font-weight: 700; font-size: .82rem; margin-bottom: 1.75rem; letter-spacing: .04em;
+        }
+        .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 0 var(--primary-glow); animation: pulse 2s infinite; }
+        .hero h1 { font-size: clamp(2.4rem, 4.3vw, 3.7rem); margin-bottom: 1.5rem; }
+        .hero h1 .strike { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 4px; }
+        .hero-sub { font-size: clamp(1.08rem, 1.8vw, 1.28rem); color: var(--text-dim); max-width: 620px; margin-bottom: 2.4rem; }
+        .hero-sub strong { color: var(--text-main); }
+        .hero-btns { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+        .hero-trust { display: flex; gap: 1.6rem; flex-wrap: wrap; color: var(--text-muted); font-size: .9rem; font-weight: 600; }
+        .hero-trust span { display: inline-flex; align-items: center; gap: .5rem; }
+        .hero-trust i { color: var(--primary); }
+
+        .shot-frame {
+            position: relative; border-radius: 18px; overflow: hidden;
+            border: 1px solid rgba(148,163,184,0.22); background: #0d1117;
+            box-shadow: var(--shadow-neo), 0 0 80px rgba(34,197,94,0.12);
+        }
+        .shot-bar { display: flex; align-items: center; gap: 8px; padding: .7rem 1rem; background: #0b1020; border-bottom: 1px solid var(--border); }
+        .dot { width: 11px; height: 11px; border-radius: 50%; }
+        .dot-red { background: #ff5f56; } .dot-yellow { background: #ffbd2e; } .dot-green { background: #27c93f; }
+        .shot-url { margin-left: .8rem; font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: var(--text-muted); background: rgba(255,255,255,0.04); padding: .2rem .7rem; border-radius: 6px; }
+        .shot-frame img { display: block; width: 100%; height: auto; aspect-ratio: 1440 / 813; }
+        .hero-visual { position: relative; }
+        .float-chip {
+            position: absolute; display: flex; align-items: center; gap: .6rem;
+            background: rgba(11, 17, 32, 0.92); border: 1px solid var(--border); backdrop-filter: blur(10px);
+            padding: .6rem .9rem; border-radius: 12px; font-size: .82rem; font-weight: 700;
+            box-shadow: var(--shadow-neo); animation: float 6s ease-in-out infinite;
+        }
+        .float-chip i { font-size: 1rem; }
+        .chip-1 { top: 18%; left: -8%; } .chip-1 i { color: var(--primary); }
+        .chip-2 { bottom: 14%; right: -6%; animation-delay: -2s; } .chip-2 i { color: var(--secondary); }
+        .chip-3 { bottom: -5%; left: 12%; animation-delay: -4s; } .chip-3 i { color: var(--violet); }
+
+        /* Stats */
+        .stats-bar { background: rgba(11, 17, 32, 0.6); backdrop-filter: blur(10px); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 2.8rem 0; }
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2rem; text-align: center; }
+        .stat-item h3 { font-size: clamp(2rem, 3.6vw, 2.8rem); margin-bottom: .35rem; }
+        .stat-item p { color: var(--text-dim); font-weight: 600; font-size: .86rem; letter-spacing: .02em; }
+
+        /* Pain */
+        .pain-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+        .pain-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 18px; padding: 1.6rem;
+            transition: var(--transition);
+        }
+        .pain-card:hover { border-color: rgba(248,113,113,0.45); transform: translateY(-4px); }
+        .pain-card i { color: var(--danger); font-size: 1.3rem; margin-bottom: 1rem; display: block; }
+        .pain-card h4 { font-size: 1.05rem; margin-bottom: .45rem; letter-spacing: -0.01em; }
+        .pain-card p { color: var(--text-dim); font-size: .92rem; }
+        .pain-card .cost { margin-top: .9rem; font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: var(--amber); font-weight: 600; }
+        .pain-total {
+            margin-top: 2.5rem; text-align: center; padding: 1.6rem; border-radius: 18px;
+            background: linear-gradient(90deg, rgba(248,113,113,0.08), rgba(245,158,11,0.08));
+            border: 1px dashed rgba(245,158,11,0.4); font-size: 1.15rem; color: var(--text-dim);
+        }
+        .pain-total strong { color: var(--text-main); }
+
+        /* Live build demo */
+        .demo { background: linear-gradient(180deg, transparent, rgba(34,197,94,0.035), transparent); }
+        .demo-shell {
+            display: grid; grid-template-columns: 1.1fr .9fr; gap: 0;
+            border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(148,163,184,0.2);
+            background: #070b16; box-shadow: var(--shadow-neo);
+        }
+        .demo-toolbar {
+            grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+            padding: .9rem 1.2rem; border-bottom: 1px solid var(--border); background: #0b1120;
+        }
+        .demo-title { display: flex; align-items: center; gap: .7rem; font-weight: 700; font-size: .95rem; }
+        .demo-timer { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--primary); background: rgba(34,197,94,0.1); border: 1px solid var(--border-highlight); padding: .3rem .8rem; border-radius: 8px; }
+        .demo-canvas {
+            position: relative; padding: 1.6rem; min-height: 430px;
+            background-image: radial-gradient(rgba(148,163,184,0.16) 1px, transparent 1px);
+            background-size: 22px 22px; border-right: 1px solid var(--border);
+        }
+        .block {
+            display: flex; align-items: center; gap: .65rem; width: fit-content; max-width: 100%;
+            padding: .62rem 1rem; border-radius: 10px; margin-bottom: .55rem;
+            font-weight: 700; font-size: .88rem; color: #fff;
+            opacity: 0; transform: translateX(-14px) scale(.97);
+            transition: opacity .35s var(--ease), transform .35s var(--ease);
+            box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+        }
+        .block.show { opacity: 1; transform: none; }
+        .block .tag { font-family: 'JetBrains Mono', monospace; font-size: .7rem; background: rgba(0,0,0,0.25); padding: .1rem .45rem; border-radius: 5px; font-weight: 600; }
+        .b-trigger { background: linear-gradient(90deg,#d97706,#b45309); border-radius: 18px 10px 10px 10px; }
+        .b-step { background: linear-gradient(90deg,#2563eb,#1d4ed8); }
+        .b-ai { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
+        .b-cond { background: linear-gradient(90deg,#ca8a04,#a16207); }
+        .b-par { background: linear-gradient(90deg,#059669,#047857); }
+        .b-resp { background: linear-gradient(90deg,#e11d48,#be123c); border-radius: 10px 10px 18px 10px; }
+        .indent-1 { margin-left: 1.6rem; } .indent-2 { margin-left: 3.2rem; }
+        .demo-status {
+            position: absolute; left: 1.6rem; right: 1.6rem; bottom: 1.2rem;
+            font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: var(--text-dim);
+            background: rgba(3,7,18,0.85); border: 1px solid var(--border); border-radius: 10px; padding: .6rem .8rem;
+            min-height: 2.6rem;
+        }
+        .demo-status .ok { color: var(--primary); }
+        .demo-files { padding: 1.2rem 1.3rem; font-family: 'JetBrains Mono', monospace; font-size: .8rem; max-height: 470px; overflow: hidden; }
+        .files-head { display: flex; justify-content: space-between; color: var(--text-muted); margin-bottom: .8rem; font-size: .78rem; }
+        .files-head b { color: var(--primary); }
+        .file { display: flex; align-items: center; gap: .55rem; padding: .16rem 0; color: var(--text-dim); opacity: 0; transition: opacity .2s; }
+        .file.show { opacity: 1; }
+        .file i { width: 14px; text-align: center; }
+        .gates { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: 1rem; }
+        .gate { font-size: .72rem; padding: .25rem .55rem; border-radius: 6px; border: 1px solid var(--border); color: var(--text-muted); transition: var(--transition); }
+        .gate.pass { color: #04130a; background: var(--primary); border-color: var(--primary); font-weight: 700; }
+        .demo-cta { text-align: center; margin-top: 2rem; }
+        .demo-cta .btn { margin: .4rem; }
+
+        /* Before / After */
+        .compare-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--bg-card); }
+        table.compare { width: 100%; border-collapse: collapse; min-width: 720px; }
+        .compare th, .compare td { padding: 1.05rem 1.3rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .compare thead th { font-size: .82rem; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); background: rgba(3,7,18,0.5); }
+        .compare td:first-child { font-weight: 700; }
+        .compare .manual { color: var(--danger); font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+        .compare .studio { color: var(--primary); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+        .compare tfoot td { font-size: 1.1rem; font-weight: 800; background: rgba(34,197,94,0.06); border-bottom: none; }
+        .note { color: var(--text-muted); font-size: .85rem; margin-top: 1rem; text-align: center; }
+
+        /* Steps */
+        .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; counter-reset: step; }
+        .step-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 2rem 1.6rem; position: relative; transition: var(--transition); }
+        .step-card:hover { border-color: var(--border-highlight); transform: translateY(-6px); }
+        .step-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: .8rem; color: var(--primary); margin-bottom: 1.1rem; display: inline-block; border: 1px solid var(--border-highlight); padding: .15rem .55rem; border-radius: 6px; }
+        .step-card i.big { font-size: 1.8rem; display: block; margin-bottom: 1rem; color: var(--secondary); }
+        .step-card h3 { font-size: 1.3rem; margin-bottom: .6rem; }
+        .step-card p { color: var(--text-dim); font-size: .95rem; }
+
+        /* Features */
+        .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+        .feature-card {
+            background: var(--bg-card); border: 1px solid var(--border); padding: 2.2rem; border-radius: var(--radius-lg);
+            transition: var(--transition); position: relative; overflow: hidden;
+        }
+        .feature-card:hover { transform: translateY(-6px); border-color: var(--border-highlight); background: var(--bg-card-hover); box-shadow: var(--shadow-neo); }
+        .feature-icon {
+            width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center;
+            font-size: 1.45rem; margin-bottom: 1.4rem;
+            background: rgba(34,197,94,0.1); color: var(--primary);
+        }
+        .fi-cyan { background: rgba(6,182,212,0.1); color: var(--secondary); }
+        .fi-violet { background: rgba(167,139,250,0.12); color: var(--violet); }
+        .fi-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+        .feature-card h3 { font-size: 1.3rem; margin-bottom: .8rem; }
+        .feature-card p { color: var(--text-dim); font-size: .97rem; }
+        .pill { display: inline-block; margin-top: 1rem; font-family: 'JetBrains Mono', monospace; font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: 6px; background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.35); }
+
+        /* Showcase */
+        .showcase { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; }
+        .showcase h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 1.4rem; }
+        .showcase p { color: var(--text-dim); font-size: 1.08rem; margin-bottom: 1.5rem; }
+        .check-list { list-style: none; display: grid; gap: .85rem; }
+        .check-list li { display: flex; gap: .8rem; color: var(--text-dim); }
+        .check-list i { color: var(--primary); margin-top: .3rem; }
+        .check-list strong { color: var(--text-main); }
+        .code-window {
+            background: #0d1117; border-radius: 18px; border: 1px solid #30363d; box-shadow: var(--shadow-neo);
+            font-family: 'JetBrains Mono', monospace; font-size: .84rem; color: #e6edf3; overflow: hidden;
+        }
+        .code-tabs { display: flex; gap: 0; background: #0b1020; border-bottom: 1px solid #30363d; font-size: .76rem; }
+        .code-tabs span { padding: .7rem 1rem; color: var(--text-muted); border-right: 1px solid #30363d; }
+        .code-tabs span.active { color: var(--text-main); background: #0d1117; border-top: 2px solid var(--primary); }
+        .code-window pre { padding: 1.4rem; overflow-x: auto; line-height: 1.7; }
+        .k { color: #ff7b72; } .f { color: #d2a8ff; } .s { color: #a5d6ff; } .c { color: #8b949e; } .n { color: #79c0ff; } .t { color: #ffa657; }
+
+        /* ROI */
+        .roi { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; background: var(--bg-card); border: 1px solid var(--border-highlight); border-radius: 28px; padding: 2.6rem; box-shadow: var(--shadow-glow); }
+        .roi h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); margin-bottom: 1rem; }
+        .roi > div > p { color: var(--text-dim); margin-bottom: 1.8rem; }
+        .field { margin-bottom: 1.4rem; }
+        .field label { display: flex; justify-content: space-between; font-weight: 700; font-size: .95rem; margin-bottom: .55rem; }
+        .field label output { font-family: 'JetBrains Mono', monospace; color: var(--primary); }
+        input[type=range] { width: 100%; accent-color: var(--primary); height: 28px; cursor: pointer; }
+        .roi-results { display: grid; gap: 1rem; align-content: center; }
+        .roi-box { background: rgba(3,7,18,0.6); border: 1px solid var(--border); border-radius: 18px; padding: 1.4rem 1.6rem; }
+        .roi-box span { display: block; color: var(--text-muted); font-size: .85rem; font-weight: 600; margin-bottom: .3rem; }
+        .roi-box strong { font-size: clamp(1.8rem, 3.5vw, 2.5rem); font-weight: 800; letter-spacing: -0.03em; }
+        .roi-box.hl { border-color: var(--border-highlight); background: rgba(34,197,94,0.07); }
+        .roi-box.hl strong { color: var(--primary); }
+
+        /* Pricing */
+        .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; align-items: stretch; }
+        .plan { background: var(--bg-card); border: 1px solid var(--border); border-radius: 26px; padding: 2.4rem 2rem; display: flex; flex-direction: column; transition: var(--transition); }
+        .plan:hover { transform: translateY(-6px); }
+        .plan.featured { border: 2px solid var(--primary); box-shadow: var(--shadow-glow); position: relative; background: linear-gradient(180deg, rgba(34,197,94,0.08), rgba(15,23,42,0.85)); }
+        .plan .ribbon { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: var(--gradient-linear); color: #04130a; font-weight: 800; font-size: .76rem; padding: .3rem .9rem; border-radius: 999px; letter-spacing: .06em; white-space: nowrap; }
+        .plan h3 { font-size: 1.5rem; margin-bottom: .4rem; }
+        .plan .tagline { color: var(--text-dim); font-size: .95rem; margin-bottom: 1.4rem; min-height: 3em; }
+        .plan .price { font-size: 2.4rem; font-weight: 800; margin-bottom: 1.4rem; letter-spacing: -0.03em; }
+        .plan .price small { font-size: .95rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0; }
+        .plan ul { list-style: none; display: grid; gap: .75rem; margin-bottom: 2rem; flex: 1; }
+        .plan li { display: flex; gap: .7rem; color: var(--text-dim); font-size: .95rem; }
+        .plan li i { margin-top: .28rem; color: var(--primary); }
+        .plan li.no { color: var(--text-muted); } .plan li.no i { color: var(--text-muted); }
+        .plan .btn { width: 100%; }
+
+        /* Trust */
+        .trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+        .trust-card { padding: 1.7rem; border-radius: 18px; border: 1px solid var(--border); background: rgba(11,17,32,0.6); }
+        .trust-card i { font-size: 1.4rem; color: var(--secondary); margin-bottom: .9rem; display: block; }
+        .trust-card h4 { font-size: 1.05rem; margin-bottom: .45rem; letter-spacing: -0.01em; }
+        .trust-card p { color: var(--text-dim); font-size: .9rem; }
+
+        /* FAQ */
+        .faq { max-width: 860px; margin: 0 auto; display: grid; gap: .9rem; }
+        details { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; transition: var(--transition); }
+        details[open] { border-color: var(--border-highlight); }
+        summary { list-style: none; cursor: pointer; padding: 1.3rem 1.5rem; font-weight: 700; font-size: 1.05rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 56px; }
+        summary::-webkit-details-marker { display: none; }
+        summary i { color: var(--primary); transition: transform .25s var(--ease); }
+        details[open] summary i { transform: rotate(45deg); }
+        details p { padding: 0 1.5rem 1.4rem; color: var(--text-dim); }
+
+        /* Final CTA */
+        .final-cta { text-align: center; }
+        .final-card { border-radius: 32px; padding: 4.5rem 2rem; border: 1px solid var(--border-highlight); background: radial-gradient(circle at 50% 0%, rgba(34,197,94,0.16), transparent 60%), var(--bg-elev); box-shadow: var(--shadow-glow); }
+        .final-card h2 { font-size: clamp(2.1rem, 5vw, 3.8rem); margin-bottom: 1.3rem; }
+        .final-card p { color: var(--text-dim); font-size: 1.2rem; max-width: 720px; margin: 0 auto 2.4rem; }
+        .final-card .hero-btns { justify-content: center; }
+
+        /* Footer */
+        footer { padding: 70px 0 36px; border-top: 1px solid var(--border); background: rgba(11, 17, 32, 0.85); }
+        .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem; }
+        .footer-brand p { color: var(--text-dim); margin: 1.3rem 0; max-width: 320px; }
+        .footer-links h4 { margin-bottom: 1.2rem; font-size: 1.02rem; }
+        .footer-links ul { list-style: none; }
+        .footer-links li { margin-bottom: .7rem; }
+        .footer-links a { color: var(--text-muted); text-decoration: none; transition: var(--transition); }
+        .footer-links a:hover { color: var(--primary); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding-top: 1.8rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: .88rem; }
+        .social-links { display: flex; gap: 1.2rem; }
+        .social-links a { font-size: 1.35rem; color: var(--text-muted); transition: var(--transition); display: inline-grid; place-items: center; width: 44px; height: 44px; }
+        .social-links a:hover { color: var(--primary); }
+
+        /* Sticky mobile CTA */
+        .mobile-cta { display: none; }
+
+        /* Reveal */
+        .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s var(--ease), transform .6s var(--ease); }
+        .reveal.in { opacity: 1; transform: none; }
+
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.6); } 70% { box-shadow: 0 0 0 10px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+            .reveal, .block, .file { opacity: 1 !important; transform: none !important; }
+        }
+
+        @media (max-width: 1080px) {
+            .hero-grid, .showcase, .roi { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .pain-grid, .trust-grid, .steps-grid { grid-template-columns: repeat(2, 1fr); }
+            .features-grid, .pricing-grid { grid-template-columns: 1fr 1fr; }
+            .float-chip { display: none; }
+            .footer-grid { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 760px) {
+            section { padding: 80px 0; }
+            .nav-links a:not(.btn) { display: none; }
+            .demo-shell { grid-template-columns: 1fr; }
+            .demo-canvas { border-right: none; border-bottom: 1px solid var(--border); }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .pain-grid, .trust-grid, .steps-grid, .features-grid, .pricing-grid, .footer-grid { grid-template-columns: 1fr; }
+            .roi { padding: 1.6rem; }
+            .mobile-cta {
+                display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 999; gap: .6rem;
+                padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); background: rgba(3,7,18,0.95); border-top: 1px solid var(--border); backdrop-filter: blur(12px);
+            }
+            .mobile-cta .btn { flex: 1; min-height: 48px; font-size: .95rem; padding: 0 1rem; }
+            footer { padding-bottom: 100px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav id="navbar" aria-label="Main navigation">
+        <div class="container nav-content">
+            <a href="#" class="logo" aria-label="WPipe Studio home">
+                <span class="logo-mark"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+                WPipe Studio <small>PRO</small>
+            </a>
+            <div class="nav-links">
+                <a href="#demo">Live Demo</a>
+                <a href="#how">How it Works</a>
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#faq">FAQ</a>
+                <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main btn-sm">
+                    <i class="fas fa-crown" aria-hidden="true"></i> Get Pro
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+    <!-- Hero -->
+    <section class="hero">
+        <div class="container hero-grid">
+            <div>
+                <div class="hero-badge"><span class="pulse" aria-hidden="true"></span> Visual Pipelines → Production Python Microservices</div>
+                <h1>Stop spending <span class="strike">weeks</span> on backend plumbing. <span class="gradient-text">Ship in minutes.</span></h1>
+                <p class="hero-sub">
+                    Drag blocks on a canvas. Watch your pipeline run live. Click once and get a
+                    <strong>36-file, test-verified Python microservice</strong> — FastAPI, WPipe DAG, Pydantic DTOs,
+                    Docker, Makefile and a Pytest suite — that passes <strong>ruff, mypy and pytest</strong> before you ever open it.
+                </p>
+                <div class="hero-btns">
+                    <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="btn btn-main">
+                        Try it free in your browser <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    </a>
+                    <a href="#demo" class="btn btn-outline">
+                        <i class="fas fa-play" aria-hidden="true"></i> Watch it build
+                    </a>
+                </div>
+                <div class="hero-trust">
+                    <span><i class="fas fa-lock" aria-hidden="true"></i> Your code never leaves your machine</span>
+                    <span><i class="fab fa-microsoft" aria-hidden="true"></i> VS Code native</span>
+                    <span><i class="fas fa-gift" aria-hidden="true"></i> Free plan, no card</span>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="shot-frame">
+                    <div class="shot-bar" aria-hidden="true">
+                        <span class="dot dot-red"></span><span class="dot dot-yellow"></span><span class="dot dot-green"></span>
+                        <span class="shot-url">studio.wisrovi.dev</span>
+                    </div>
+                    <img src="docs/marketing/wpipe_studio_ide_full.webp" width="1440" height="813"
+                         alt="WPipe Studio IDE: block palette on the left, visual pipeline canvas in the center, generated microservice files and live simulation panels.">
+                </div>
+                <div class="float-chip chip-1"><i class="fas fa-circle-check" aria-hidden="true"></i> 6/6 quality gates passed</div>
+                <div class="float-chip chip-2"><i class="fas fa-file-code" aria-hidden="true"></i> 36 files generated</div>
+                <div class="float-chip chip-3"><i class="fas fa-flag-checkered" aria-hidden="true"></i> Live simulation · breakpoints</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-item"><h3 class="gradient-text" data-count="36">36</h3><p>Production files per build</p></div>
+                <div class="stat-item"><h3 class="gradient-text" data-count="197">197</h3><p>Ready-made official steps</p></div>
+                <div class="stat-item"><h3 class="gradient-text" data-count="6">6</h3><p>Automated quality gates</p></div>
+                <div class="stat-item"><h3 class="gradient-text" data-count="11">11</h3><p>Visual blocks incl. Parallel &amp; AI</p></div>
+                <div class="stat-item"><h3 class="gradient-text">0&nbsp;€</h3><p>Cloud servers needed</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pain -->
+    <section id="pain">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Sound familiar?</span>
+                <h2>Your business logic takes an afternoon.<br><span class="gradient-text">Everything around it takes weeks.</span></h2>
+                <p>Every new microservice repeats the same invisible work before a single line of real value ships.</p>
+            </div>
+            <div class="pain-grid">
+                <div class="pain-card reveal"><i class="fas fa-folder-tree" aria-hidden="true"></i><h4>Project scaffolding</h4><p>Folder layout, settings, config YAML, entrypoints, packaging.</p><div class="cost">≈ 1–2 days</div></div>
+                <div class="pain-card reveal"><i class="fas fa-diagram-project" aria-hidden="true"></i><h4>Orchestration glue</h4><p>Wiring steps, conditions, loops, parallel branches and background jobs by hand.</p><div class="cost">≈ 2–4 days</div></div>
+                <div class="pain-card reveal"><i class="fas fa-shapes" aria-hidden="true"></i><h4>Typed contracts</h4><p>Request, response and context DTOs that drift from the code the moment you refactor.</p><div class="cost">≈ 1–2 days</div></div>
+                <div class="pain-card reveal"><i class="fab fa-docker" aria-hidden="true"></i><h4>Docker &amp; Makefile</h4><p>Images, compose files, env vars, run and test targets that work on every machine.</p><div class="cost">≈ 1–2 days</div></div>
+                <div class="pain-card reveal"><i class="fas fa-vial" aria-hidden="true"></i><h4>Test suite</h4><p>API, DTO, state and pipeline tests — the part that always gets postponed.</p><div class="cost">≈ 2–3 days</div></div>
+                <div class="pain-card reveal"><i class="fas fa-broom" aria-hidden="true"></i><h4>Lint &amp; type fixes</h4><p>Making ruff, mypy, black and isort happy across the whole codebase.</p><div class="cost">≈ 1 day</div></div>
+                <div class="pain-card reveal"><i class="fas fa-bug" aria-hidden="true"></i><h4>Debugging the flow</h4><p>Print statements to understand which branch ran and what the context looked like.</p><div class="cost">≈ 1–3 days</div></div>
+                <div class="pain-card reveal"><i class="fas fa-book" aria-hidden="true"></i><h4>Docs &amp; diagrams</h4><p>README, architecture diagram and work plan nobody updates after release.</p><div class="cost">≈ 1 day</div></div>
+            </div>
+            <div class="pain-total reveal">Add it up: <strong>roughly 2–3 weeks per microservice</strong> of work your customers never see. <strong class="gradient-text">WPipe Studio does all of it while you watch.</strong></div>
+        </div>
+    </section>
+
+    <!-- Live build demo -->
+    <section id="demo" class="demo">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-bolt" aria-hidden="true"></i> Watch it build</span>
+                <h2>From blank canvas to <span class="gradient-text">verified microservice</span></h2>
+                <p>This is the real workflow: design the pipeline with blocks, then the local engine generates and verifies the whole project.</p>
+            </div>
+            <div class="demo-shell reveal" aria-label="Animated demonstration of WPipe Studio generating a microservice">
+                <div class="demo-toolbar">
+                    <div class="demo-title"><i class="fas fa-layer-group" style="color: var(--primary);" aria-hidden="true"></i> order_risk_pipeline.wpipe</div>
+                    <div style="display:flex; gap:.6rem; align-items:center;">
+                        <span class="demo-timer" id="demoTimer" aria-live="off">00:00</span>
+                        <button class="btn btn-outline btn-sm" id="demoReplay" type="button"><i class="fas fa-rotate-right" aria-hidden="true"></i> Replay</button>
+                    </div>
+                </div>
+                <div class="demo-canvas" id="demoCanvas">
+                    <div class="block b-trigger"><i class="fas fa-rocket" aria-hidden="true"></i> Trigger · API REST <span class="tag">POST /run</span></div>
+                    <div class="block b-step"><i class="fas fa-cube" aria-hidden="true"></i> HttpRequest <span class="tag">wpipe_steps</span></div>
+                    <div class="block b-ai"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i> AI Step · Risk scoring <span class="tag">PRO</span></div>
+                    <div class="block b-cond"><i class="fas fa-code-branch" aria-hidden="true"></i> If <span class="tag">risk &gt; 0.8</span></div>
+                    <div class="block b-par indent-1"><i class="fas fa-bolt" aria-hidden="true"></i> Parallel · accumulate <span class="tag">PRO</span></div>
+                    <div class="block b-step indent-2"><i class="fas fa-database" aria-hidden="true"></i> MySQLQuery</div>
+                    <div class="block b-step indent-2"><i class="fas fa-bell" aria-hidden="true"></i> SlackNotify</div>
+                    <div class="block b-resp"><i class="fas fa-flag-checkered" aria-hidden="true"></i> Response · HTTP 200 JSON</div>
+                    <div class="demo-status mono" id="demoStatus">Ready.</div>
+                </div>
+                <div class="demo-files">
+                    <div class="files-head"><span>generated microservice</span><span><b id="fileCount">0</b> / 36 files</span></div>
+                    <div id="fileList"></div>
+                    <div class="gates" id="gates">
+                        <span class="gate">AST</span><span class="gate">ruff</span><span class="gate">mypy</span><span class="gate">black/isort</span><span class="gate">pytest ≥60%</span><span class="gate">dry_run</span>
+                    </div>
+                </div>
+            </div>
+            <div class="demo-cta reveal">
+                <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="btn btn-main">Build yours now — free <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Before / After -->
+    <section id="compare">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-scale-balanced" aria-hidden="true"></i> Before vs. after</span>
+                <h2>The same microservice. <span class="gradient-text">Two very different weeks.</span></h2>
+                <p>Ask yourself honestly how long each of these took on your last project.</p>
+            </div>
+            <div class="compare-wrap reveal">
+                <table class="compare">
+                    <caption class="sr-only">Typical manual effort compared with WPipe Studio</caption>
+                    <thead><tr><th scope="col">Task</th><th scope="col">By hand (typical)</th><th scope="col">With WPipe Studio</th><th scope="col">How</th></tr></thead>
+                    <tbody>
+                        <tr><td>Design the pipeline flow</td><td class="manual">whiteboard + code</td><td class="studio">minutes</td><td>Drag &amp; snap blocks, real C-shaped control blocks</td></tr>
+                        <tr><td>Project scaffolding (36 files)</td><td class="manual">1–2 days</td><td class="studio">1 click</td><td>FastAPI + WPipe DAG + config + packaging</td></tr>
+                        <tr><td>Conditions, loops, parallel, background</td><td class="manual">2–4 days</td><td class="studio">1 click</td><td>Condition · For · While · Parallel · Background compiled to WPipe</td></tr>
+                        <tr><td>Typed DTO contracts</td><td class="manual">1–2 days</td><td class="studio">1 click</td><td>Pydantic Context / Request / Response DTOs</td></tr>
+                        <tr><td>Docker, compose &amp; Makefile</td><td class="manual">1–2 days</td><td class="studio">1 click</td><td>Dockerfile, docker-compose.yml, Makefile, run_tests_docker.sh</td></tr>
+                        <tr><td>Test suite</td><td class="manual">2–3 days</td><td class="studio">1 click</td><td>API, DTO, state and pipeline tests included</td></tr>
+                        <tr><td>Lint, typing &amp; coverage</td><td class="manual">≈ 1 day</td><td class="studio">automatic</td><td>6 quality gates verified before delivery</td></tr>
+                        <tr><td>Debugging the flow</td><td class="manual">1–3 days</td><td class="studio">live</td><td>Step-by-step simulation, breakpoints, context inspector</td></tr>
+                        <tr><td>README, DAG diagram &amp; work plan</td><td class="manual">≈ 1 day</td><td class="studio">automatic</td><td>Mermaid DAG + executable work plan generated</td></tr>
+                    </tbody>
+                    <tfoot><tr><td>Total</td><td class="manual">≈ 2–3 weeks</td><td class="studio">≈ minutes</td><td>Spend the saved time on the logic that makes you money</td></tr></tfoot>
+                </table>
+            </div>
+            <p class="note">Manual estimates are typical figures for an experienced Python developer building one microservice from scratch; your mileage will vary. Use the calculator below with your own numbers.</p>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" style="background: rgba(6,182,212,0.025);">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-route" aria-hidden="true"></i> How it works</span>
+                <h2>Four steps. <span class="gradient-text">Zero boilerplate.</span></h2>
+            </div>
+            <div class="steps-grid">
+                <div class="step-card reveal"><span class="step-num">01 · DESIGN</span><i class="fas fa-puzzle-piece big" aria-hidden="true"></i><h3>Snap blocks together</h3><p>Pick from 197 official steps, describe custom ones with AI, or attach your own <span class="mono">.py</span>. Control flow is visual and real.</p></div>
+                <div class="step-card reveal"><span class="step-num">02 · SIMULATE</span><i class="fas fa-flag-checkered big" aria-hidden="true"></i><h3>Run it live</h3><p>Green flag, breakpoints, step-over and a live context table. See exactly what every step reads and writes.</p></div>
+                <div class="step-card reveal"><span class="step-num">03 · GENERATE</span><i class="fas fa-wand-magic-sparkles big" aria-hidden="true"></i><h3>Compile to Python</h3><p>The local engine emits a complete, idiomatic microservice — and preserves your hand-written code on regeneration.</p></div>
+                <div class="step-card reveal"><span class="step-num">04 · SHIP</span><i class="fas fa-rocket big" aria-hidden="true"></i><h3>Verified &amp; deployable</h3><p>Lint, typing, tests and dry-run pass before you download. <span class="mono">make into</span>, <span class="mono">docker compose up</span>, done.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-star" aria-hidden="true"></i> Everything included</span>
+                <h2>A full IDE for pipelines, <span class="gradient-text">not a toy diagram tool</span></h2>
+                <p>Every block maps to real, production WPipe code. What you see on the canvas is exactly what runs.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card reveal"><div class="feature-icon"><i class="fas fa-puzzle-piece" aria-hidden="true"></i></div><h3>Real control-flow blocks</h3><p>Condition (single &amp; dual branch), For, While, Parallel with merge policies and non-blocking Background tasks — nested as deep as your logic needs.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-cyan"><i class="fas fa-bug" aria-hidden="true"></i></div><h3>Live simulation &amp; debugger</h3><p>Step through the pipeline with breakpoints (F5 / F10), payload presets for REST, Kafka, Redis and Cron, and a mutation table of the context at every step.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-violet"><i class="fas fa-file-code" aria-hidden="true"></i></div><h3>36-file production project</h3><p>FastAPI app, WPipe DAG, Pydantic DTOs, services, utils, config YAML, Dockerfile, compose, Makefile, pyproject and a full test suite.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-amber"><i class="fas fa-shield-halved" aria-hidden="true"></i></div><h3>6 quality gates</h3><p>AST syntax, ruff, mypy, black/isort, pytest with ≥ 60% coverage and a WPipe dry-run. If it does not pass, it does not ship.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon"><i class="fas fa-boxes-stacked" aria-hidden="true"></i></div><h3>197-step official catalog</h3><p>Connectivity, databases, security, AI, vision and more — versioned, documented and configurable from inside each block.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-cyan"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></div><h3>AI &amp; custom steps</h3><p>Describe a step in plain language or attach your own Python file. Studio emits typed states and DTO contracts for it.</p><span class="pill">PRO</span></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-violet"><i class="fas fa-code-merge" aria-hidden="true"></i></div><h3>Smart AST merge</h3><p>Regenerate after changing the canvas without losing the code you wrote by hand. Studio merges at the syntax-tree level.</p><span class="pill">PRO</span></div>
+                <div class="feature-card reveal"><div class="feature-icon fi-amber"><i class="fas fa-diagram-project" aria-hidden="true"></i></div><h3>DAG &amp; work plan</h3><p>Interactive Mermaid flowchart with pan, zoom and SVG export, plus an executable architecture work plan for your team.</p></div>
+                <div class="feature-card reveal"><div class="feature-icon"><i class="fas fa-terminal" aria-hidden="true"></i></div><h3>Terminal, tests &amp; .env inside</h3><p>VS Code-style workspace with integrated terminal, pytest runner, problems panel, run history and a visual <span class="mono">.env</span> manager.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Code showcase -->
+    <section style="padding-top: 40px;">
+        <div class="container showcase">
+            <div class="reveal">
+                <span class="eyebrow"><i class="fas fa-code" aria-hidden="true"></i> Real code, not lock-in</span>
+                <h2>It writes the code <span class="gradient-text">you would have written</span> — on a good day.</h2>
+                <p>Clean, typed, readable Python on top of the open-source WPipe engine. No runtime dependency on Studio: the generated project is yours.</p>
+                <ul class="check-list">
+                    <li><i class="fas fa-circle-check" aria-hidden="true"></i><span><strong>Idiomatic WPipe</strong> — <span class="mono">Pipeline</span>, <span class="mono">Condition</span>, <span class="mono">Parallel</span>, <span class="mono">Background</span>.</span></li>
+                    <li><i class="fas fa-circle-check" aria-hidden="true"></i><span><strong>Typed contracts</strong> with Pydantic DTOs for context, request and response.</span></li>
+                    <li><i class="fas fa-circle-check" aria-hidden="true"></i><span><strong>Single source of config</strong> in <span class="mono">app/config/config.yaml</span>.</span></li>
+                    <li><i class="fas fa-circle-check" aria-hidden="true"></i><span><strong>Runs anywhere</strong> — <span class="mono">make into</span>, Docker or plain <span class="mono">uvicorn</span>.</span></li>
+                </ul>
+            </div>
+            <div class="code-window reveal" role="img" aria-label="Example of generated app/pipelines.py code">
+                <div class="code-tabs"><span class="active">app/pipelines.py</span><span>app/dto/context.py</span><span>Makefile</span></div>
+<pre><span class="k">from</span> wpipe <span class="k">import</span> Pipeline, Condition, Parallel
+<span class="k">from</span> dto.context <span class="k">import</span> PipelineContextDTO
+<span class="k">from</span> wpipe_steps.connectivity <span class="k">import</span> HttpRequest
+<span class="k">from</span> states.ai_sentiment_step <span class="k">import</span> AISentimentStep
+
+
+<span class="k">def</span> <span class="f">build_pipeline</span>() -&gt; <span class="t">Pipeline</span>:
+    <span class="c">"""Generated by WPipe Studio from order_risk_pipeline.wpipe"""</span>
+    pipe = Pipeline(verbose=<span class="n">True</span>)
+    pipe.set_steps([
+        HttpRequest(),
+        AISentimentStep(threshold=<span class="n">0.8</span>),
+        Condition(
+            expression=<span class="s">"risk &gt; 0.8"</span>,
+            branch_true=[
+                Parallel(
+                    steps=[MySQLQuery(), SlackNotify()],
+                    merge_policy=<span class="s">"accumulate"</span>,
+                ),
+            ],
+        ),
+    ])
+    <span class="k">return</span> pipe</pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- ROI calculator -->
+    <section id="roi">
+        <div class="container">
+            <div class="roi reveal">
+                <div>
+                    <span class="eyebrow"><i class="fas fa-calculator" aria-hidden="true"></i> Do the math</span>
+                    <h2>How much is boilerplate <span class="gradient-text">costing you?</span></h2>
+                    <p>Move the sliders with your own numbers. The savings below assume Studio removes the scaffolding, wiring, testing and debugging time you set.</p>
+                    <div class="field">
+                        <label for="rate">Developer cost per hour <output id="rateOut" for="rate">50 €</output></label>
+                        <input type="range" id="rate" min="15" max="150" step="5" value="50">
+                    </div>
+                    <div class="field">
+                        <label for="services">New pipelines / microservices per month <output id="servicesOut" for="services">2</output></label>
+                        <input type="range" id="services" min="1" max="20" step="1" value="2">
+                    </div>
+                    <div class="field">
+                        <label for="hours">Hours of plumbing per microservice <output id="hoursOut" for="hours">80 h</output></label>
+                        <input type="range" id="hours" min="8" max="160" step="4" value="80">
+                    </div>
+                </div>
+                <div class="roi-results" aria-live="polite">
+                    <div class="roi-box"><span>Hours recovered per month</span><strong id="hoursSaved">160 h</strong></div>
+                    <div class="roi-box hl"><span>Money recovered per month</span><strong id="moneySaved">8,000 €</strong></div>
+                    <div class="roi-box"><span>Money recovered per year</span><strong id="yearSaved">96,000 €</strong></div>
+                    <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main"><i class="fas fa-crown" aria-hidden="true"></i> Stop paying the boilerplate tax</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section id="pricing">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-tags" aria-hidden="true"></i> Pricing</span>
+                <h2>Start free. <span class="gradient-text">Go Pro when it clicks.</span></h2>
+                <p>One saved week pays for the license many times over.</p>
+            </div>
+            <div class="pricing-grid">
+                <div class="plan reveal">
+                    <h3>Free</h3>
+                    <p class="tagline">Explore the canvas and ship small pipelines.</p>
+                    <div class="price">0 € <small>forever</small></div>
+                    <ul>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Up to 5 blocks per pipeline</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Condition, For &amp; While blocks</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Real code generation &amp; simulation with the local engine</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Browser demo mode at studio.wisrovi.dev</li>
+                        <li class="no"><i class="fas fa-minus" aria-hidden="true"></i> Parallel, Background &amp; AI steps</li>
+                        <li class="no"><i class="fas fa-minus" aria-hidden="true"></i> Unlimited pipeline size</li>
+                    </ul>
+                    <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="btn btn-outline">Start for free</a>
+                </div>
+                <div class="plan featured reveal">
+                    <span class="ribbon">MOST POPULAR</span>
+                    <h3>Pro</h3>
+                    <p class="tagline">For developers who ship microservices for a living.</p>
+                    <div class="price"><i class="fas fa-crown" style="color: var(--amber); font-size: 1.6rem;" aria-hidden="true"></i> Pro <small>license</small></div>
+                    <ul>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> <strong>Unlimited</strong> blocks and pipeline complexity</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Parallel concurrency &amp; Background workers</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> AI-described steps &amp; custom Python steps</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Smart AST merge keeps your hand-written code</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Live debugging with breakpoints</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Works offline with a cryptographically signed lease</li>
+                    </ul>
+                    <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main"><i class="fas fa-crown" aria-hidden="true"></i> Get WPipe Studio Pro</a>
+                </div>
+                <div class="plan reveal">
+                    <h3>Team &amp; Enterprise</h3>
+                    <p class="tagline">Floating seats for your whole engineering team.</p>
+                    <div class="price">Seats <small>on demand</small></div>
+                    <ul>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Everything in Pro</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Concurrent floating seats shared by the team</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> Self-service portal: release seats in one click</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> One-click developer onboarding links</li>
+                        <li><i class="fas fa-check" aria-hidden="true"></i> IT inventory export (CSV / JSON)</li>
+                    </ul>
+                    <a href="mailto:wisrovi.rodriguez@gmail.com?subject=WPipe%20Studio%20Team%20Licensing" class="btn btn-outline">Talk to us</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust -->
+    <section id="trust" style="padding-top: 30px;">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-user-shield" aria-hidden="true"></i> Built for serious teams</span>
+                <h2>Local-first. <span class="gradient-text">Private by design.</span></h2>
+            </div>
+            <div class="trust-grid">
+                <div class="trust-card reveal"><i class="fas fa-house-laptop" aria-hidden="true"></i><h4>Your code stays home</h4><p>Generation, simulation and projects run in the local engine on <span class="mono">127.0.0.1</span>. No source code is uploaded.</p></div>
+                <div class="trust-card reveal"><i class="fas fa-key" aria-hidden="true"></i><h4>Ed25519 licensing</h4><p>Signed, machine-bound leases verified offline. No phone-home on every keystroke.</p></div>
+                <div class="trust-card reveal"><i class="fab fa-microsoft" aria-hidden="true"></i><h4>VS Code native</h4><p>Open any <span class="mono">.wpipe</span> file as a visual editor, or use the installable web app.</p></div>
+                <div class="trust-card reveal"><i class="fas fa-code-fork" aria-hidden="true"></i><h4>No lock-in</h4><p>The output is plain Python on the open-source WPipe engine. Keep it even if you stop using Studio.</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="eyebrow"><i class="fas fa-circle-question" aria-hidden="true"></i> FAQ</span>
+                <h2>Questions, <span class="gradient-text">answered</span></h2>
+            </div>
+            <div class="faq">
+                <details class="reveal"><summary>Is this a low-code tool that hides the code from me? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>No. Studio generates a normal Python project you can read, edit, version and deploy anywhere. The canvas is a faster way to design it, not a black box.</p></details>
+                <details class="reveal"><summary>What exactly do I get when I click generate? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>A 36-file microservice: FastAPI app, WPipe pipeline (DAG), Pydantic DTOs, states, services, config YAML, Dockerfile, docker-compose, Makefile, pyproject, pytest config and a test suite — verified by 6 quality gates.</p></details>
+                <details class="reveal"><summary>Do I need to install anything? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>You can explore the canvas in your browser right away. Real code generation, real simulation and project storage run in the lightweight local engine (wpipe-engine) or the VS Code extension, so your code never leaves your machine.</p></details>
+                <details class="reveal"><summary>What happens to code I modify by hand? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>With Pro, Smart AST merge preserves your custom code when you regenerate after changing the canvas.</p></details>
+                <details class="reveal"><summary>Does it work offline? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>Yes. The Pro license is a cryptographically signed lease bound to your machine, verified locally, with a grace period for when you are offline.</p></details>
+                <details class="reveal"><summary>Can my whole team use it? <i class="fas fa-plus" aria-hidden="true"></i></summary><p>Yes. Team and Enterprise plans use floating seats managed from a self-service portal, so seats move between developers as needed.</p></details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="final-cta">
+        <div class="container">
+            <div class="final-card reveal">
+                <span class="eyebrow"><i class="fas fa-hourglass-end" aria-hidden="true"></i> Your next microservice is waiting</span>
+                <h2>How did you ever build<br><span class="gradient-text">microservices any other way?</span></h2>
+                <p>What used to take you weeks, WPipe Studio does in minutes. Try it free today — and get Pro the moment you feel it.</p>
+                <div class="hero-btns">
+                    <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main"><i class="fas fa-crown" aria-hidden="true"></i> Get WPipe Studio Pro</a>
+                    <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="btn btn-outline">Try free in the browser</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <a href="#" class="logo"><span class="logo-mark"><i class="fas fa-layer-group" aria-hidden="true"></i></span> WPipe Studio</a>
+                    <p>Visual pipeline engineering that ships verified, production-ready Python microservices in minutes.</p>
+                    <div class="social-links">
+                        <a href="https://github.com/wisrovi" target="_blank" rel="noopener" aria-label="GitHub"><i class="fab fa-github" aria-hidden="true"></i></a>
+                        <a href="https://es.linkedin.com/in/wisrovi-rodriguez" target="_blank" rel="noopener" aria-label="LinkedIn"><i class="fab fa-linkedin" aria-hidden="true"></i></a>
+                        <a href="https://twitter.com/wisrovi" target="_blank" rel="noopener" aria-label="Twitter / X"><i class="fab fa-twitter" aria-hidden="true"></i></a>
+                    </div>
+                </div>
+                <div class="footer-links">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="https://studio.wisrovi.dev" target="_blank" rel="noopener">Open Studio</a></li>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#pricing">Pricing</a></li>
+                        <li><a href="https://portal.wisrovi.dev" target="_blank" rel="noopener">License Portal</a></li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h4>Ecosystem</h4>
+                    <ul>
+                        <li><a href="https://github.com/wisrovi/wpipe" target="_blank" rel="noopener">WPipe Engine</a></li>
+                        <li><a href="https://pypi.org/project/wpipe/" target="_blank" rel="noopener">WPipe on PyPI</a></li>
+                        <li><a href="https://wpipe.readthedocs.io/" target="_blank" rel="noopener">Documentation</a></li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h4>Developer</h4>
+                    <ul>
+                        <li><a href="https://wisrovi.dev/" target="_blank" rel="noopener">wisrovi.dev</a></li>
+                        <li><a href="https://github.com/wisrovi" target="_blank" rel="noopener">GitHub Profile</a></li>
+                        <li><a href="mailto:wisrovi.rodriguez@gmail.com">Contact</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 wisrovi (William Steve Rodriguez Villamizar). All rights reserved.</p>
+                <p>WPipe Studio is part of the wisrovi SUITE.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Sticky mobile CTA -->
+    <div class="mobile-cta">
+        <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="btn btn-outline">Try free</a>
+        <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main"><i class="fas fa-crown" aria-hidden="true"></i> Get Pro</a>
+    </div>
+
+    <script>
+        // Navbar scroll effect
+        const nav = document.getElementById('navbar');
+        const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 40);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Reveal on scroll
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('in');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.12 });
+        document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el));
+
+        // Live build demo
+        const GENERATED_FILES = [
+            'Dockerfile', 'Makefile', 'README.md', 'docker-compose.yml', 'pyproject.toml', 'pytest.ini',
+            'requirements.txt', 'run_tests_docker.sh', 'wpipe.config.json', 'app/__init__.py', 'app/main.py',
+            'app/pipelines.py', 'app/config/__init__.py', 'app/config/config.yaml', 'app/config/settings.py',
+            'app/dto/__init__.py', 'app/dto/context.py', 'app/dto/request.py', 'app/dto/response.py',
+            'app/model/.gitkeep', 'app/services/__init__.py', 'app/services/business_service.py',
+            'app/states/__init__.py', 'app/states/base.py', 'app/states/ai_sentiment_step.py',
+            'app/states/clean_data_step.py', 'app/states/transform_payload_step.py', 'app/utils/__init__.py',
+            'app/utils/helpers.py', 'app/test/__init__.py', 'app/test/test_api.py', 'app/test/test_dto.py',
+            'app/test/test_pipeline.py', 'app/test/test_states.py', 'tests/__init__.py', 'tests/test_pipeline.py'
+        ];
+        const iconFor = (f) => {
+            if (f.endsWith('.py')) return '<i class="fab fa-python" style="color:#4B8BBE"></i>';
+            if (f.includes('Docker') || f.includes('docker')) return '<i class="fab fa-docker" style="color:#2496ED"></i>';
+            if (f.endsWith('.md')) return '<i class="fas fa-book" style="color:#a78bfa"></i>';
+            if (f.endsWith('.sh') || f === 'Makefile') return '<i class="fas fa-terminal" style="color:#22c55e"></i>';
+            return '<i class="fas fa-gear" style="color:#f59e0b"></i>';
+        };
+        const fileList = document.getElementById('fileList');
+        // Show a representative subset in the panel (counter still reaches 36)
+        const VISIBLE = GENERATED_FILES.filter((f, i) => i < 9 || ['app/pipelines.py', 'app/dto/context.py', 'app/states/ai_sentiment_step.py', 'app/test/test_pipeline.py', 'app/main.py'].includes(f));
+        fileList.innerHTML = [...new Set(VISIBLE)].map((f) => `<div class="file">${iconFor(f)}<span>${f}</span></div>`).join('');
+
+        const blocks = [...document.querySelectorAll('#demoCanvas .block')];
+        const fileEls = [...fileList.querySelectorAll('.file')];
+        const gates = [...document.querySelectorAll('#gates .gate')];
+        const statusEl = document.getElementById('demoStatus');
+        const timerEl = document.getElementById('demoTimer');
+        const countEl = document.getElementById('fileCount');
+        let timers = [];
+        let clock = null;
+
+        const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+        const setStatus = (html) => { statusEl.innerHTML = html; };
+
+        function resetDemo() {
+            timers.forEach(clearTimeout); timers = [];
+            if (clock) clearInterval(clock);
+            blocks.forEach((b) => b.classList.remove('show'));
+            fileEls.forEach((f) => f.classList.remove('show'));
+            gates.forEach((g) => g.classList.remove('pass'));
+            countEl.textContent = '0';
+            timerEl.textContent = '00:00';
+            setStatus('Ready.');
+        }
+
+        function runDemo() {
+            resetDemo();
+            if (reduceMotion) {
+                blocks.forEach((b) => b.classList.add('show'));
+                fileEls.forEach((f) => f.classList.add('show'));
+                gates.forEach((g) => g.classList.add('pass'));
+                countEl.textContent = '36';
+                timerEl.textContent = '04:12';
+                setStatus('<span class="ok">✓ Microservice verified: 6/6 gates passed. Ready to ship.</span>');
+                return;
+            }
+            // Simulated wall-clock: the whole design-to-ship flow compressed into ~12s of animation
+            let simSeconds = 0;
+            clock = setInterval(() => {
+                simSeconds += 21;
+                const m = String(Math.floor(simSeconds / 60)).padStart(2, '0');
+                const s = String(simSeconds % 60).padStart(2, '0');
+                timerEl.textContent = `${m}:${s}`;
+            }, 1000);
+
+            setStatus('Designing pipeline on the canvas…');
+            blocks.forEach((b, i) => later(() => b.classList.add('show'), 400 + i * 420));
+            const tSim = 400 + blocks.length * 420 + 300;
+            later(() => setStatus('🏁 Live simulation: 8/8 steps passed, context inspected.'), tSim);
+            later(() => setStatus('Generating microservice in the local engine…'), tSim + 1300);
+            const tGen = tSim + 1500;
+            for (let n = 1; n <= 36; n++) {
+                later(() => {
+                    countEl.textContent = String(n);
+                    const idx = Math.floor((n / 36) * fileEls.length) - 1;
+                    if (fileEls[idx]) fileEls[idx].classList.add('show');
+                }, tGen + n * 70);
+            }
+            const tGates = tGen + 36 * 70 + 300;
+            gates.forEach((g, i) => later(() => g.classList.add('pass'), tGates + i * 380));
+            later(() => {
+                fileEls.forEach((f) => f.classList.add('show'));
+                clearInterval(clock);
+                setStatus('<span class="ok">✓ Microservice verified: 6/6 gates passed. Ready to ship.</span>');
+            }, tGates + gates.length * 380 + 200);
+        }
+
+        document.getElementById('demoReplay').addEventListener('click', runDemo);
+        const demoObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) { runDemo(); demoObserver.disconnect(); }
+            });
+        }, { threshold: 0.35 });
+        demoObserver.observe(document.getElementById('demoCanvas'));
+
+        // ROI calculator
+        const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+        const rate = document.getElementById('rate');
+        const services = document.getElementById('services');
+        const hours = document.getElementById('hours');
+        function updateRoi() {
+            const r = Number(rate.value), s = Number(services.value), h = Number(hours.value);
+            document.getElementById('rateOut').textContent = `${r} €`;
+            document.getElementById('servicesOut').textContent = `${s}`;
+            document.getElementById('hoursOut').textContent = `${h} h`;
+            const saved = s * h;
+            document.getElementById('hoursSaved').textContent = `${fmt.format(saved)} h`;
+            document.getElementById('moneySaved').textContent = `${fmt.format(saved * r)} €`;
+            document.getElementById('yearSaved').textContent = `${fmt.format(saved * r * 12)} €`;
+        }
+        [rate, services, hours].forEach((el) => el.addEventListener('input', updateRoi));
+        updateRoi();
+    </script>
+</body>
+</html>

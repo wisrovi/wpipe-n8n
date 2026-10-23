@@ -1,0 +1,8 @@
+output/
+pipeline_configs/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/coverage_html/
+.coverage
+.env

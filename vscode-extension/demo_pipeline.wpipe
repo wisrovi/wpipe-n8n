@@ -1,0 +1,396 @@
+{
+  "format": "wpipe",
+  "project": {
+    "id": "proj_demo_pipeline",
+    "name": "Demo Pipeline",
+    "version": "1.0.0",
+    "description": "Visual pipeline designed with WPipe Studio inside VS Code",
+    "protocol": "fastapi",
+    "docker_image": "python:3.11-slim",
+    "steps": [
+      {
+        "id": "step_1",
+        "type": "HttpRequest",
+        "name": "Extract Raw Data",
+        "namespace": "wpipe_steps.connectivity",
+        "params": {
+          "url": "https://api.example.com/data"
+        }
+      },
+      {
+        "id": "step_2",
+        "type": "AISentimentStep",
+        "name": "Filter Clean Records",
+        "namespace": "wpipe_steps.ai",
+        "params": {
+          "threshold": 0.5
+        }
+      },
+      {
+        "id": "step_3",
+        "type": "SaveDatabaseStep",
+        "name": "Persist to PostgreSQL",
+        "namespace": "wpipe_steps.database",
+        "params": {
+          "table": "processed_events"
+        }
+      }
+    ],
+    "canvas_ir": {
+      "nodes": [
+        {
+          "id": "node_trigger",
+          "data": {
+            "node_type": "trigger",
+            "label": "Trigger REST (/run)",
+            "trigger_type": "api",
+            "trigger_param": "/run"
+          }
+        },
+        {
+          "id": "step_1",
+          "data": {
+            "node_type": "step",
+            "label": "HttpRequest",
+            "step_name": "HttpRequest",
+            "namespace": "wpipe_steps.connectivity"
+          }
+        },
+        {
+          "id": "step_2",
+          "data": {
+            "node_type": "step",
+            "label": "AISentimentStep",
+            "step_name": "AISentimentStep",
+            "namespace": "wpipe_steps.ai"
+          }
+        },
+        {
+          "id": "step_3",
+          "data": {
+            "node_type": "step",
+            "label": "SaveDatabaseStep",
+            "step_name": "SaveDatabaseStep",
+            "namespace": "wpipe_steps.database"
+          }
+        },
+        {
+          "id": "node_response",
+          "data": {
+            "node_type": "response",
+            "label": "Response Cap (HTTP 200)",
+            "response_type": "http_json"
+          }
+        }
+      ],
+      "workspace_state": {
+        "blocks": {
+          "languageVersion": 0,
+          "blocks": [
+            {
+              "type": "wpipe_trigger",
+              "id": "block_trigger",
+              "x": 80,
+              "y": 50,
+              "fields": {
+                "TRIGGER_TYPE": "api",
+                "TRIGGER_PARAM": "/run"
+              },
+              "next": {
+                "block": {
+                  "type": "wpipe_step",
+                  "id": "step_1",
+                  "fields": {
+                    "STEP_NAME": "HttpRequest",
+                    "NAMESPACE": "wpipe_steps.connectivity"
+                  },
+                  "next": {
+                    "block": {
+                      "type": "wpipe_step",
+                      "id": "step_2",
+                      "fields": {
+                        "STEP_NAME": "AISentimentStep",
+                        "NAMESPACE": "wpipe_steps.ai"
+                      },
+                      "next": {
+                        "block": {
+                          "type": "wpipe_step",
+                          "id": "step_3",
+                          "fields": {
+                            "STEP_NAME": "SaveDatabaseStep",
+                            "NAMESPACE": "wpipe_steps.database"
+                          },
+                          "next": {
+                            "block": {
+                              "type": "wpipe_response",
+                              "id": "block_response",
+                              "fields": {
+                                "RESPONSE_TYPE": "http_json",
+                                "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "workspace_state": {
+      "blocks": {
+        "languageVersion": 0,
+        "blocks": [
+          {
+            "type": "wpipe_trigger",
+            "id": "block_trigger",
+            "x": 80,
+            "y": 50,
+            "fields": {
+              "TRIGGER_TYPE": "api",
+              "TRIGGER_PARAM": "/run"
+            },
+            "next": {
+              "block": {
+                "type": "wpipe_step",
+                "id": "step_1",
+                "fields": {
+                  "STEP_NAME": "HttpRequest",
+                  "NAMESPACE": "wpipe_steps.connectivity"
+                },
+                "next": {
+                  "block": {
+                    "type": "wpipe_step",
+                    "id": "step_2",
+                    "fields": {
+                      "STEP_NAME": "AISentimentStep",
+                      "NAMESPACE": "wpipe_steps.ai"
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_step",
+                        "id": "step_3",
+                        "fields": {
+                          "STEP_NAME": "SaveDatabaseStep",
+                          "NAMESPACE": "wpipe_steps.database"
+                        },
+                        "next": {
+                          "block": {
+                            "type": "wpipe_response",
+                            "id": "block_response",
+                            "fields": {
+                              "RESPONSE_TYPE": "http_json",
+                              "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "name": "Demo Pipeline",
+  "version": "1.0.0",
+  "description": "Visual pipeline designed with WPipe Studio inside VS Code",
+  "steps": [
+    {
+      "id": "step_1",
+      "type": "HttpRequest",
+      "name": "Extract Raw Data",
+      "namespace": "wpipe_steps.connectivity",
+      "params": {
+        "url": "https://api.example.com/data"
+      }
+    },
+    {
+      "id": "step_2",
+      "type": "AISentimentStep",
+      "name": "Filter Clean Records",
+      "namespace": "wpipe_steps.ai",
+      "params": {
+        "threshold": 0.5
+      }
+    },
+    {
+      "id": "step_3",
+      "type": "SaveDatabaseStep",
+      "name": "Persist to PostgreSQL",
+      "namespace": "wpipe_steps.database",
+      "params": {
+        "table": "processed_events"
+      }
+    }
+  ],
+  "canvas_ir": {
+    "nodes": [
+      {
+        "id": "node_trigger",
+        "data": {
+          "node_type": "trigger",
+          "label": "Trigger REST (/run)",
+          "trigger_type": "api",
+          "trigger_param": "/run"
+        }
+      },
+      {
+        "id": "step_1",
+        "data": {
+          "node_type": "step",
+          "label": "HttpRequest",
+          "step_name": "HttpRequest",
+          "namespace": "wpipe_steps.connectivity"
+        }
+      },
+      {
+        "id": "step_2",
+        "data": {
+          "node_type": "step",
+          "label": "AISentimentStep",
+          "step_name": "AISentimentStep",
+          "namespace": "wpipe_steps.ai"
+        }
+      },
+      {
+        "id": "step_3",
+        "data": {
+          "node_type": "step",
+          "label": "SaveDatabaseStep",
+          "step_name": "SaveDatabaseStep",
+          "namespace": "wpipe_steps.database"
+        }
+      },
+      {
+        "id": "node_response",
+        "data": {
+          "node_type": "response",
+          "label": "Response Cap (HTTP 200)",
+          "response_type": "http_json"
+        }
+      }
+    ],
+    "workspace_state": {
+      "blocks": {
+        "languageVersion": 0,
+        "blocks": [
+          {
+            "type": "wpipe_trigger",
+            "id": "block_trigger",
+            "x": 80,
+            "y": 50,
+            "fields": {
+              "TRIGGER_TYPE": "api",
+              "TRIGGER_PARAM": "/run"
+            },
+            "next": {
+              "block": {
+                "type": "wpipe_step",
+                "id": "step_1",
+                "fields": {
+                  "STEP_NAME": "HttpRequest",
+                  "NAMESPACE": "wpipe_steps.connectivity"
+                },
+                "next": {
+                  "block": {
+                    "type": "wpipe_step",
+                    "id": "step_2",
+                    "fields": {
+                      "STEP_NAME": "AISentimentStep",
+                      "NAMESPACE": "wpipe_steps.ai"
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_step",
+                        "id": "step_3",
+                        "fields": {
+                          "STEP_NAME": "SaveDatabaseStep",
+                          "NAMESPACE": "wpipe_steps.database"
+                        },
+                        "next": {
+                          "block": {
+                            "type": "wpipe_response",
+                            "id": "block_response",
+                            "fields": {
+                              "RESPONSE_TYPE": "http_json",
+                              "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "workspace_state": {
+    "blocks": {
+      "languageVersion": 0,
+      "blocks": [
+        {
+          "type": "wpipe_trigger",
+          "id": "block_trigger",
+          "x": 80,
+          "y": 50,
+          "fields": {
+            "TRIGGER_TYPE": "api",
+            "TRIGGER_PARAM": "/run"
+          },
+          "next": {
+            "block": {
+              "type": "wpipe_step",
+              "id": "step_1",
+              "fields": {
+                "STEP_NAME": "HttpRequest",
+                "NAMESPACE": "wpipe_steps.connectivity"
+              },
+              "next": {
+                "block": {
+                  "type": "wpipe_step",
+                  "id": "step_2",
+                  "fields": {
+                    "STEP_NAME": "AISentimentStep",
+                    "NAMESPACE": "wpipe_steps.ai"
+                  },
+                  "next": {
+                    "block": {
+                      "type": "wpipe_step",
+                      "id": "step_3",
+                      "fields": {
+                        "STEP_NAME": "SaveDatabaseStep",
+                        "NAMESPACE": "wpipe_steps.database"
+                      },
+                      "next": {
+                        "block": {
+                          "type": "wpipe_response",
+                          "id": "block_response",
+                          "fields": {
+                            "RESPONSE_TYPE": "http_json",
+                            "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

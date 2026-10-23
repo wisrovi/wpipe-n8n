@@ -4,6 +4,7 @@
 -- Author: William Rodriguez (wisrovi.dev)
 -- ============================================================================
 
+DROP TABLE IF EXISTS plan_entitlements;
 DROP TABLE IF EXISTS otp_codes;
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS leases;
@@ -90,6 +91,28 @@ CREATE TABLE otp_codes (
 
 CREATE INDEX idx_otp_email ON otp_codes(email);
 CREATE INDEX idx_otp_expires ON otp_codes(expires_at);
+
+-- 6. Plan Entitlements (database-driven Free / Pro limits, embedded as signed `ent` claim)
+CREATE TABLE plan_entitlements (
+    plan TEXT PRIMARY KEY,                       -- 'free', 'pro', 'team', 'enterprise', 'vip'
+    max_blocks INTEGER,                          -- NULL = unlimited
+    parallel_blocks INTEGER NOT NULL DEFAULT 0,  -- 1 = allowed
+    background_blocks INTEGER NOT NULL DEFAULT 0,
+    ai_steps INTEGER NOT NULL DEFAULT 0,
+    real_simulation INTEGER NOT NULL DEFAULT 1,
+    zip_export INTEGER NOT NULL DEFAULT 1,
+    max_projects INTEGER,                        -- NULL = unlimited
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO plan_entitlements
+    (plan, max_blocks, parallel_blocks, background_blocks, ai_steps, real_simulation, zip_export, max_projects)
+VALUES
+    ('free',       5,    0, 0, 0, 1, 1, NULL),
+    ('pro',        NULL, 1, 1, 1, 1, 1, NULL),
+    ('team',       NULL, 1, 1, 1, 1, 1, NULL),
+    ('enterprise', NULL, 1, 1, 1, 1, 1, NULL),
+    ('vip',        NULL, 1, 1, 1, 1, 1, NULL);
 
 -- ============================================================================
 -- Initial Demo / Testing Seed Data

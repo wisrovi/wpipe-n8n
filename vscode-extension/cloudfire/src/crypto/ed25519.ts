@@ -3,6 +3,8 @@
  * Author: William Rodriguez (wisrovi.dev)
  */
 
+import type { Entitlements } from "../entitlements";
+
 export interface LeasePayload {
   sub: string;             // License ID
   lic: string;             // License Key (e.g. WPIPE-PRO-XXXX)
@@ -12,6 +14,8 @@ export interface LeasePayload {
   exp: number;             // Expires At (unix timestamp seconds)
   grace_days: number;      // Grace period in days
   iss: string;             // Issuer (https://api.wisrovi.dev)
+  name?: string;           // License holder display name (signed, so it cannot be spoofed)
+  ent?: Entitlements;      // Plan limits loaded from D1 `plan_entitlements` (signed)
 }
 
 function base64UrlEncode(data: Uint8Array | string): string {

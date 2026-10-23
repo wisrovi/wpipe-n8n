@@ -5,6 +5,7 @@
  */
 
 import { signLeaseToken, LeasePayload } from "../crypto/ed25519";
+import { loadEntitlements } from "../entitlements";
 
 export interface Env {
   DB: D1Database;
@@ -126,6 +127,9 @@ export async function handleActivate(request: Request, env: Env): Promise<Respon
     exp: leaseExpSec,
     grace_days: graceDays,
     iss: env.ISSUER || "https://api.wisrovi.dev",
+    name: license.customer_name || undefined,
+    // Database-driven limits, signed so neither the browser nor the local user can alter them.
+    ent: await loadEntitlements(env.DB, license.plan),
   };
 
   const leaseToken = await signLeaseToken(payload, env.LICENSE_PRIVATE_KEY);

@@ -158,5 +158,5 @@ def test_seats_exceeded_fallback_to_free_tier(tmp_path):
     assert status["tier"] == "free"
     assert status["is_pro"] is False
     assert status["max_blocks"] == 5
-    assert "Capa Free Activa" in status["message"]
+    assert "Free tier active" in status["message"]
     assert "portal.wisrovi.dev" in status["message"]

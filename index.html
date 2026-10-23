@@ -403,6 +403,23 @@
             .features-grid, .pricing-grid { grid-template-columns: 1fr 1fr; }
             .float-chip { display: none; }
             .footer-grid { grid-template-columns: 1fr 1fr; }
+        .suite-switcher {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: rgba(15, 23, 42, 0.85); border: 1px solid var(--border);
+            padding: 4px; border-radius: 9999px; backdrop-filter: blur(8px);
+        }
+        .suite-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 5px 12px; border-radius: 9999px; font-size: 0.8rem; font-weight: 700;
+            text-decoration: none; color: var(--text-dim); transition: var(--transition);
+        }
+        .suite-pill:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.05); }
+        .suite-pill.active {
+            background: rgba(34, 197, 94, 0.16); color: var(--primary);
+            border: 1px solid var(--border-highlight); box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+        }
+        @media (max-width: 1024px) {
+            .suite-switcher { display: none; }
         }
         @media (max-width: 760px) {
             section { padding: 80px 0; }
@@ -430,12 +447,16 @@
                 <span class="logo-mark"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
                 WPipe Studio <small>PRO</small>
             </a>
+            <div class="suite-switcher" role="navigation" aria-label="Suite Switcher">
+                <span class="suite-pill active"><i class="fas fa-compass" aria-hidden="true"></i> Web & Docs</span>
+                <a href="https://studio.wisrovi.dev" target="_blank" rel="noopener" class="suite-pill"><i class="fas fa-bolt" aria-hidden="true" style="color: #06b6d4;"></i> Studio Canvas</a>
+                <a href="https://portal.wisrovi.dev" target="_blank" rel="noopener" class="suite-pill"><i class="fas fa-key" aria-hidden="true" style="color: #a78bfa;"></i> Portal Licencias</a>
+            </div>
             <div class="nav-links">
                 <a href="#demo">Live Demo</a>
-                <a href="#how">How it Works</a>
                 <a href="#features">Features</a>
                 <a href="#pricing">Pricing</a>
-                <a href="#faq">FAQ</a>
+                <a href="https://portal.wisrovi.dev" target="_blank" rel="noopener"><i class="fas fa-shield-alt" aria-hidden="true"></i> Portal</a>
                 <a href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96" target="_blank" rel="noopener" class="btn btn-main btn-sm">
                     <i class="fas fa-crown" aria-hidden="true"></i> Get Pro
                 </a>

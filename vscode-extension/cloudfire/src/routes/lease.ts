@@ -8,6 +8,7 @@
  */
 
 import { signLeaseToken, LeasePayload } from "../crypto/ed25519";
+import { loadEntitlements } from "../entitlements";
 import { Env } from "./activate";
 
 export const LEASE_TTL_SECONDS = 7200; // 2 hours
@@ -136,6 +137,9 @@ export async function handleLease(request: Request, env: Env): Promise<Response>
     exp: leaseExpSec,
     grace_days: graceDays,
     iss: env.ISSUER || "https://api.wisrovi.dev",
+    name: license.customer_name || undefined,
+    // Database-driven limits, signed so neither the browser nor the local user can alter them.
+    ent: await loadEntitlements(env.DB, license.plan),
   };
 
   const leaseToken = await signLeaseToken(payload, env.LICENSE_PRIVATE_KEY);

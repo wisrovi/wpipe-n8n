@@ -538,6 +538,110 @@ export function registerWPipeBlocklyBlocks() {
 // Global reference store for workspace injection helper
 let activeWorkspaceRef: Blockly.WorkspaceSvg | null = null;
 
+// ---------------------------------------------------------------------------
+// Canvas plan limits (UX only).
+// The authoritative enforcement lives in wpipe-engine, which rejects any compile,
+// simulation or project save that exceeds the signed plan entitlements. These guards only
+// keep the canvas honest for the user; bypassing them in DevTools yields nothing usable.
+// ---------------------------------------------------------------------------
+export interface CanvasLimits {
+  max_blocks: number | null;
+  parallel_blocks: boolean;
+  background_blocks: boolean;
+  ai_steps: boolean;
+}
+
+export interface CanvasLimitViolation {
+  code: "LIMIT_BLOCK_COUNT_EXCEEDED" | "PRO_FEATURE_REQUIRED";
+  blockType?: string;
+  current?: number;
+  max?: number | null;
+}
+
+let canvasLimits: CanvasLimits = { max_blocks: 5, parallel_blocks: false, background_blocks: false, ai_steps: false };
+let limitViolationHandler: ((v: CanvasLimitViolation) => void) | null = null;
+let suppressLimitEnforcement = false;
+
+const PRO_BLOCK_ENTITLEMENT: Record<string, keyof CanvasLimits> = {
+  wpipe_parallel: "parallel_blocks",
+  wpipe_background: "background_blocks",
+  wpipe_ai_step: "ai_steps",
+};
+
+export function setCanvasLimits(limits: CanvasLimits) {
+  canvasLimits = { ...limits };
+}
+
+export function setCanvasLimitViolationHandler(handler: ((v: CanvasLimitViolation) => void) | null) {
+  limitViolationHandler = handler;
+}
+
+export function getWorkspaceBlockCount(): number {
+  return activeWorkspaceRef ? activeWorkspaceRef.getAllBlocks(false).length : 0;
+}
+
+export function isProBlockType(type: string): boolean {
+  return type in PRO_BLOCK_ENTITLEMENT;
+}
+
+/** Check whether a block of ``type`` (with ``extra`` blocks in total) may be added. */
+export function checkCanAddBlock(type: string, extra: number = 1): CanvasLimitViolation | null {
+  const entKey = PRO_BLOCK_ENTITLEMENT[type];
+  if (entKey && !canvasLimits[entKey]) {
+    return { code: "PRO_FEATURE_REQUIRED", blockType: type };
+  }
+  const max = canvasLimits.max_blocks;
+  const current = getWorkspaceBlockCount();
+  if (max !== null && current + extra > max) {
+    return { code: "LIMIT_BLOCK_COUNT_EXCEEDED", current, max };
+  }
+  return null;
+}
+
+function reportViolation(v: CanvasLimitViolation) {
+  if (limitViolationHandler) limitViolationHandler(v);
+}
+
+/** Pre-check used by palette insert helpers. Returns false (and reports) when blocked. */
+function guardInsert(type: string): boolean {
+  const violation = checkCanAddBlock(type);
+  if (violation) {
+    reportViolation(violation);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Enforce limits for blocks created by drag, paste or duplicate (Blockly BLOCK_CREATE).
+ * Newly created blocks that exceed the plan are removed immediately.
+ */
+function enforceLimitsOnCreate(ws: Blockly.WorkspaceSvg, createEv: any) {
+  if (suppressLimitEnforcement) return;
+  const ids: string[] = Array.isArray(createEv.ids) && createEv.ids.length > 0 ? createEv.ids : [createEv.blockId];
+  const created = ids.map((id) => ws.getBlockById(id)).filter(Boolean) as Blockly.Block[];
+  if (created.length === 0) return;
+
+  const proBlock = created.find((b) => {
+    const entKey = PRO_BLOCK_ENTITLEMENT[b.type];
+    return entKey && !canvasLimits[entKey];
+  });
+  const max = canvasLimits.max_blocks;
+  const total = ws.getAllBlocks(false).length;
+  const overLimit = max !== null && total > max;
+  if (!proBlock && !overLimit) return;
+
+  const root = created.find((b) => !b.getParent() || !ids.includes(b.getParent()!.id)) || created[0];
+  setTimeout(() => {
+    if (!root.isDisposed()) root.dispose(true);
+  }, 0);
+  reportViolation(
+    proBlock
+      ? { code: "PRO_FEATURE_REQUIRED", blockType: proBlock.type }
+      : { code: "LIMIT_BLOCK_COUNT_EXCEEDED", current: total - created.length, max }
+  );
+}
+
 function getOptimalNewBlockPosition(ws: Blockly.WorkspaceSvg): { x: number; y: number } {
   try {
     const metrics = ws.getMetricsManager().getViewMetrics(true);
@@ -654,7 +758,7 @@ function placeAndHighlightBlock(ws: Blockly.WorkspaceSvg, block: Blockly.BlockSv
 }
 
 export function addTriggerBlockToWorkspace(triggerType: string = "api", triggerParam: string = "/run") {
-  if (!activeWorkspaceRef) return;
+  if (!activeWorkspaceRef || !guardInsert("wpipe_trigger")) return;
   const block = activeWorkspaceRef.newBlock("wpipe_trigger") as Blockly.BlockSvg;
   block.setFieldValue(triggerType, "TRIGGER_TYPE");
   block.setFieldValue(triggerParam, "TRIGGER_PARAM");
@@ -665,7 +769,7 @@ export function addResponseBlockToWorkspace(
   responseType: string = "http_json",
   responseParam: string = '{"status": "success", "data": context}'
 ) {
-  if (!activeWorkspaceRef) return;
+  if (!activeWorkspaceRef || !guardInsert("wpipe_response")) return;
   const block = activeWorkspaceRef.newBlock("wpipe_response") as Blockly.BlockSvg;
   block.setFieldValue(responseType, "RESPONSE_TYPE");
   block.setFieldValue(responseParam, "RESPONSE_PARAM");
@@ -729,6 +833,8 @@ export function getWorkspaceStateJson(): any {
 
 export function loadWorkspaceStateJson(state: any): boolean {
   if (!activeWorkspaceRef || !state) return false;
+  // Loading saved designs never deletes user blocks; the engine still enforces limits on use.
+  suppressLimitEnforcement = true;
   try {
     activeWorkspaceRef.clear();
     Blockly.serialization.workspaces.load(state, activeWorkspaceRef);
@@ -741,6 +847,10 @@ export function loadWorkspaceStateJson(state: any): boolean {
   } catch (err) {
     console.error("Failed to load workspace state:", err);
     return false;
+  } finally {
+    setTimeout(() => {
+      suppressLimitEnforcement = false;
+    }, 0);
   }
 }
 
@@ -749,15 +859,15 @@ export function addStepBlockToWorkspace(
   initialNamespace: string = "wpipe_steps.connectivity",
   stepOrigin: string = "catalog"
 ) {
-  if (!activeWorkspaceRef) return;
+  if (!activeWorkspaceRef || !guardInsert("wpipe_step")) return;
   const block = activeWorkspaceRef.newBlock("wpipe_step") as Blockly.BlockSvg;
   block.setFieldValue(initialStepName, "STEP_NAME");
   block.setFieldValue(initialNamespace, "NAMESPACE");
   placeAndHighlightBlock(activeWorkspaceRef, block);
 }
 
-export function addAiStepBlockToWorkspace(initialName: string = "ai_process_step", initialPrompt: string = "Procesar datos con modelo de IA") {
-  if (!activeWorkspaceRef) return;
+export function addAiStepBlockToWorkspace(initialName: string = "ai_process_step", initialPrompt: string = "Process data with an AI model") {
+  if (!activeWorkspaceRef || !guardInsert("wpipe_ai_step")) return;
   const block = activeWorkspaceRef.newBlock("wpipe_ai_step") as Blockly.BlockSvg;
   block.setFieldValue(initialName, "STEP_NAME");
   block.setFieldValue(initialPrompt, "AI_PROMPT");
@@ -765,7 +875,7 @@ export function addAiStepBlockToWorkspace(initialName: string = "ai_process_step
 }
 
 export function addUserFileStepBlockToWorkspace(initialName: string = "custom_file_step") {
-  if (!activeWorkspaceRef) return;
+  if (!activeWorkspaceRef || !guardInsert("wpipe_user_file_step")) return;
   const block = activeWorkspaceRef.newBlock("wpipe_user_file_step") as Blockly.BlockSvg;
   block.setFieldValue(initialName, "STEP_NAME");
   placeAndHighlightBlock(activeWorkspaceRef, block);
@@ -774,7 +884,7 @@ export function addUserFileStepBlockToWorkspace(initialName: string = "custom_fi
 export function addControlBlockToWorkspace(
   type: "wpipe_if" | "wpipe_if_else" | "wpipe_for" | "wpipe_while" | "wpipe_parallel" | "wpipe_background"
 ) {
-  if (!activeWorkspaceRef) return;
+  if (!activeWorkspaceRef || !guardInsert(type)) return;
   const block = activeWorkspaceRef.newBlock(type) as Blockly.BlockSvg;
   placeAndHighlightBlock(activeWorkspaceRef, block);
 }
@@ -1197,6 +1307,7 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
         code_snippet: codeSnippet,
         parent_id: parentId || undefined,
         slot_type: slotType || undefined,
+        block_type: type,
       },
     };
     nodes.push(canvasNode);
@@ -1511,7 +1622,8 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;
 
-      // Starter template stack with Trigger entrypoint and all 10 blocks (Hello World pipeline)
+      // Starter template: 4 blocks (Trigger -> HttpRequest -> Condition -> Response).
+      // It fits the Free plan (max 5 blocks) so a new user can compile it right away.
       const triggerBlock = ws.newBlock("wpipe_trigger");
       triggerBlock.setFieldValue("api", "TRIGGER_TYPE");
       triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
@@ -1520,7 +1632,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       attachBlockCollapseBehavior(triggerBlock);
       triggerBlock.moveBy(80, 50);
 
-      // 1. Paso de Catálogo (HttpRequest)
+      // 1. Catalog step (HttpRequest)
       const block1 = ws.newBlock("wpipe_step");
       block1.setFieldValue("HttpRequest", "STEP_NAME");
       block1.setFieldValue("wpipe_steps.connectivity", "NAMESPACE");
@@ -1531,134 +1643,25 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
         triggerBlock.nextConnection.connect(block1.previousConnection);
       }
 
-      // 2. Paso con IA (AISentimentStep)
-      const blockAi = ws.newBlock("wpipe_ai_step");
-      blockAi.setFieldValue("AISentimentStep", "STEP_NAME");
-      blockAi.setFieldValue("Clasificar sentimiento del texto (threshold=0.5)", "AI_PROMPT");
-      blockAi.initSvg();
-      blockAi.render();
-      attachBlockCollapseBehavior(blockAi);
-      if (block1.nextConnection && blockAi.previousConnection) {
-        block1.nextConnection.connect(blockAi.previousConnection);
-      }
-
-      // 3. Paso Personalizado (.py) (CleanDataStep)
-      const blockUser = ws.newBlock("wpipe_user_file_step");
-      blockUser.setFieldValue("CleanDataStep", "STEP_NAME");
-      blockUser.setFieldValue("clean_data.py", "FILE_NAME");
-      blockUser.initSvg();
-      blockUser.render();
-      attachBlockCollapseBehavior(blockUser);
-      if (blockAi.nextConnection && blockUser.previousConnection) {
-        blockAi.nextConnection.connect(blockUser.previousConnection);
-      }
-
-      // 4. Condición Si simple (wpipe_if)
+      // 2. Simple IF condition (wpipe_if)
       const blockIf = ws.newBlock("wpipe_if");
-      blockIf.setFieldValue("is_valid == True", "CONDITION");
+      blockIf.setFieldValue("status_code == 200", "CONDITION");
       blockIf.initSvg();
       blockIf.render();
       attachBlockCollapseBehavior(blockIf);
-      if (blockUser.nextConnection && blockIf.previousConnection) {
-        blockUser.nextConnection.connect(blockIf.previousConnection);
+      if (block1.nextConnection && blockIf.previousConnection) {
+        block1.nextConnection.connect(blockIf.previousConnection);
       }
 
-      // 5. Ejecución Paralela (wpipe_parallel) dentro de la condición Si
-      const blockParallel = ws.newBlock("wpipe_parallel");
-      blockParallel.setFieldValue("accumulate", "MERGE_POLICY");
-      blockParallel.initSvg();
-      blockParallel.render();
-      attachBlockCollapseBehavior(blockParallel);
-      const ifDo = blockIf.getInput("DO");
-      if (ifDo && ifDo.connection && blockParallel.previousConnection) {
-        ifDo.connection.connect(blockParallel.previousConnection);
-      }
-
-      // 6. Paso dentro del bloque paralelo (MySQLQuery)
-      const blockDb = ws.newBlock("wpipe_step");
-      blockDb.setFieldValue("MySQLQuery", "STEP_NAME");
-      blockDb.setFieldValue("wpipe_steps.database", "NAMESPACE");
-      blockDb.initSvg();
-      blockDb.render();
-      attachBlockCollapseBehavior(blockDb);
-      const parDo = blockParallel.getInput("DO");
-      if (parDo && parDo.connection && blockDb.previousConnection) {
-        parDo.connection.connect(blockDb.previousConnection);
-      }
-
-      // 7. Condición Si / Sino dual (wpipe_if_else)
-      const blockIfElse = ws.newBlock("wpipe_if_else");
-      blockIfElse.setFieldValue("status_code == 200", "CONDITION");
-      blockIfElse.initSvg();
-      blockIfElse.render();
-      attachBlockCollapseBehavior(blockIfElse);
-      if (blockIf.nextConnection && blockIfElse.previousConnection) {
-        blockIf.nextConnection.connect(blockIfElse.previousConnection);
-      }
-
-      // 8. Bucle Repetir (wpipe_for) en la rama verdadera
-      const blockFor = ws.newBlock("wpipe_for");
-      blockFor.setFieldValue("3", "ITERATIONS");
-      blockFor.initSvg();
-      blockFor.render();
-      attachBlockCollapseBehavior(blockFor);
-      const ifElseDo = blockIfElse.getInput("DO");
-      if (ifElseDo && ifElseDo.connection && blockFor.previousConnection) {
-        ifElseDo.connection.connect(blockFor.previousConnection);
-      }
-
-      // 9. Tarea en Segundo Plano (wpipe_background) dentro del bucle For
-      const blockBg = ws.newBlock("wpipe_background");
-      blockBg.initSvg();
-      blockBg.render();
-      attachBlockCollapseBehavior(blockBg);
-      const forDo = blockFor.getInput("DO");
-      if (forDo && forDo.connection && blockBg.previousConnection) {
-        forDo.connection.connect(blockBg.previousConnection);
-      }
-
-      const blockBgTask = ws.newBlock("wpipe_step");
-      blockBgTask.setFieldValue("RedisCacheStep", "STEP_NAME");
-      blockBgTask.setFieldValue("wpipe_steps.database", "NAMESPACE");
-      blockBgTask.initSvg();
-      blockBgTask.render();
-      attachBlockCollapseBehavior(blockBgTask);
-      const bgDo = blockBg.getInput("DO");
-      if (bgDo && bgDo.connection && blockBgTask.previousConnection) {
-        bgDo.connection.connect(blockBgTask.previousConnection);
-      }
-
-      // 10. Bucle Mientras (wpipe_while) en la rama falsa de If-Else
-      const blockWhile = ws.newBlock("wpipe_while");
-      blockWhile.setFieldValue("retry_count < 3", "CONDITION");
-      blockWhile.initSvg();
-      blockWhile.render();
-      attachBlockCollapseBehavior(blockWhile);
-      const ifElseElse = blockIfElse.getInput("ELSE");
-      if (ifElseElse && ifElseElse.connection && blockWhile.previousConnection) {
-        ifElseElse.connection.connect(blockWhile.previousConnection);
-      }
-
-      const blockRetryStep = ws.newBlock("wpipe_step");
-      blockRetryStep.setFieldValue("NmapScanStep", "STEP_NAME");
-      blockRetryStep.setFieldValue("wpipe_steps.security", "NAMESPACE");
-      blockRetryStep.initSvg();
-      blockRetryStep.render();
-      attachBlockCollapseBehavior(blockRetryStep);
-      const whileDo = blockWhile.getInput("DO");
-      if (whileDo && whileDo.connection && blockRetryStep.previousConnection) {
-        whileDo.connection.connect(blockRetryStep.previousConnection);
-      }
-
-      // 11. Cierre y Salida Egress del Pipeline (wpipe_response)
+      // 3. Pipeline egress (wpipe_response)
       const blockResponse = ws.newBlock("wpipe_response");
       blockResponse.setFieldValue("http_json", "RESPONSE_TYPE");
       blockResponse.setFieldValue('{"status": "success", "data": context}', "RESPONSE_PARAM");
       blockResponse.initSvg();
       blockResponse.render();
       attachBlockCollapseBehavior(blockResponse);
-      if (blockIfElse.nextConnection && blockResponse.previousConnection) {
-        blockIfElse.nextConnection.connect(blockResponse.previousConnection);
+      if (blockIf.nextConnection && blockResponse.previousConnection) {
+        blockIf.nextConnection.connect(blockResponse.previousConnection);
       }
 
       // Initial auto-centering so blocks are not stuck in the corner
@@ -1675,6 +1678,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
             const b = ws.getBlockById(createEv.blockId);
             if (b) attachBlockCollapseBehavior(b);
           }
+          enforceLimitsOnCreate(ws, createEv);
         }
         if (e && (e as any).type === Blockly.Events.SELECTED) {
           const selEv = e as any;

@@ -8,7 +8,9 @@
     "deploy": "wrangler deploy",
     "d1:init": "wrangler d1 execute wpipe_licenses --local --file=schema.sql",
     "d1:init:prod": "wrangler d1 execute wpipe_licenses --remote --file=schema.sql",
-    "generate-keys": "node scripts/generate_keypair.js"
+    "generate-keys": "node scripts/generate_keypair.js",
+    "d1:migrate:entitlements": "wrangler d1 execute wpipe_licenses --remote --file=migrations/0002_plan_entitlements.sql",
+    "d1:migrate:entitlements:local": "wrangler d1 execute wpipe_licenses --local --file=migrations/0002_plan_entitlements.sql"
   },
   "keywords": [
     "wpipe",

@@ -16,6 +16,8 @@ export interface VerifiedLicensePayload {
   exp: number;        // Expires At (seconds)
   iss: string;        // Issuer
   grace_days?: number;
+  name?: string;      // License holder display name (signed)
+  ent?: Record<string, any>; // Plan entitlements from D1 plan_entitlements (signed)
 }
 
 export interface VerificationResult {

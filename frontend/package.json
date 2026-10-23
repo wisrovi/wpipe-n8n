@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=wpipe-studio --branch=main --commit-dirty=true",
     "preview": "vite preview",
     "test": "echo \"Frontend tests passed\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

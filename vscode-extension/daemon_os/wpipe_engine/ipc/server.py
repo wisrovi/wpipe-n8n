@@ -32,10 +32,19 @@ else:
 CANVAS_STATIC_DIR = _base / "canvas_static"
 STEPS_CATALOG_FILE = _base / "steps_catalog.json"
 
-if not CANVAS_STATIC_DIR.exists():
-    fallback_static = Path.home() / ".wpipe" / "canvas_static"
-    if fallback_static.exists():
-        CANVAS_STATIC_DIR = fallback_static
+# Search paths for canvas_static:
+# 1. Inside PyInstaller bundle or package directory
+# 2. ~/.wpipe/canvas_static
+# 3. Monorepo sibling frontend/dist
+candidate_dirs = [
+    CANVAS_STATIC_DIR,
+    Path.home() / ".wpipe" / "canvas_static",
+    Path(__file__).resolve().parent.parent.parent.parent.parent / "frontend" / "dist",
+]
+for cand in candidate_dirs:
+    if cand.exists() and (cand / "index.html").exists():
+        CANVAS_STATIC_DIR = cand
+        break
 
 if not STEPS_CATALOG_FILE.exists():
     fallback_cat = Path.home() / ".wpipe" / "steps_catalog.json"

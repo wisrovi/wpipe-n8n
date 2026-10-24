@@ -5,7 +5,7 @@ a = Analysis(
     ['wpipe_engine/main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('wpipe_engine/steps_catalog.json', 'wpipe_engine'), ('wpipe_engine/canvas_static', 'wpipe_engine/canvas_static')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

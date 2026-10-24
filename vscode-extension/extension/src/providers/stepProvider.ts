@@ -8,6 +8,12 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
     private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+    private ipcClient?: any;
+
+    setIpcClient(client: any) {
+        this.ipcClient = client;
+    }
+
     refresh() {
         this._onDidChangeTreeData.fire();
     }
@@ -18,7 +24,40 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     async getChildren(e?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         if (!e) {
+            let engineLabel = '⚡ Engine & License';
+            let engineDesc = 'Checking...';
+            let engineTooltip = 'Native wpipe-engine status';
+
+            if (this.ipcClient) {
+                try {
+                    const status = await this.ipcClient.getLicenseStatus();
+                    if (status && status.is_pro) {
+                        engineLabel = `⚡ Engine: Active (${(status.tier || 'PRO').toUpperCase()})`;
+                        engineDesc = status.customer_name ? `Pro (${status.customer_name})` : 'Pro Active';
+                        engineTooltip = `WPipe Engine Active\nTier: ${(status.tier || 'PRO').toUpperCase()}\nPID: ${status.engine?.pid || 'Running'}\nUnlimited Blocks`;
+                    } else if (status) {
+                        engineLabel = '⚡ Engine: Active (Free)';
+                        engineDesc = 'Free Plan (≤5 blocks)';
+                        engineTooltip = 'WPipe Engine Free Tier. Click to check license or upgrade.';
+                    }
+                } catch {
+                    engineLabel = '⚡ Engine: Offline';
+                    engineDesc = 'Click to start';
+                    engineTooltip = 'wpipe-engine is not running. Click to start daemon.';
+                }
+            }
+
+            const engineItem = new vscode.TreeItem(engineLabel, vscode.TreeItemCollapsibleState.None);
+            engineItem.description = engineDesc;
+            engineItem.tooltip = engineTooltip;
+            engineItem.iconPath = new vscode.ThemeIcon(engineLabel.includes('Offline') ? 'warning' : 'pass');
+            engineItem.command = {
+                command: 'wpipe.checkLicenseStatus',
+                title: 'Check License Status',
+            };
+
             return [
+                engineItem,
                 new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed),
                 new vscode.TreeItem('🤝 Community Plugins', vscode.TreeItemCollapsibleState.Collapsed)

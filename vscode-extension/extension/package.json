@@ -53,11 +53,6 @@
     "views": {
       "wpipe-explorer": [
         {
-          "type": "webview",
-          "id": "wpipe.sidebarView",
-          "name": "WPipe Studio"
-        },
-        {
           "id": "wpipeSteps",
           "name": "Step Registry",
           "icon": "media/icon.png"

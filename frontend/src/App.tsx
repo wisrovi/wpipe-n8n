@@ -1322,6 +1322,9 @@ export default function App() {
     // Notify parent VS Code webview that the studio canvas is mounted and ready
     try {
       window.parent.postMessage({ type: "ready" }, "*");
+      if (window.top && window.top !== window.parent) {
+        window.top.postMessage({ type: "ready" }, "*");
+      }
     } catch {}
 
     const handleVsCodeMessage = (event: MessageEvent) => {
@@ -1353,6 +1356,35 @@ export default function App() {
             // verify its signed token instead (any parent frame could forge this message).
             checkEngine();
           }
+
+          // Immediately trigger initial sync to generate project files on disk
+          setTimeout(() => {
+            try {
+              const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+              const workspaceState = getWorkspaceStateJson();
+              const payload = {
+                type: "saveCanvas",
+                canvasIr: {
+                  format: "wpipe",
+                  project: {
+                    id: activeProjectId || "pipeline",
+                    name: projectName,
+                    protocol: "fastapi",
+                    docker_image: customDockerImage,
+                    canvas_ir: canvasIr,
+                    workspace_state: workspaceState,
+                    generated_files: generatedFiles,
+                  },
+                },
+              };
+              window.parent.postMessage(payload, "*");
+              if (window.top && window.top !== window.parent) {
+                window.top.postMessage(payload, "*");
+              }
+            } catch (initErr) {
+              console.warn("Initial sync trigger error:", initErr);
+            }
+          }, 500);
         } catch (err: any) {
           console.warn("Failed to load initial VS Code pipeline:", err);
         }
@@ -1637,25 +1669,28 @@ export default function App() {
           if (workspaceState) {
             (canvasIr as any).workspace_state = workspaceState;
           }
-          window.parent.postMessage(
-            {
-              type: "saveCanvas",
-              canvasIr: {
-                format: "wpipe",
-                project: {
-                  id: activeProjectId || "pipeline",
-                  name: projectName,
-                  protocol: "fastapi",
-                  docker_image: customDockerImage,
-                  canvas_ir: canvasIr,
-                  workspace_state: workspaceState,
-                  generated_files: generatedFiles,
-                },
+          const payload = {
+            type: "saveCanvas",
+            canvasIr: {
+              format: "wpipe",
+              project: {
+                id: activeProjectId || "pipeline",
+                name: projectName,
+                protocol: "fastapi",
+                docker_image: customDockerImage,
+                canvas_ir: canvasIr,
+                workspace_state: workspaceState,
+                generated_files: generatedFiles,
               },
             },
-            "*"
-          );
-        } catch {}
+          };
+          window.parent.postMessage(payload, "*");
+          if (window.top && window.top !== window.parent) {
+            window.top.postMessage(payload, "*");
+          }
+        } catch (syncErr) {
+          console.warn("Error posting saveCanvas:", syncErr);
+        }
       }, 400);
     } else if (engineStatus.connected) {
       // Auto-save to Local Disk (~/.wpipe/workspaces/) with debounce when running in browser with connected engine

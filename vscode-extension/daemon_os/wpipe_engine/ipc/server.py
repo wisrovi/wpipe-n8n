@@ -81,6 +81,13 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             return True
         if origin.startswith("http://127.0.0.1:") or origin == "http://127.0.0.1":
             return True
+        if origin.startswith("http://0.0.0.0:") or origin == "http://0.0.0.0":
+            return True
+        # Docker internal bridges / private networks (172.16.0.0/12, 10.0.0.0/8, 192.168.0.0/16)
+        if any(origin.startswith(f"http://172.{i}.") for i in range(16, 32)):
+            return True
+        if origin.startswith("http://10.") or origin.startswith("http://192.168."):
+            return True
         # Strict exact domain matching for wisrovi suites
         allowed_domains = {
             "https://studio.wisrovi.dev",

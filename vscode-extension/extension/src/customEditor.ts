@@ -362,21 +362,26 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     }
 
     // Health probe: if local engine is offline, seamlessly switch to cloud PWA
-    fetch(baseUrl + '/health', { mode: 'cors' })
+    fetch(baseUrl + '/health')
       .then((res) => {
-        if (!res.ok) throw new Error('Daemon unhealthy');
+        if (!res.ok && res.status >= 500) throw new Error('Daemon unhealthy');
       })
-      .catch(() => {
-        console.warn('Local engine offline, falling back to cloud PWA.');
+      .catch((e) => {
+        console.warn('Local engine offline, falling back to cloud PWA:', e);
         loadCloudFallback();
       });
 
     // Bridge message communication between iframe and VS Code extension
     window.addEventListener('message', (event) => {
-      if (event.source === frame.contentWindow) {
+      if (!event.data) return;
+      if (event.data.type === 'ready' || event.data.type === 'saveCanvas' || event.data.type === 'compile' || event.data.type === 'simulate') {
+        // Message from inner canvas frame to VS Code
         vscode.postMessage(event.data);
-      } else if (event.data && frame.contentWindow) {
-        frame.contentWindow.postMessage(event.data, '*');
+      } else if (event.data.type === 'init' || event.data.type === 'update' || event.data.type === 'simulateResult') {
+        // Message from VS Code to inner canvas frame
+        if (frame && frame.contentWindow) {
+          frame.contentWindow.postMessage(event.data, '*');
+        }
       }
     });
 

@@ -202,6 +202,31 @@ export async function activate(context: vscode.ExtensionContext) {
         targetUri,
         Buffer.from(JSON.stringify(initialIr, null, 2), "utf8")
       );
+
+      // Auto-compile microservice project immediately upon creation
+      try {
+        const res = await ipcClient.compilePipeline(initialIr.project.canvas_ir, initialIr.project.name);
+        if (res && res.status === "success" && (res.files_dict || res.files)) {
+          const filesMap: Record<string, string> = res.files_dict || {};
+          if (!res.files_dict && Array.isArray(res.files)) {
+            for (const item of res.files) {
+              if (item && item.path && item.content) {
+                filesMap[item.path] = item.content;
+              }
+            }
+          }
+          for (const [relPath, content] of Object.entries(filesMap)) {
+            const fileUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+            await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(fileUri.fsPath)));
+            await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content as string, "utf8"));
+          }
+          await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+          await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
+        }
+      } catch (compileErr) {
+        console.warn("Auto-compile on newPipeline error:", compileErr);
+      }
+
       await vscode.commands.executeCommand("vscode.openWith", targetUri, WPipeCanvasEditorProvider.viewType);
     })
   );

@@ -106,35 +106,41 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         }
 
         case "saveCanvas": {
-          if (document) {
-            const edit = new vscode.WorkspaceEdit();
-            const fullRange = new vscode.Range(
-              document.positionAt(0),
-              document.positionAt(document.getText().length)
-            );
-            edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
-            await vscode.workspace.applyEdit(edit);
-          } else {
-            // Untitled canvas opened from toolbar or command
-            const wsFolder = vscode.workspace.workspaceFolders?.[0];
-            if (wsFolder) {
-              const defaultUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "pipeline.wpipe"));
-              await vscode.workspace.fs.writeFile(
-                defaultUri,
-                Buffer.from(JSON.stringify(msg.canvasIr, null, 2), "utf8")
-              );
-            }
-          }
-
-          // Auto-compile to disk whenever canvas is saved or updated
+          const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
           const projectObj = msg.canvasIr?.project || msg.canvasIr;
           const defaultName = document
             ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
-            : "main_pipeline";
+            : "pipeline";
           const projectName = projectObj?.name || defaultName;
           const canvasPayload = projectObj?.canvas_ir || projectObj;
-          const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
 
+          // 1. Persist the .wpipe file directly to disk
+          if (document) {
+            try {
+              const edit = new vscode.WorkspaceEdit();
+              const fullRange = new vscode.Range(
+                document.positionAt(0),
+                document.positionAt(document.getText().length)
+              );
+              edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
+              await vscode.workspace.applyEdit(edit);
+              await document.save();
+            } catch {
+              // Direct filesystem fallback
+              await vscode.workspace.fs.writeFile(
+                document.uri,
+                Buffer.from(JSON.stringify(msg.canvasIr, null, 2), "utf8")
+              );
+            }
+          } else if (wsFolder) {
+            const defaultUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, `${projectName}.wpipe`));
+            await vscode.workspace.fs.writeFile(
+              defaultUri,
+              Buffer.from(JSON.stringify(msg.canvasIr, null, 2), "utf8")
+            );
+          }
+
+          // 2. Auto-compile microservice to disk whenever canvas is modified
           if (wsFolder && canvasPayload && canvasPayload.nodes && canvasPayload.nodes.length > 0) {
             try {
               const res = await this.ipcClient.compilePipeline(canvasPayload, projectName);

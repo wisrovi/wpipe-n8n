@@ -646,20 +646,48 @@ export default function App() {
                   autoFocus
                 />
                 <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                  Clave privada emitida tras tu compra. Permite administrar puestos y revocar puestos liberados.
+                  Clave privada emitida al comprar. Permite gestionar puestos, invocar terminales y liberar estaciones de trabajo.
                 </p>
               </div>
 
-              <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-[11px] text-amber-200/90 flex items-start gap-2">
-                <Lock size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Nota de Seguridad:</strong> Las claves de puesto (ej: <code>WPIPE-PRO-...</code>) no pueden iniciar sesión en este portal administrativo; se usan en la extensión de VS Code.
-                </span>
-              </div>
+              {adminKeyInput.trim().toUpperCase().startsWith("WPIPE-PRO-") ? (
+                <div className="p-3 bg-sky-950/60 border border-sky-700/80 rounded-xl text-xs text-sky-200 space-y-2">
+                  <div className="flex items-start gap-2 font-bold text-sky-300">
+                    <Laptop size={14} className="shrink-0 mt-0.5" />
+                    <span>¡Has ingresado una Clave de Puesto (Workstation)!</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-gray-300">
+                    Esta clave está lista para trabajar directamente en el Canvas o en VS Code. No necesitas entrar al portal para empezar a programar.
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <a
+                      href="https://studio.wisrovi.dev"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white font-bold text-[11px] transition flex items-center gap-1"
+                    >
+                      <span>⚡</span> Abrir Web Studio
+                    </a>
+                    <a
+                      href={`vscode://wisrovi.wpipe-studio-vscode/activate?key=${encodeURIComponent(adminKeyInput.trim().toUpperCase())}`}
+                      className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition flex items-center gap-1"
+                    >
+                      <Sparkles size={11} /> Activar en VS Code
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-900/80 border border-gray-800 rounded-xl text-[11px] text-gray-400 flex items-start gap-2">
+                  <Key size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <span>
+                    ¿No encuentras tu clave <code>WPIPE-ADM-...</code>? Usa la pestaña <strong>Correo (OTP)</strong> para entrar sin contraseña con el email con el que compraste.
+                  </span>
+                </div>
+              )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || adminKeyInput.trim().toUpperCase().startsWith("WPIPE-PRO-")}
                 className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <Key size={14} />

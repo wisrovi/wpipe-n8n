@@ -209,8 +209,27 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
-          <span>Seguridad W3C PNA & Ed25519 WebCrypto</span>
+        <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 shrink-0">
+          <div className="flex items-center gap-2">
+            <a
+              href="https://portal.wisrovi.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-400 hover:text-emerald-300 font-medium underline flex items-center gap-1"
+            >
+              <span>🔑</span>
+              <span>Gestionar Licencia</span>
+            </a>
+            <span className="text-slate-600">•</span>
+            <a
+              href="https://wpipe-studio.wisrovi.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:text-sky-300 font-medium underline"
+            >
+              Guía de Instalación
+            </a>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs transition-colors cursor-pointer"

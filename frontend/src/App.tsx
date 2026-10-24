@@ -105,6 +105,7 @@ import {
   History,
   StepForward,
   FastForward,
+  Globe,
 } from "lucide-react";
 import { EngineStatusWidget, LicenseProBadge, ConnectEngineModal, ProLicenseModal } from "./components/EngineStatusWidget";
 import {
@@ -2760,47 +2761,16 @@ export default function App() {
           </button>
 
           {/* Brand Logo */}
-          <div className="flex items-center space-x-2 mr-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center font-black text-gray-950 text-xs shadow-md shadow-emerald-500/20">
+          <div className="flex items-center space-x-2 mr-3 select-none">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-md shadow-sky-500/20">
               W
             </div>
-            <span className="font-extrabold text-sm text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-cyan-200 font-heading tracking-tight">
+            <span className="font-bold text-sm text-gray-100 tracking-tight">
               WPipe Studio
             </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-mono font-bold">
               v2.5.10
             </span>
-          </div>
-
-          {/* Universal Suite Switcher (Visible on desktop) */}
-          <div className="hidden 2xl:flex items-center gap-1 p-0.5 bg-gray-900/90 border border-gray-800 rounded-full text-[10px] font-semibold mr-2">
-            <a
-              href="https://wpipe-studio.wisrovi.dev"
-              target="_blank"
-              rel="noopener"
-              className="px-2 py-0.5 rounded-full text-gray-400 hover:text-white transition"
-            >
-              Docs
-            </a>
-            <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
-              ⚡ Canvas
-            </span>
-            <a
-              href="https://portal.wisrovi.dev"
-              target="_blank"
-              rel="noopener"
-              className="px-2 py-0.5 rounded-full text-gray-400 hover:text-white transition"
-            >
-              🔑 Portal
-            </a>
-            <a
-              href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
-              target="_blank"
-              rel="noopener"
-              className="px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-gray-950 font-bold hover:brightness-110 transition shadow-sm"
-            >
-              👑 Pro
-            </a>
           </div>
 
           {/* 1. File Menu Dropdown */}
@@ -3579,6 +3549,54 @@ export default function App() {
                     <div className="text-[10px] text-gray-400">wisrovi SUITE, version and credits</div>
                   </div>
                 </button>
+
+                <div className="my-1 border-t border-gray-800" />
+
+                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 font-mono">
+                  Wisrovi Suite Services
+                </div>
+
+                <a
+                  href="https://wpipe-studio.wisrovi.dev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setActiveMenu(null)}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2.5 text-gray-200 hover:text-white cursor-pointer transition"
+                >
+                  <Globe size={14} className="text-sky-400" />
+                  <div>
+                    <div className="font-semibold">Documentation & Manual</div>
+                    <div className="text-[10px] text-gray-400">Online architecture guide and quickstart</div>
+                  </div>
+                </a>
+
+                <a
+                  href="https://portal.wisrovi.dev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setActiveMenu(null)}
+                  className="w-full text-left px-3 py-2 hover:bg-emerald-950/40 flex items-center gap-2.5 text-emerald-300 hover:text-emerald-200 cursor-pointer transition"
+                >
+                  <ShieldCheck size={14} className="text-emerald-400" />
+                  <div>
+                    <div className="font-semibold">License & Seats Portal</div>
+                    <div className="text-[10px] text-emerald-500/80">Manage team workstations and keys</div>
+                  </div>
+                </a>
+
+                <a
+                  href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setActiveMenu(null)}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-950/40 flex items-center gap-2.5 text-amber-300 hover:text-amber-200 cursor-pointer transition"
+                >
+                  <Sparkles size={14} className="text-amber-400" />
+                  <div>
+                    <div className="font-semibold">Upgrade to PRO License</div>
+                    <div className="text-[10px] text-amber-400/80">Unlimited blocks & production generator</div>
+                  </div>
+                </a>
               </div>
             )}
           </div>
@@ -3607,16 +3625,16 @@ export default function App() {
 
         {/* Far Right: Engine Status + Fully Right-Aligned PRO Badge + User Account Menu */}
         <div className="flex items-center space-x-2.5">
-          {/* Quick suite portal link */}
+          {/* Portal quick access icon button */}
           <a
             href="https://portal.wisrovi.dev"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-xs font-semibold transition"
-            title="Abrir Portal de Gestión de Licencias & Seats"
+            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 text-xs font-medium transition cursor-pointer border border-transparent hover:border-gray-700"
+            title="Portal de Licencias & Workstations (portal.wisrovi.dev)"
           >
-            <span>🔑</span>
-            <span className="hidden xl:inline">Portal Licencias</span>
+            <ShieldCheck size={14} className="text-emerald-400" />
+            <span>Licencias</span>
           </a>
 
           {/* Local Engine Bridge Status Widget */}

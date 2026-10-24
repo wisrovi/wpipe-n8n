@@ -839,8 +839,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
+      {/* Main Container - Fullscreen Ultra-Wide Responsive */}
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
         {/* ECOSYSTEM ACTION HUB (Direct Launch to Studio & 1-Click VS Code) */}
         <div className="p-5 bg-gradient-to-r from-emerald-950/40 via-cyan-950/30 to-[#0b1120] border border-emerald-500/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl shadow-emerald-950/20">

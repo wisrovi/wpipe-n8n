@@ -1020,6 +1020,34 @@ export default function App() {
 
         {/* NOC Refresh Selector & Logout */}
         <div className="flex items-center gap-2">
+          {/* Suite Fast Links */}
+          <div className="hidden 2xl:flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-0.5 text-[11px] font-medium mr-1">
+            <a
+              href="https://wpipe-studio.wisrovi.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-0.5 text-gray-400 hover:text-white rounded hover:bg-gray-800 transition"
+            >
+              Docs
+            </a>
+            <a
+              href="https://studio.wisrovi.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-0.5 text-cyan-400 hover:text-cyan-300 rounded hover:bg-gray-800 transition flex items-center gap-1"
+            >
+              <span>⚡</span> Studio
+            </a>
+            <a
+              href="https://portal.wisrovi.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-0.5 text-emerald-400 hover:text-emerald-300 rounded hover:bg-gray-800 transition flex items-center gap-1"
+            >
+              <span>🔑</span> Portal
+            </a>
+          </div>
+
           {/* NOC Polling Switcher */}
           <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg px-2 py-1 text-xs">
             <Radio size={12} className={autoRefreshInterval > 0 ? "text-emerald-400 animate-pulse" : "text-gray-500"} />
@@ -1077,8 +1105,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Body */}
-      <main className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
+      {/* Main Content Body - Fullscreen Ultra-Wide Responsive */}
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* =================================================================== */}
         {/* TAB 1: OVERVIEW / COCKPIT */}
         {/* =================================================================== */}

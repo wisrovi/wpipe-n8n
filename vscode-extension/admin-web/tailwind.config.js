@@ -5,8 +5,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        darkBg: "#0b0f19",
-        cardBg: "#111827",
+        darkBg: "#030712",
+        cardBg: "#0f172a",
+      },
+      fontFamily: {
+        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
     },
   },

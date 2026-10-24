@@ -1011,12 +1011,12 @@ export function getMermaidFromBlocklyWorkspace(): string {
           lines.push(`    ${ex.nodeId} -.->|"Re-evaluar Condición"| ${currentId}`);
         });
       }
-      nodeExits = [{ nodeId: currentId, label: "Condición Falsa (Fin)" }];
+      nodeExits = [{ nodeId: currentId, label: "Condition False (End)" }];
     } else if (type === "wpipe_parallel") {
       const policy = block.getFieldValue("MERGE_POLICY") || "accumulate";
       lines.push(`    ${currentId}["⚡ Inicio Paralelo (Fork)<br/><small>Merge: ${policy}</small>"]:::parallelStep`);
       const joinId = `join_${nodeCounter++}`;
-      lines.push(`    ${joinId}["🔗 Fusión Contexto (Join)<br/><small>Merge: ${policy}</small>"]:::parallelStep`);
+      lines.push(`    ${joinId}["🔗 Context Join Barrier<br/><small>Merge: ${policy}</small>"]:::parallelStep`);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
@@ -1039,9 +1039,9 @@ export function getMermaidFromBlocklyWorkspace(): string {
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
         const childRes = traverseBlock(doInput.connection.targetBlock()!);
-        lines.push(`    ${currentId} -.->|"Lanzar Hilo Asíncrono"| ${childRes.entryId}`);
+        lines.push(`    ${currentId} -.->|"Launch Background Thread"| ${childRes.entryId}`);
         const bgEndId = `bg_done_${nodeCounter++}`;
-        lines.push(`    ${bgEndId}(["🏁 Fin Hilo Asíncrono"]):::bgStep`);
+        lines.push(`    ${bgEndId}(["🏁 Background Thread End"]):::bgStep`);
         childRes.exits.forEach((ex) => {
           lines.push(`    ${ex.nodeId} -.-> ${bgEndId}`);
         });
@@ -1157,7 +1157,7 @@ export function getBlockData(block: Blockly.Block): any {
     category: block.getFieldValue("CATEGORY") || (catalogEntry ? catalogEntry.category : "general"),
     fields,
     isBreakpoint: isBp,
-    docstring: catalogEntry?.description || catalogEntry?.docstring || "Bloque de lógica de WPipe Studio.",
+    docstring: catalogEntry?.description || catalogEntry?.docstring || "WPipe Studio logic block.",
     params: catalogEntry?.params || {},
     origin: catalogEntry?.repo || "official",
   };
@@ -1393,7 +1393,7 @@ export function getWorkPlanFromBlocklyWorkspace(
     if (type === "wpipe_trigger") {
       const trigType = (block.getFieldValue("TRIGGER_TYPE") || "api").toLowerCase();
       const trigParam = block.getFieldValue("TRIGGER_PARAM") || "/run";
-      lines.push(`${pad}- **Paso ${stepCounter++}: 🚀 Ingress / Punto de Activación Principal**`);
+      lines.push(`${pad}- **Step ${stepCounter++}: 🚀 Ingress / Main Activation Trigger**`);
       lines.push(`${pad}  - **Tipo de Ingesta:** \`${trigType.toUpperCase()}\``);
       lines.push(`${pad}  - **Ruta / Topic / Canal:** \`${trigParam}\``);
       lines.push(`${pad}  - **Contrato de Entrada:** Recibe payload sin procesar, realiza validación Pydantic e inicializa el contexto de ejecución (\`PipelineContextDTO\`).`);
@@ -1402,8 +1402,8 @@ export function getWorkPlanFromBlocklyWorkspace(
       const respParam = block.getFieldValue("RESPONSE_PARAM") || '{"status": "success", "data": context}';
       lines.push(`${pad}- **Paso ${stepCounter++}: 🏁 Egress / Salida y Respuesta del Pipeline**`);
       lines.push(`${pad}  - **Protocolo de Salida:** \`${respType.toUpperCase()}\``);
-      lines.push(`${pad}  - **Payload / Parámetro:** \`${respParam}\``);
-      lines.push(`${pad}  - **Comportamiento:** Serializa el estado final enriquecido del contexto consolidando métricas y latencia total.`);
+      lines.push(`${pad}  - **Payload / Parameter:** \`${respParam}\``);
+      lines.push(`${pad}  - **Behavior:** Serializes enriched final state and consolidates latency metrics.`);
     } else if (type === "wpipe_step") {
       const name = block.getFieldValue("STEP_NAME") || "Step";
       const ns = block.getFieldValue("NAMESPACE") || "wpipe_steps";
@@ -1411,47 +1411,47 @@ export function getWorkPlanFromBlocklyWorkspace(
       const doc = catEntry?.description || catEntry?.docstring || "Paso modular ejecutable perteneciente al ecosistema WPipe.";
       lines.push(`${pad}- **Paso ${stepCounter++}: 📦 Paso de Catálogo: \`${name}\`**`);
       lines.push(`${pad}  - **Namespace / Pack:** \`${ns}\``);
-      lines.push(`${pad}  - **Descripción Técnica:** ${doc}`);
-      lines.push(`${pad}  - **Mutación de Contexto:** Procesa los datos de entrada y persiste las transformaciones en el diccionario de contexto transaccional.`);
+      lines.push(`${pad}  - **Technical Specification:** ${doc}`);
+      lines.push(`${pad}  - **Context Mutation:** Processes inputs and commits state transformations into context dictionary.`);
     } else if (type === "wpipe_ai_step") {
       const name = block.getFieldValue("STEP_NAME") || "AISentimentStep";
       const prompt = block.getFieldValue("AI_PROMPT") || "Clasificar sentimiento del texto (threshold=0.5)";
       lines.push(`${pad}- **Paso ${stepCounter++}: ✨ Paso Inteligente IA: \`${name}\`**`);
       lines.push(`${pad}  - **Directiva de Inferencia:** "${prompt}"`);
-      lines.push(`${pad}  - **Contrato:** Ejecuta heurísticas de inferencia / NLP sobre el payload inyectando scores predictivos en el contexto.`);
+      lines.push(`${pad}  - **Contract:** Executes inference / NLP logic on payload and injects predictive scores into context.`);
     } else if (type === "wpipe_user_file_step") {
       const name = block.getFieldValue("STEP_NAME") || "CleanDataStep";
       const fileName = block.getFieldValue("FILE_NAME") || "clean_data.py";
       lines.push(`${pad}- **Paso ${stepCounter++}: 📄 Paso de Usuario / Script: \`${name}\`**`);
       lines.push(`${pad}  - **Archivo Fuente:** \`${fileName}\``);
-      lines.push(`${pad}  - **Función:** Sanitización, limpieza de claves y normalización de tipos en memoria.`);
+      lines.push(`${pad}  - **Function:** Sanitization, key cleansing and in-memory type normalization.`);
     } else if (type === "wpipe_if") {
       const cond = block.getFieldValue("CONDITION") || "is_valid == True";
       lines.push(`${pad}- **Paso ${stepCounter++}: 🔀 Bifurcación Condicional Simple: \`Condition(expression="${cond}")\`**`);
-      lines.push(`${pad}  - **Expresión Evaluada:** \`${cond}\``);
+      lines.push(`${pad}  - **Evaluated Expression:** \`${cond}\``);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
-        lines.push(`${pad}  - **Rama SÍ (True):**`);
+        lines.push(`${pad}  - **True Branch:**`);
         const childBlock = doInput.connection.targetBlock()!;
         lines.push(...renderPlanBlock(childBlock, depth + 2));
       } else {
-        lines.push(`${pad}  - **Rama SÍ (True):** *(Vacía - paso sin operación)*`);
+        lines.push(`${pad}  - **True Branch:** *(Empty - no-op step)*`);
       }
       lines.push(`${pad}  - **Rama NO (False / Bypass):**`);
-      lines.push(`${pad}    - Si la expresión evalúa a Falso, la ejecución omite este bloque y avanza directamente al siguiente paso del pipeline sin alterar el contexto.`);
+      lines.push(`${pad}    - When expression evaluates to False, execution skips this block and continues to next step without mutating context.`);
     } else if (type === "wpipe_if_else") {
       const cond = block.getFieldValue("CONDITION") || "status_code == 200";
       lines.push(`${pad}- **Paso ${stepCounter++}: 🔀 Bifurcación Condicional Dual: \`Condition(expression="${cond}")\`**`);
-      lines.push(`${pad}  - **Expresión Evaluada:** \`${cond}\``);
+      lines.push(`${pad}  - **Evaluated Expression:** \`${cond}\``);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
-        lines.push(`${pad}  - **Rama SÍ (True):**`);
+        lines.push(`${pad}  - **True Branch:**`);
         const childBlock = doInput.connection.targetBlock()!;
         lines.push(...renderPlanBlock(childBlock, depth + 2));
       } else {
-        lines.push(`${pad}  - **Rama SÍ (True):** *(Vacía)*`);
+        lines.push(`${pad}  - **True Branch:** *(Empty)*`);
       }
 
       const elseInput = block.getInput("ELSE");
@@ -1466,7 +1466,7 @@ export function getWorkPlanFromBlocklyWorkspace(
     } else if (type === "wpipe_for") {
       const iters = block.getFieldValue("ITERATIONS") || "3";
       lines.push(`${pad}- **Paso ${stepCounter++}: 🔁 Bucle de Repetición: \`For(iterations=${iters})\`**`);
-      lines.push(`${pad}  - **Número de Iteraciones:** ${iters} ciclos continuos`);
+      lines.push(`${pad}  - **Iterations:** ${iters} continuous cycles`);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
@@ -1474,11 +1474,11 @@ export function getWorkPlanFromBlocklyWorkspace(
         const childBlock = doInput.connection.targetBlock()!;
         lines.push(...renderPlanBlock(childBlock, depth + 2));
       }
-      lines.push(`${pad}  - **Condición de Salida:** Tras completar los ${iters} ciclos, la ejecución prosigue con el siguiente paso.`);
+      lines.push(`${pad}  - **Exit Condition:** After completing ${iters} iterations, execution advances to the next step.`);
     } else if (type === "wpipe_while") {
       const cond = block.getFieldValue("CONDITION") || "retry_count < 3";
       lines.push(`${pad}- **Paso ${stepCounter++}: 🔁 Bucle Condicional Mientras: \`For(validation_expression="${cond}")\`**`);
-      lines.push(`${pad}  - **Expresión de Continuidad:** \`${cond}\``);
+      lines.push(`${pad}  - **Continuity Expression:** \`${cond}\``);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
@@ -1486,7 +1486,7 @@ export function getWorkPlanFromBlocklyWorkspace(
         const childBlock = doInput.connection.targetBlock()!;
         lines.push(...renderPlanBlock(childBlock, depth + 2));
       }
-      lines.push(`${pad}  - **Condición de Parada:** Cuando la expresión evalúa a Falso, el bucle se interrumpe y continúa la secuencia.`);
+      lines.push(`${pad}  - **Break Condition:** When expression evaluates to False, loop terminates and sequence continues.`);
     } else if (type === "wpipe_parallel") {
       const merge = block.getFieldValue("MERGE_POLICY") || "accumulate";
       lines.push(`${pad}- **Paso ${stepCounter++}: ⚡ Concurrencia en Paralelo: \`Parallel(merge_policy="${merge}")\`**`);
@@ -1506,15 +1506,15 @@ export function getWorkPlanFromBlocklyWorkspace(
       lines.push(`${pad}  - **Barrera de Fusión (Join Barrier):** Todos los hilos finalizan concurrentemente y su resultado se integra en el contexto global bajo la política \`${merge}\`.`);
     } else if (type === "wpipe_background") {
       lines.push(`${pad}- **Paso ${stepCounter++}: ⏳ Tarea Asíncrona Desacoplada: \`Background\`**`);
-      lines.push(`${pad}  - **Modelo de Ejecución:** Tarea fire-and-forget en thread secundario sin bloquear el hilo principal.`);
+      lines.push(`${pad}  - **Execution Model:** Fire-and-forget task in secondary thread without blocking main thread.`);
 
       const doInput = block.getInput("DO");
       if (doInput && doInput.connection && doInput.connection.targetBlock()) {
-        lines.push(`${pad}  - **Paso Asíncrono Delegado:**`);
+        lines.push(`${pad}  - **Delegated Async Step:**`);
         const childBlock = doInput.connection.targetBlock()!;
         lines.push(...renderPlanBlock(childBlock, depth + 2));
       }
-      lines.push(`${pad}  - **Comportamiento No-Bloqueante:** El pipeline principal prosigue de inmediato sin esperar la finalización de este hilo.`);
+      lines.push(`${pad}  - **Non-Blocking Behavior:** Main pipeline resumes immediately without waiting for background thread completion.`);
     } else {
       lines.push(`${pad}- **Paso ${stepCounter++}: \`${type}\`**`);
     }
@@ -1533,30 +1533,30 @@ export function getWorkPlanFromBlocklyWorkspace(
 
   const mermaidDag = getMermaidFromBlocklyWorkspace();
 
-  let md = `# 📋 Plan de Ejecución y Especificación de Arquitectura — ${projectName}\n\n`;
+  let md = `# 📋 Execution Plan & Architecture Specification — ${projectName}\n\n`;
   md += `> **Pipeline:** \`${projectName}\` | **Motor:** WPipe Core v2.5.13 Enterprise\n`;
-  md += `> **Generado:** ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC | **Estado:** Validado para Ejecución\n`;
-  md += `> **Arquitectura:** Microservicio Asíncrono Modular compliant con directrices WPipe Architect Manual\n\n`;
+  md += `> **Generated:** ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC | **Status:** Verified for Execution\n`;
+  md += `> **Architecture:** Modular Asynchronous Microservice compliant with WPipe Architect Manual\n\n`;
 
   md += `---
 
-## 1. 🎯 Resumen Ejecutivo
+## 1. 🎯 Executive Summary
 
-El pipeline **${projectName}** implementa una máquina de estados determinista y de alto rendimiento utilizando **WPipe OS**. Cuenta con gestión de ciclo de vida completo: ingesta, orquestación lógica, control de flujo bifurcado, concurrencia paralela, tareas asíncronas en segundo plano y punto de salida unificado.
+The **${projectName}** pipeline implements a deterministic, high-throughput finite state machine utilizing **WPipe OS**. Features full lifecycle management: ingress, state orchestration, branched control flow, parallel concurrency, background threads and unified egress.
 
-- **Total de Nodos Orquestados:** ${stepCounter - 1} pasos
-- **Punto de Ingress:** Fast-API REST Ingress / Worker Ingress
-- **Mecanismos de Control:** Ramificaciones condicionales, bucles protegidos y paralelismo con política de merge acumulativo.
+- **Total Orchestrated Nodes:** ${stepCounter - 1} steps
+- **Ingress Point:** FastAPI REST Ingress / Worker Ingress
+- **Control Flow:** Conditional branching, bounded loops and parallel fan-out with cumulative merge policy.
 
 ---
 
-## 2. 🔀 Secuencia Jerárquica de Ejecución del Pipeline
+## 2. 🔀 Hierarchical Pipeline Execution Sequence
 
 ${executionSteps.join("\n")}
 
 ---
 
-## 3. 📊 Diagrama de Flujo Oficial (Mermaid DAG)
+## 3. 📊 Official Flow Diagram (Mermaid DAG)
 
 \`\`\`mermaid
 ${mermaidDag}
@@ -1564,12 +1564,12 @@ ${mermaidDag}
 
 ---
 
-## 4. 🛡️ Estándares de Arquitectura, Concurrencia y Calidad WPipe
+## 4. 🛡️ WPipe Architecture, Concurrency & Quality Standards
 
 1. **Inmutabilidad y Merge Determinista:** Los resultados de ramas concurrentes y bloques paralelos se fusionan siguiendo estrictamente la política declarada (\`merge_policy="accumulate"\`), garantizando consistencia transaccional y evitando colisiones de claves en memoria.
 2. **Desacoplamiento de Tareas Asíncronas:** Las tareas encapsuladas en \`Background\` se delegan al pool de hilos de WPipe sin retener el ciclo de vida del hilo principal de ejecución ni incrementar la latencia de respuesta hacia el cliente.
 3. **Manejo de Errores y Timeouts:** Cada paso encapsula su contrato de datos con validación Pydantic y decoradores \`@to_obj\`, \`@timeout_sync\` y control de excepciones (\`TaskError\`).
-4. **Trazabilidad y Observabilidad:** Todas las transiciones de estado son registradas en SQLite WAL con métricas Prometheus, tracking de latencia por nodo y consumo de recursos CPU/RAM.
+4. **Observability & Traceability:** All state transitions are logged to SQLite WAL with Prometheus metrics, per-node latency tracking and CPU/RAM profiling.
 `;
 
   return md;

@@ -976,7 +976,7 @@ export default function App() {
         code: code,
         stepName: detectedName,
       };
-      setStatusMessage(`Archivo adjuntado: ${file.name} (función: ${detectedName})`);
+      setStatusMessage(`File attached: ${file.name} (function: ${detectedName})`);
     };
     reader.readAsText(file);
   };
@@ -1173,7 +1173,7 @@ export default function App() {
     );
     setModifiedFiles((prev) => new Set(prev).add(githubViewingFile.path));
     setIsEditingFile(false);
-    setStatusMessage(`Cambios guardados en ${githubViewingFile.path} ✓ (Preservado para exportación ZIP)`);
+    setStatusMessage(`Changes saved in ${githubViewingFile.path} ✓ (Preserved for ZIP export)`);
   };
 
   // Cancel file editing
@@ -1570,7 +1570,7 @@ export default function App() {
         isBreakpoint: isNowSet,
       });
     }
-    setStatusMessage(isNowSet ? `🔴 Punto de interrupción fijado en ${name}` : `Punto de interrupción removido de ${name}`);
+    setStatusMessage(isNowSet ? `🔴 Breakpoint set on ${name}` : `Breakpoint removed from ${name}`);
   };
 
   const handleResumeSimulation = () => {
@@ -1578,7 +1578,7 @@ export default function App() {
       resumeSimulationResolveRef.current();
       resumeSimulationResolveRef.current = null;
       setIsPausedAtBreakpoint(false);
-      setStatusMessage("Continuando simulación...");
+      setStatusMessage("Resuming simulation...");
     }
   };
 
@@ -1682,11 +1682,11 @@ export default function App() {
 
   // Rename Pipeline / Microservice
   const handleRenamePipeline = () => {
-    const newName = window.prompt("Introduce el nuevo nombre del pipeline / microservicio:", projectName);
+    const newName = window.prompt("Enter new microservice / pipeline name:", projectName);
     if (newName && newName.trim()) {
       const sanitized = newName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
       setProjectName(sanitized);
-      setStatusMessage(`Pipeline renombrado a '${sanitized}' ✓`);
+      setStatusMessage(`Pipeline renamed to '${sanitized}' ✓`);
     }
   };
 
@@ -1742,7 +1742,7 @@ export default function App() {
       setStatusMessage("Duplicating microservice...");
       const res = await duplicateProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       await fetchUserProjects();
-      setStatusMessage(`Microservicio duplicado como '${res.project?.name || "copia"}' ✓`);
+      setStatusMessage(`Microservice duplicated as '${res.project?.name || "copia"}' ✓`);
     } catch (err: any) {
       if (!handleEngineError(err, "Duplicating microservices")) setStatusMessage(`Error duplicating: ${err.message}`);
     }
@@ -1860,7 +1860,7 @@ export default function App() {
     const u = (overrideUsername || loginUsername).trim();
     const p = overridePassword || loginPassword;
     if (!u || !p) {
-      setAuthError("Por favor ingresa usuario y contraseña.");
+      setAuthError("Please enter username and password.");
       return;
     }
 
@@ -1875,7 +1875,7 @@ export default function App() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Usuario o contraseña incorrectos.");
+        throw new Error(errorData.detail || "Incorrect username or password.");
       }
 
       const data = await res.json();
@@ -1891,7 +1891,7 @@ export default function App() {
       await fetchUserProjects(data.user.id, data.token);
       setShowProjectsModal(true);
     } catch (err: any) {
-      setAuthError(err.message || "Error al iniciar sesión.");
+      setAuthError(err.message || "Error signing in.");
     } finally {
       setAuthLoading(false);
     }
@@ -1906,11 +1906,11 @@ export default function App() {
     const r = registerRole.trim() || "Developer";
 
     if (!u || !p || !n) {
-      setAuthError("Por favor completa nombre, usuario y contraseña.");
+      setAuthError("Please provide name, username, and password.");
       return;
     }
     if (p.length < 4) {
-      setAuthError("La contraseña debe tener al menos 4 caracteres.");
+      setAuthError("Password must be at least 4 characters long.");
       return;
     }
 
@@ -1975,7 +1975,7 @@ export default function App() {
     fetchUserProjects();
     setShowUserMenu(false);
     setShowProjectsModal(false);
-    setStatusMessage("Sesión local restaurada ✓");
+    setStatusMessage("Local session restored ✓");
   };
 
   // Load Python Preview when switching to python tab
@@ -2064,7 +2064,7 @@ export default function App() {
   const handleResetMermaid = () => {
     setMermaidZoom(1.0);
     setMermaidPan({ x: 0, y: 0 });
-    setStatusMessage("Zoom y posición de Mermaid restablecidos a 100%");
+    setStatusMessage("Mermaid zoom and position reset to 100%");
   };
 
   const handleExportMermaidSvg = () => {
@@ -2213,7 +2213,7 @@ export default function App() {
       return;
     }
     setDryRunLoading(true);
-    setStatusMessage("Ejecutando compuertas de calidad AST y verificación de contratos...");
+    setStatusMessage("Running AST quality gates and contract verification...");
     const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
     try {
       const url = getEngineApiUrl("/api/v1/pipeline/dry-run", engineStatus.port);
@@ -2234,7 +2234,7 @@ export default function App() {
             wpipe_decorators_valid: true,
           },
         });
-        setStatusMessage("Verificación completada: PASS (Todas las compuertas aprobadas) ✓");
+        setStatusMessage("Verification completed: PASS (All quality gates passed) ✓");
         return;
       }
       throw new Error(`HTTP ${res.status}`);
@@ -2315,7 +2315,7 @@ export default function App() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      setStatusMessage(`Descargado con éxito: ${projectName}.zip (${filesToZip.length} archivos) ✓`);
+      setStatusMessage(`Downloaded successfully: ${projectName}.zip (${filesToZip.length} archivos) ✓`);
     } catch (err: any) {
       console.error("ZIP Generation error:", err);
       if (!handleEngineError(err, "Downloading the microservice ZIP")) setStatusMessage(`Error generating ZIP: ${err.message}`);
@@ -2356,7 +2356,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem("wpipe_studio_saved_canvas");
       if (!saved) {
-        setStatusMessage("No hay ningún pipeline guardado en este navegador");
+        setStatusMessage("No pipeline saved in this browser yet");
         setActiveMenu(null);
         return;
       }
@@ -2445,10 +2445,10 @@ export default function App() {
       const mainFile = data.files?.find((f: any) => f.path === "app/main.py" || f.path.endsWith("main.py"));
       if (mainFile) {
         await navigator.clipboard.writeText(mainFile.content);
-        setStatusMessage("Código app/main.py copiado al portapapeles ✓");
+        setStatusMessage("app/main.py code copied to clipboard ✓");
       } else if (data.files && data.files[0]) {
         await navigator.clipboard.writeText(data.files[0].content);
-        setStatusMessage("Código Python copiado al portapapeles ✓");
+        setStatusMessage("Python code copied to clipboard ✓");
       }
     } catch (err: any) {
       if (!handleEngineError(err, "Copying generated Python code")) setStatusMessage(`Error copying code: ${err.message}`);
@@ -3773,7 +3773,7 @@ export default function App() {
                     className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 flex items-center gap-2 transition cursor-pointer"
                   >
                     <span>🌐</span>
-                    <span>Documentación & Web Suite</span>
+                    <span>Documentation & Suite Apps</span>
                   </a>
 
                   <div className="h-px bg-gray-800/80 my-1" />
@@ -4610,7 +4610,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(mermaidCode);
-                        setStatusMessage("Código Mermaid copiado al portapapeles ✓");
+                        setStatusMessage("Mermaid code copied to clipboard ✓");
                       }}
                       className="w-full py-1.5 bg-[#2d2d2d] hover:bg-[#37373d] text-gray-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition border border-[#3c3c3c]"
                     >
@@ -4694,7 +4694,7 @@ export default function App() {
                             <span className="truncate">{f.path}</span>
                           </div>
                           <span className="text-[10px] text-gray-500 font-mono mt-1 block">
-                            {f.content.split("\n").length} líneas
+                            {f.content.split("\n").length} lines
                           </span>
                         </div>
                       ))}
@@ -4708,7 +4708,7 @@ export default function App() {
                   <div className="flex items-center justify-between pb-2 border-b border-[#2b2b2b]">
                     <div className="flex items-center gap-2">
                       <GitBranch size={14} className="text-amber-400" />
-                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Control de Código</span>
+                      <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Source Control</span>
                     </div>
                     <button
                       onClick={() => setShowSidebar(false)}
@@ -4976,10 +4976,10 @@ export default function App() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(livePipelineCode);
-                          setStatusMessage("Código pipeline.py copiado al portapapeles");
+                          setStatusMessage("pipeline.py code copied to clipboard ✓");
                         }}
                         className="p-1 hover:bg-[#333333] text-gray-400 hover:text-white rounded cursor-pointer"
-                        title="Copiar código"
+                        title="Copy code"
                       >
                         <Copy size={13} />
                       </button>
@@ -5027,7 +5027,7 @@ export default function App() {
                               : "bg-gray-800 border-gray-600"
                           }`}
                         />
-                        <span className="text-gray-300 font-medium">Punto de Interrupción</span>
+                        <span className="text-gray-300 font-medium">Breakpoint</span>
                       </div>
                       <button
                         onClick={() => handleToggleBreakpoint(selectedBlockData.id, selectedBlockData.stepName)}
@@ -5043,11 +5043,11 @@ export default function App() {
 
                     {/* Metadata & Description */}
                     <div className="p-2.5 rounded-lg bg-[#1e1e1e] border border-[#3c3c3c] space-y-1.5">
-                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Documentación</span>
+                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Documentation</span>
                       <p className="text-gray-300 text-[11px] leading-relaxed">
                         {catalog.find((s) => s.name === selectedBlockData.stepName)?.description ||
                           selectedBlockData.description ||
-                          "Sin descripción disponible en el catálogo de pasos."}
+                          "No description available in step catalog."}
                       </p>
                       {catalog.find((s) => s.name === selectedBlockData.stepName)?.repo && (
                         <div className="text-[10px] text-gray-500 font-mono">
@@ -5058,7 +5058,7 @@ export default function App() {
 
                     {/* Block Fields Editor */}
                     <div className="space-y-3">
-                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Parámetros del Bloque</span>
+                      <span className="text-[10px] uppercase font-mono text-gray-400 font-bold">Block Parameters</span>
                       {selectedBlockData.fields &&
                         Object.entries(selectedBlockData.fields).map(([fieldName, val]) => (
                           <div key={fieldName} className="space-y-1">
@@ -5367,7 +5367,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 border border-gray-800 rounded-lg text-gray-400 text-[11px] font-medium mr-1 select-none">
                   <Move size={12} className="text-sky-400" />
-                  <span>Arrastra fondo para mover • Rueda ratón para zoom</span>
+                  <span>Drag canvas to pan • Wheel / Pinch to zoom</span>
                 </div>
 
                 <div className="flex items-center bg-gray-900 border border-gray-800 rounded-lg p-0.5">
@@ -5392,7 +5392,7 @@ export default function App() {
 
                 <button
                   onClick={handleResetMermaid}
-                  title="Restablecer zoom y posición a 100%"
+                  title="Reset zoom and position to 100%"
                   className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-xs font-semibold text-gray-300 hover:text-white cursor-pointer transition"
                 >
                   100%
@@ -5400,7 +5400,7 @@ export default function App() {
 
                 <button
                   onClick={handleCenterMermaid}
-                  title="Centrar y ajustar automáticamente el diagrama al lienzo"
+                  title="Auto-fit and center diagram to canvas"
                   className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-xs font-semibold text-teal-400 hover:text-teal-300 flex items-center gap-1.5 cursor-pointer transition"
                 >
                   <Maximize2 size={13} />
@@ -5411,7 +5411,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={handleExportMermaidSvg}
-                  title="Descargar diagrama vectorial SVG para presentaciones o documentación"
+                  title="Download SVG vector diagram"
                   className="px-3 py-1.5 bg-sky-950 hover:bg-sky-900 border border-sky-800/80 text-sky-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
                 >
                   <Download size={13} />
@@ -5421,9 +5421,9 @@ export default function App() {
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(mermaidCode);
-                    setStatusMessage("Código Mermaid copiado al portapapeles ✓");
+                    setStatusMessage("Mermaid code copied to clipboard ✓");
                   }}
-                  title="Copiar código fuente Mermaid"
+                  title="Copy Mermaid source code"
                   className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition"
                 >
                   <Copy size={13} />
@@ -5432,7 +5432,7 @@ export default function App() {
 
                 <button
                   onClick={() => setShowWorkPlanModal(true)}
-                  title="Visualizar plan de ejecución y especificación de arquitectura"
+                  title="View execution plan and architecture specification"
                   className="px-3 py-1.5 bg-blue-950 hover:bg-blue-900 border border-blue-800/80 text-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
                 >
                   <FileText size={13} />
@@ -5546,7 +5546,7 @@ export default function App() {
                               <span
                                 onClick={(e) => closeTab(tab.path, e)}
                                 className="w-2 h-2 rounded-full bg-[#e2c08d] group-hover:hidden"
-                                title="Modificado"
+                                title="Modified"
                               />
                             )}
                             <button
@@ -5554,7 +5554,7 @@ export default function App() {
                               className={`p-0.5 rounded hover:bg-[#3c3c3c] text-gray-400 hover:text-white transition ${
                                 isModified ? "hidden group-hover:block" : ""
                               }`}
-                              title="Cerrar archivo"
+                              title="Close file"
                             >
                               <X size={12} />
                             </button>
@@ -5592,17 +5592,17 @@ export default function App() {
                           <button
                             onClick={handleSaveFileChanges}
                             className="px-2.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                            title="Guardar cambios"
+                            title="Save changes"
                           >
                             <Save size={12} />
-                            <span>Guardar</span>
+                            <span>Save</span>
                           </button>
                           <button
                             onClick={handleCancelFileEditing}
                             className="px-2 py-0.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-gray-300 rounded text-xs transition cursor-pointer"
-                            title="Cancelar edición"
+                            title="Cancel editing"
                           >
-                            <span>Cancelar</span>
+                            <span>Cancel</span>
                           </button>
                         </>
                       )}
@@ -5615,7 +5615,7 @@ export default function App() {
                               setStatusMessage(`Copiado ${githubViewingFile.path} al portapapeles`);
                             }}
                             className="p-1 hover:bg-[#3c3c3c] text-gray-300 hover:text-white rounded transition cursor-pointer"
-                            title="Copiar código"
+                            title="Copy code"
                           >
                             <Copy size={13} />
                           </button>
@@ -5630,7 +5630,7 @@ export default function App() {
                               setStatusMessage(`Descargado ${githubViewingFile.path}`);
                             }}
                             className="p-1 hover:bg-[#3c3c3c] text-gray-300 hover:text-white rounded transition cursor-pointer"
-                            title="Descargar archivo"
+                            title="Download file"
                           >
                             <Download size={13} />
                           </button>
@@ -5793,7 +5793,7 @@ export default function App() {
                                 onScroll={handleEditorScroll}
                                 spellCheck={false}
                                 autoFocus
-                                placeholder="Escribe o edita el código aquí..."
+                                placeholder="Write or edit code here..."
                                 className="live-code-textarea"
                               />
                             </div>
@@ -5872,17 +5872,17 @@ export default function App() {
                                   <span>README.md</span>
                                 </span>
                                 <span className="text-gray-400 text-[11px]">
-                                  — Vista Previa Renderizada Oficial (Directorio: {githubCurrentDir || "/"})
+                                  — Official Rendered Preview (Directory: {githubCurrentDir || "/"})
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => openFileInTab(currentReadme)}
                                   className="px-3 py-1 bg-[#0e639c] hover:bg-[#1177bb] text-white rounded text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow"
-                                  title="Abrir este README.md en el editor de código tradicional"
+                                  title="Open this README.md in code editor"
                                 >
                                   <Edit3 size={13} />
-                                  <span>Ver Archivo en Editor</span>
+                                  <span>Open File in Editor</span>
                                 </button>
                               </div>
                             </div>
@@ -5898,8 +5898,8 @@ export default function App() {
                             {/* Files in this directory */}
                             <div className="mt-8 border border-[#3c3c3c] rounded-xl overflow-hidden bg-[#252526]">
                               <div className="px-4 py-2.5 bg-[#2d2d2d] border-b border-[#3c3c3c] text-xs font-semibold text-gray-300 flex items-center justify-between">
-                                <span>Archivos en esta carpeta ({directoryItems.length})</span>
-                                <span className="text-[11px] text-gray-400 font-mono">Haz clic para abrir en el editor</span>
+                                <span>Files in this directory ({directoryItems.length})</span>
+                                <span className="text-[11px] text-gray-400 font-mono">Click to open in editor</span>
                               </div>
                               <div className="divide-y divide-[#3c3c3c]">
                                 {directoryItems.map((item) => (
@@ -5938,7 +5938,7 @@ export default function App() {
                                 </span>
                               </div>
                               <span className="text-xs text-gray-400 font-mono">
-                                {directoryItems.length} elementos
+                                {directoryItems.length} items
                               </span>
                             </div>
 
@@ -6230,7 +6230,7 @@ export default function App() {
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-1 custom-modal-scrollbar">
                         {simLogs.length === 0 ? (
-                          <div className="text-gray-600 italic">No hay registros de salida recientes. Inicia una simulación para ver logs.</div>
+                          <div className="text-gray-600 italic">No recent output records. Run a simulation to inspect logs.</div>
                         ) : (
                           simLogs.map((log, idx) => (
                             <div key={idx} className="flex items-start gap-2 text-[11px]">
@@ -6273,7 +6273,7 @@ export default function App() {
                       {/* Left: Breakpoints List */}
                       <div className="w-1/3 border-r border-[#2b2b2b] pr-3 flex flex-col">
                         <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-[#2b2b2b] font-bold text-gray-300">
-                          <span>Puntos de Interrupción ({breakpoints.size})</span>
+                          <span>Breakpoints ({breakpoints.size})</span>
                           {breakpoints.size > 0 && (
                             <button
                               onClick={() => {
@@ -6290,7 +6290,7 @@ export default function App() {
                         <div className="flex-1 overflow-y-auto space-y-1">
                           {breakpoints.size === 0 ? (
                             <div className="text-gray-600 italic text-[11px]">
-                              Haz clic en un bloque y activa el punto de interrupción en el Inspector o pulsa F9.
+                              Click a block and toggle breakpoint in Inspector or press F9.
                             </div>
                           ) : (
                             Array.from(breakpoints).map((bp) => (
@@ -6338,7 +6338,7 @@ export default function App() {
                               <button
                                 onClick={handleResumeSimulation}
                                 className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                                title="Continuar ejecución (F5)"
+                                title="Continue execution (F5)"
                               >
                                 <Play size={11} className="fill-current" />
                                 <span>Continuar (F5)</span>
@@ -6399,7 +6399,7 @@ export default function App() {
 
                         {testRunData && (
                           <div className="text-[11px] text-gray-400 font-mono">
-                            Código de Salida: {testRunData.exit_code}
+                            Exit Code: {testRunData.exit_code}
                           </div>
                         )}
                       </div>
@@ -6463,7 +6463,7 @@ export default function App() {
                                 >
                                   {run.status.toUpperCase()}
                                 </span>
-                                <span className="font-mono text-gray-200">Duración: {run.duration_ms}ms</span>
+                                <span className="font-mono text-gray-200">Duration: {run.duration_ms}ms</span>
                                 <span className="text-gray-500 text-[11px]">
                                   {new Date(run.created_at).toLocaleTimeString()} ({new Date(run.created_at).toLocaleDateString()})
                                 </span>
@@ -6523,7 +6523,7 @@ export default function App() {
                   setShowSidebar(true);
                 }}
                 className="flex items-center gap-1 cursor-pointer hover:opacity-80"
-                title="Control de Código Fuente (Git)"
+                title="Source Control Fuente (Git)"
               >
                 <GitBranch size={12} />
                 <span>main{modifiedFiles.size > 0 ? "*" : ""}</span>
@@ -6536,7 +6536,7 @@ export default function App() {
                 <div
                   onClick={handleResumeSimulation}
                   className="flex items-center gap-1 bg-amber-400 text-gray-950 px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer hover:bg-amber-300 animate-pulse shadow"
-                  title="Pausado en punto de interrupción. Haz clic o pulsa F5 para continuar"
+                  title="Paused at breakpoint. Click or press F5 to continue"
                 >
                   <Play size={10} className="fill-current" />
                   <span>PAUSADO: {pausedStepName} (F5)</span>
@@ -6671,7 +6671,7 @@ export default function App() {
                 <Search size={14} className="absolute left-3 top-3 text-gray-500" />
                 <input
                   type="text"
-                  placeholder="Buscar microservicio por nombre o descripción..."
+                  placeholder="Search microservice by name or description..."
                   value={projectSearch}
                   onChange={(e) => setProjectSearch(e.target.value)}
                   className="w-full bg-gray-950 border border-gray-800 rounded-xl py-2 pl-9 pr-3 text-xs text-gray-200 focus:outline-none focus:border-sky-500 transition"
@@ -6720,7 +6720,7 @@ export default function App() {
                   <span className="text-xs font-extrabold text-sky-300 flex items-center gap-1.5">
                     <Plus size={13} /> Crear Nuevo Microservicio Aislado
                   </span>
-                  <span className="text-[10px] text-gray-400">Se creará su propio directorio en tu workspace</span>
+                  <span className="text-[10px] text-gray-400">A dedicated directory will be created in your workspace</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
@@ -6737,10 +6737,10 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Descripción</label>
+                    <label className="text-[10px] font-bold text-gray-400 block mb-1">Description</label>
                     <input
                       type="text"
-                      placeholder="Detección de objetos con pipeline modular"
+                      placeholder="Object detection with modular pipeline"
                       value={newProjectDesc}
                       onChange={(e) => setNewProjectDesc(e.target.value)}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
@@ -6787,10 +6787,10 @@ export default function App() {
                 <div className="py-12 text-center text-gray-500 space-y-2">
                   <FolderOpen size={36} className="mx-auto opacity-40 text-sky-400" />
                   <p className="text-xs font-semibold text-gray-400">
-                    {projectSearch.trim() ? "No se encontraron microservicios con ese filtro." : "Aún no tienes microservicios guardados en tu espacio."}
+                    {projectSearch.trim() ? "No microservices found matching this query." : "No microservices saved in your workspace yet."}
                   </p>
                   <p className="text-[11px] text-gray-500">
-                    Haz clic en "Nuevo Microservicio" o guarda el pipeline actual usando el botón Guardar del encabezado.
+                    Click "New Microservice" or save the current pipeline using the Save button in the header.
                   </p>
                 </div>
               ) : (
@@ -6850,7 +6850,7 @@ export default function App() {
                                     ? "bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30"
                                     : "bg-sky-600 hover:bg-sky-500 text-white shadow-sm"
                                 }`}
-                                title="Cargar este microservicio en el lienzo y visor de código"
+                                title="Load this microservice into canvas and code viewer"
                               >
                                 <Play size={11} />
                                 <span>{isActive ? "Recargar" : "Abrir"}</span>
@@ -6884,7 +6884,7 @@ export default function App() {
             <div className="pt-2 border-t border-gray-800/80 text-[11px] text-gray-400 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={14} className="text-emerald-400" />
-                <span>Cada proyecto reside en su directorio físico aislado. Ningún archivo se cruza con otros microservicios.</span>
+                <span>Each project resides in an isolated physical directory. No files cross between microservices.</span>
               </span>
               <span className="text-[10px] text-gray-500 font-mono">
                 {userProjects.length} microservicio{userProjects.length === 1 ? "" : "s"} registrado{userProjects.length === 1 ? "" : "s"}
@@ -6924,7 +6924,7 @@ export default function App() {
                 WPipe Studio
               </h2>
               <p className="text-xs text-gray-400">
-                Orquestación Visual de Microservicios Python
+                Visual Python Microservice Orchestration
               </p>
             </div>
 
@@ -6942,7 +6942,7 @@ export default function App() {
                     : "text-gray-400 hover:text-gray-200"
                 }`}
               >
-                Iniciar Sesión
+                Sign In
               </button>
               <button
                 type="button"
@@ -6968,7 +6968,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Iniciar Sesión Form */}
+            {/* Sign In Form */}
             {authMode === "login" && (
               <form onSubmit={(e) => handleNaturalLogin(e)} className="space-y-3">
                 <div>
@@ -6987,7 +6987,7 @@ export default function App() {
 
                 <div>
                   <label className="text-[11px] font-bold text-gray-300 block mb-1">
-                    Contraseña
+                    Password
                   </label>
                   <input
                     type="password"
@@ -7009,7 +7009,7 @@ export default function App() {
                   ) : (
                     <User size={14} />
                   )}
-                  <span>{authLoading ? "Autenticando..." : "Iniciar Sesión"}</span>
+                  <span>{authLoading ? "Authenticating..." : "Sign In"}</span>
                 </button>
 
 
@@ -7050,7 +7050,7 @@ export default function App() {
 
                   <div>
                     <label className="text-[11px] font-bold text-gray-300 block mb-1">
-                      Contraseña *
+                      Password *
                     </label>
                     <input
                       type="password"
@@ -7108,10 +7108,10 @@ export default function App() {
                 <FileText size={20} className="text-blue-400" />
                 <div>
                   <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300 font-heading">
-                    Plan de Ejecución y Arquitectura — {projectName}
+                    Execution & Architecture Plan — {projectName}
                   </h3>
                   <p className="text-xs text-gray-400">
-                    Especificación jerárquica de la máquina de estados según el diseño del lienzo visual.
+                    Hierarchical finite state machine specification derived from visual canvas design.
                   </p>
                 </div>
               </div>
@@ -7632,14 +7632,14 @@ export default function App() {
                 onKeyDown={(e) => {
                   const filtered = [
                     { id: "run-sim", title: "Simulation: Start (🏁 F5)", category: "Pipeline", action: () => handleStartSimulation() },
-                    { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", action: () => handleStopSimulation() },
-                    { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", action: () => setIsSplitView((prev) => !prev) },
+                    { id: "stop-sim", title: "Simulation: Stop Execution (🛑)", category: "Pipeline", action: () => handleStopSimulation() },
+                    { id: "toggle-split", title: "View: Toggle Canvas + Code Split View (Ctrl+\\)", category: "View", action: () => setIsSplitView((prev) => !prev) },
                     { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", action: () => setBottomPanelOpen((prev) => !prev) },
                     { id: "run-tests", title: "Tests: Ejecutar Suite Pytest (pytest tests/)", category: "Testing", action: () => { setBottomPanelOpen(true); setBottomPanelTab("tests"); handleRunTests(); } },
-                    { id: "open-env", title: "Configuración: Variables de Entorno (.env)", category: "Config", action: () => setShowEnvModal(true) },
+                    { id: "open-env", title: "Config: Environment Variables (.env)", category: "Config", action: () => setShowEnvModal(true) },
                     { id: "open-inspector", title: "Inspector: Alternar Inspector de Propiedades", category: "View", action: () => setInspectorOpen((prev) => !prev) },
                     { id: "open-history", title: "Historial: Ver Registro de Simulaciones (PostgreSQL)", category: "Database", action: () => { setBottomPanelOpen(true); setBottomPanelTab("history"); if (activeProjectId) loadSimulationHistory(activeProjectId); } },
-                    { id: "sync-python", title: "Microservicio: Sincronizar Código Python desde Lienzo", category: "Codegen", action: () => handleSyncPythonCode() },
+                    { id: "sync-python", title: "Microservice: Sync Python Code from Canvas", category: "Codegen", action: () => handleSyncPythonCode() },
                     { id: "save-project", title: "Proyecto: Guardar Microservicio en Workspace", category: "File", action: () => handleSaveProject() },
                     { id: "export-zip", title: "Exportar: Descargar Paquete Microservicio ZIP", category: "Export", action: () => handleGenerateZip() },
                     { id: "open-flowchart", title: "Diagrama: Ver Flujo Mermaid Interactivo", category: "View", action: () => handleOpenFlowchart() },
@@ -7665,7 +7665,7 @@ export default function App() {
                     setCommandPaletteOpen(false);
                   }
                 }}
-                placeholder="Escribe un comando para ejecutar (ej: simulación, terminal, tests, split, .env...)"
+                placeholder="Type a command to run (e.g. simulation, terminal, tests, split, .env...)"
                 className="flex-1 bg-transparent text-gray-100 text-xs font-mono focus:outline-none placeholder-gray-500"
               />
               <span className="text-[10px] text-gray-500 font-mono">ESC para salir</span>
@@ -7676,14 +7676,14 @@ export default function App() {
               {(() => {
                 const commands = [
                   { id: "run-sim", title: "Simulation: Start (🏁 F5)", category: "Pipeline", icon: <Play size={13} className="text-emerald-400" />, action: () => handleStartSimulation() },
-                  { id: "stop-sim", title: "Simulación: Detener Ejecución (🛑)", category: "Pipeline", icon: <Square size={13} className="text-rose-400" />, action: () => handleStopSimulation() },
-                  { id: "toggle-split", title: "Ver: Alternar Vista Dividida Lienzo + Código (Ctrl+\\)", category: "View", icon: <Split size={13} className="text-sky-400" />, action: () => setIsSplitView((prev) => !prev) },
+                  { id: "stop-sim", title: "Simulation: Stop Execution (🛑)", category: "Pipeline", icon: <Square size={13} className="text-rose-400" />, action: () => handleStopSimulation() },
+                  { id: "toggle-split", title: "View: Toggle Canvas + Code Split View (Ctrl+\\)", category: "View", icon: <Split size={13} className="text-sky-400" />, action: () => setIsSplitView((prev) => !prev) },
                   { id: "toggle-terminal", title: "Terminal: Alternar Panel Inferior / Terminal (Ctrl+`)", category: "Terminal", icon: <Terminal size={13} className="text-emerald-400" />, action: () => setBottomPanelOpen((prev) => !prev) },
                   { id: "run-tests", title: "Tests: Ejecutar Suite Pytest (pytest tests/)", category: "Testing", icon: <FlaskConical size={13} className="text-purple-400" />, action: () => { setBottomPanelOpen(true); setBottomPanelTab("tests"); handleRunTests(); } },
-                  { id: "open-env", title: "Configuración: Variables de Entorno (.env)", category: "Config", icon: <Settings size={13} className="text-emerald-400" />, action: () => setShowEnvModal(true) },
+                  { id: "open-env", title: "Config: Environment Variables (.env)", category: "Config", icon: <Settings size={13} className="text-emerald-400" />, action: () => setShowEnvModal(true) },
                   { id: "open-inspector", title: "Inspector: Alternar Inspector de Propiedades", category: "View", icon: <Sliders size={13} className="text-purple-400" />, action: () => setInspectorOpen((prev) => !prev) },
                   { id: "open-history", title: "Historial: Ver Registro de Simulaciones (PostgreSQL)", category: "Database", icon: <History size={13} className="text-teal-400" />, action: () => { setBottomPanelOpen(true); setBottomPanelTab("history"); if (activeProjectId) loadSimulationHistory(activeProjectId); } },
-                  { id: "sync-python", title: "Microservicio: Sincronizar Código Python desde Lienzo", category: "Codegen", icon: <FileCode size={13} className="text-sky-400" />, action: () => handleSyncPythonCode() },
+                  { id: "sync-python", title: "Microservice: Sync Python Code from Canvas", category: "Codegen", icon: <FileCode size={13} className="text-sky-400" />, action: () => handleSyncPythonCode() },
                   { id: "save-project", title: "Proyecto: Guardar Microservicio en Workspace", category: "File", icon: <Save size={13} className="text-emerald-400" />, action: () => handleSaveProject() },
                   { id: "export-zip", title: "Exportar: Descargar Paquete Microservicio ZIP", category: "Export", icon: <Download size={13} className="text-sky-400" />, action: () => handleGenerateZip() },
                   { id: "open-flowchart", title: "Diagrama: Ver Flujo Mermaid Interactivo", category: "View", icon: <GitMerge size={13} className="text-indigo-400" />, action: () => handleOpenFlowchart() },
@@ -7743,7 +7743,7 @@ export default function App() {
                 <div>
                   <h3 className="text-base font-extrabold text-white">Variables de Entorno (.env)</h3>
                   <p className="text-[11px] text-gray-400">
-                    Configura credenciales y parámetros de ejecución del microservicio activo ({projectName || "default"})
+                    Configure credentials and runtime parameters for active microservice ({projectName || "default"})
                   </p>
                 </div>
               </div>
@@ -7757,7 +7757,7 @@ export default function App() {
 
             {/* Presets Bar */}
             <div className="flex items-center gap-2 p-2 bg-[#252526] rounded-lg border border-[#333333] shrink-0 text-xs">
-              <span className="text-gray-400 font-semibold text-[11px]">Presets Rápidos:</span>
+              <span className="text-gray-400 font-semibold text-[11px]">Quick Presets:</span>
               <button
                 onClick={() => {
                   setEnvVars((prev) => [
@@ -7803,7 +7803,7 @@ export default function App() {
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-modal-scrollbar">
               {envVars.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 text-xs italic">
-                  No hay variables de entorno configuradas aún. Añade una o usa un preset rápido.
+                  No environment variables configured yet. Add one or use a quick preset.
                 </div>
               ) : (
                 envVars.map((item, idx) => (
@@ -7826,7 +7826,7 @@ export default function App() {
                           const val = e.target.value;
                           setEnvVars((prev) => prev.map((v, i) => (i === idx ? { ...v, value: val } : v)));
                         }}
-                        placeholder="Valor secreto o configuración"
+                        placeholder="Secret value or configuration"
                         className="w-full px-2 py-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded text-gray-200 font-mono text-xs focus:outline-none focus:border-sky-500 pr-7"
                       />
                       <button
@@ -7861,7 +7861,7 @@ export default function App() {
                 className="px-3 py-1.5 rounded bg-[#252526] hover:bg-[#333333] text-gray-200 border border-[#3c3c3c] text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus size={13} className="text-emerald-400" />
-                <span>Añadir Variable</span>
+                <span>Add Variable</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -7895,7 +7895,7 @@ export default function App() {
                   <History size={18} />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-white">Detalle de Ejecución Histórica</h3>
+                  <h3 className="text-base font-extrabold text-white">Historical Execution Run Details</h3>
                   <div className="flex items-center gap-2 text-[11px] text-gray-400 font-mono mt-0.5">
                     <span>ID: {selectedHistoricalRun.id?.slice(0, 8)}...</span>
                     <span>•</span>
@@ -7921,7 +7921,7 @@ export default function App() {
               {/* Context Diff side-by-side */}
               <div>
                 <span className="font-bold text-gray-300 uppercase tracking-wider text-[10px] block mb-1">
-                  Comparación de Contexto: Payload Entrada vs Contexto Salida
+                  Context Comparison: Ingress Payload vs Output Context
                 </span>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -8023,7 +8023,7 @@ export default function App() {
                 className="px-3 py-1.5 rounded-lg bg-[#1e293b] hover:bg-[#334155] border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <span>🔑</span>
-                <span>¿Ya compraste? Ir al Portal</span>
+                <span>Already purchased? Go to Portal</span>
               </a>
               <button
                 onClick={() => setLimitNotice(null)}

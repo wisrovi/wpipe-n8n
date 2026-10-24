@@ -76,10 +76,10 @@ export const EngineStatusWidget: React.FC<EngineStatusWidgetProps> = ({
           <span className="hidden sm:inline">
             {status.connected
               ? `Engine Local (${status.stepsCount} steps)`
-              : "Modo Diseño"}
+              : "Design Mode"}
           </span>
           {status.connected && status.verifiedCryptographically && (
-            <span className="text-[10px] text-emerald-400 font-mono" title="Firma Criptográfica Ed25519 Verificada">
+            <span className="text-[10px] text-emerald-400 font-mono" title="Ed25519 Cryptographic Signature Verified">
               🛡️
             </span>
           )}

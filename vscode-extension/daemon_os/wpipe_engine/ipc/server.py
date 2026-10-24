@@ -559,6 +559,20 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json(200, {"canvas_ir": canvas_ir, "files": [], "error": str(e)})
 
+        # Graceful Daemon Shutdown (Stop Engine)
+        elif self.path in ("/v1/engine/shutdown", "/engine/shutdown", "/api/v1/engine/shutdown"):
+            self._send_json(200, {
+                "status": "shutting_down",
+                "message": "wpipe-engine daemon is terminating gracefully.",
+                "pid": os.getpid(),
+            })
+            def _delayed_exit():
+                import time
+                time.sleep(0.3)
+                os._exit(0)
+            threading.Thread(target=_delayed_exit, daemon=True).start()
+            return
+
         # 6. Workspace Test Execution
         elif self.path in ("/v1/pipeline/test", "/pipeline/test", "/api/v1/pipeline/test"):
             ws_path = body.get("workspace_dir")

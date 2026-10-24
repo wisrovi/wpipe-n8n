@@ -150,6 +150,14 @@ export class EngineIpcClient {
     });
   }
 
+  public async shutdownEngine(): Promise<any> {
+    try {
+      return await this.request("POST", "/engine/shutdown");
+    } catch (e: any) {
+      return { status: "error", message: e.message };
+    }
+  }
+
   public async runTests(workspaceDir: string): Promise<any> {
     return this.request("POST", "/pipeline/test", { workspace_dir: workspaceDir });
   }

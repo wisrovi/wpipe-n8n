@@ -74,6 +74,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("wpipe.stopDaemon", async () => {
+      await daemonManager.stop();
+      vscode.window.showInformationMessage("🛑 Native wpipe-engine stopped.");
+      await updateStatusBar();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("wpipe.startDaemon", async () => {
       const ok = await daemonManager.ensureDaemonRunning();
       if (ok) {
@@ -339,6 +347,9 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
           break;
         case "restartDaemon":
           vscode.commands.executeCommand("wpipe.startDaemon");
+          break;
+        case "stopDaemon":
+          vscode.commands.executeCommand("wpipe.stopDaemon");
           break;
         case "copyToClipboard":
           if (msg.text) {
@@ -913,9 +924,14 @@ class WPipeSidebarProvider implements vscode.WebviewViewProvider {
         <span class="tech-k">Steps Catalog:</span>
         <span class="tech-v text-accent">196 official steps</span>
       </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top: 4px;" onclick="send('restartDaemon')">
-        🔄 Restart Local Engine
-      </button>
+      <div style="display: flex; gap: 6px; margin-top: 6px;">
+        <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="send('restartDaemon')">
+          🔄 Restart Engine
+        </button>
+        <button class="btn btn-secondary btn-sm" style="flex: 1; border-color: rgba(239, 68, 68, 0.4); color: #f87171;" onclick="send('stopDaemon')" title="Shut down local wpipe-engine process">
+          🛑 Stop Engine
+        </button>
+      </div>
     </div>
   </details>
 

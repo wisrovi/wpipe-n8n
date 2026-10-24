@@ -248,10 +248,21 @@ export class DaemonManager {
     }
   }
 
-  public stop(): void {
+  public async stop(): Promise<void> {
     if (this.daemonProcess && !this.daemonProcess.killed) {
       try {
         this.daemonProcess.kill();
+      } catch {}
+    }
+    // Also trigger HTTP/IPC graceful shutdown in case it was started externally
+    try {
+      await this.client.shutdownEngine();
+    } catch {}
+
+    // On Linux/macOS, kill any stray wpipe-engine process
+    if (process.platform !== "win32") {
+      try {
+        child_process.execSync("pkill -f 'wpipe-engine daemon' || true", { stdio: "ignore" });
       } catch {}
     }
   }

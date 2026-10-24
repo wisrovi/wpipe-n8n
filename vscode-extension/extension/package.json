@@ -74,6 +74,11 @@
         "command": "wpipe.startDaemon",
         "title": "WPipe: Start Native Engine (wpipe-engine)",
         "category": "WPipe"
+      },
+      {
+        "command": "wpipe.stopDaemon",
+        "title": "WPipe: Stop Native Engine (wpipe-engine)",
+        "category": "WPipe"
       }
     ],
     "customEditors": [

@@ -163,6 +163,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                 await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
               }
               vscode.window.showInformationMessage(`✅ Pipeline compiled successfully (${projectName})`);
+              
+              // Automatically open generated app/pipelines.py in editor and refresh file trees
+              const mainPipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+              try {
+                const doc = await vscode.workspace.openTextDocument(mainPipeUri);
+                await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
+              } catch {}
+              await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+              await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
             }
           }
           break;

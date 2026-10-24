@@ -58,6 +58,7 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
             return [
                 engineItem,
+                new vscode.TreeItem('🚀 Workspace Pipelines', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed),
                 new vscode.TreeItem('🤝 Community Plugins', vscode.TreeItemCollapsibleState.Collapsed)
@@ -65,7 +66,8 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
         }
 
         const label = e.label as string;
-        if (label.includes('Workspace')) return this.searchWorkspace();
+        if (label.includes('Pipelines')) return this.searchPipelines();
+        if (label.includes('Workspace Steps')) return this.searchWorkspace();
         if (label.includes('Official')) return this.getLibItems('Official');
         if (label.includes('Community')) return this.getLibItems('Community');
         return [];
@@ -75,6 +77,47 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
         return CatalogManager.getSteps()
             .filter(s => s.repo === repo)
             .map(s => new LibraryItem(s));
+    }
+
+    private async searchPipelines(): Promise<vscode.TreeItem[]> {
+        const items: vscode.TreeItem[] = [];
+        const files = await vscode.workspace.findFiles('**/{*.wpipe,*.wpipe.json,pipelines.py}', '**/node_modules/**');
+        
+        for (const file of files) {
+            const relPath = vscode.workspace.asRelativePath(file);
+            const isVisual = file.fsPath.endsWith('.wpipe') || file.fsPath.endsWith('.wpipe.json');
+            const item = new vscode.TreeItem(relPath, vscode.TreeItemCollapsibleState.None);
+            
+            if (isVisual) {
+                item.iconPath = new vscode.ThemeIcon('circuit-board');
+                item.description = 'Visual Canvas';
+                item.tooltip = `Visual WPipe Pipeline: ${relPath}\nClick to open in Canvas`;
+                item.command = {
+                    command: 'vscode.openWith',
+                    title: 'Open Canvas',
+                    arguments: [file, 'wpipe.canvasEditor']
+                };
+            } else {
+                item.iconPath = new vscode.ThemeIcon('play-circle');
+                item.description = 'Python Pipeline';
+                item.tooltip = `Compiled Python Pipeline: ${relPath}\nClick to open source code`;
+                item.command = {
+                    command: 'vscode.open',
+                    title: 'Open Code',
+                    arguments: [file]
+                };
+            }
+            items.push(item);
+        }
+
+        if (items.length === 0) {
+            const emptyItem = new vscode.TreeItem('No pipelines found yet', vscode.TreeItemCollapsibleState.None);
+            emptyItem.description = 'Create with command WPipe: Create New Visual Pipeline';
+            emptyItem.iconPath = new vscode.ThemeIcon('info');
+            return [emptyItem];
+        }
+
+        return items;
     }
 
     private async searchWorkspace(): Promise<StepItem[]> {

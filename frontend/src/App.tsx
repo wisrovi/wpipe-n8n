@@ -3806,7 +3806,7 @@ export default function App() {
             <div className="flex flex-col items-center w-full space-y-2">
               <button
                 onClick={() => handleActivityTabClick("blocks")}
-                title="Paleta de Bloques WPipe (Canvas)"
+                title="WPipe Block Palette (Canvas)"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "blocks" && showSidebar
                     ? "text-white"
@@ -3821,7 +3821,7 @@ export default function App() {
 
               <button
                 onClick={() => handleActivityTabClick("explorer")}
-                title="Explorador de Archivos / Microservicio (Ctrl+Shift+E)"
+                title="File Explorer / Microservice (Ctrl+Shift+E)"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "explorer" && showSidebar
                     ? "text-white"
@@ -3836,7 +3836,7 @@ export default function App() {
 
               <button
                 onClick={() => handleActivityTabClick("simulation")}
-                title="Simulación & Depuración en Vivo"
+                title="Live Simulation & Debugging"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "simulation" && showSidebar
                     ? "text-white"
@@ -3854,7 +3854,7 @@ export default function App() {
 
               <button
                 onClick={() => handleActivityTabClick("flowchart")}
-                title="Flujo Visual (Mermaid DAG)"
+                title="Visual DAG Flow (Mermaid)"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "flowchart" && showSidebar
                     ? "text-white"
@@ -3871,7 +3871,7 @@ export default function App() {
 
               <button
                 onClick={() => handleActivityTabClick("search")}
-                title="Buscar en Archivos / Bloques (Ctrl+Shift+F)"
+                title="Search in Files / Blocks (Ctrl+Shift+F)"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "search" && showSidebar
                     ? "text-white"
@@ -3886,7 +3886,7 @@ export default function App() {
 
               <button
                 onClick={() => handleActivityTabClick("git")}
-                title="Control de Código Fuente (Git)"
+                title="Source Control (Git)"
                 className={`w-full h-11 flex items-center justify-center relative cursor-pointer transition ${
                   activeActivityTab === "git" && showSidebar
                     ? "text-white"
@@ -3909,7 +3909,7 @@ export default function App() {
             <div className="flex flex-col items-center w-full space-y-2">
               <button
                 onClick={() => setShowProjectsModal(true)}
-                title="Mis Microservicios (Gestionar proyectos, crear, clonar)"
+                title="My Microservices (Manage, Create, Clone Projects)"
                 className="w-full h-10 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
               >
                 <FolderOpen size={18} />
@@ -3917,7 +3917,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowFaqModal(true)}
-                title="Guía de Arquitectura y FAQ"
+                title="Architecture Guide & FAQ"
                 className="w-full h-10 flex items-center justify-center text-[#858585] hover:text-white cursor-pointer transition"
               >
                 <BookOpen size={18} />
@@ -3954,15 +3954,15 @@ export default function App() {
                         <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-xs shadow-sm">
                           🧩
                         </div>
-                        <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Paleta de Bloques</span>
+                        <span className="font-bold text-xs text-[#cccccc] uppercase tracking-wider">Block Palette</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-[#858585] font-mono">
-                          {categorySearch.trim() ? "Filtrando..." : "11 Bloques"}
+                          {categorySearch.trim() ? "Filtering..." : "11 Blocks"}
                         </span>
                         <button
                           onClick={() => setShowSidebar(false)}
-                          title="Ocultar panel lateral (Ctrl+B)"
+                          title="Hide Primary Sidebar (Ctrl+B)"
                           className="p-1 hover:bg-[#3c3c3c] rounded text-[#858585] hover:text-white transition cursor-pointer"
                         >
                           <ChevronLeft size={14} />
@@ -3977,7 +3977,7 @@ export default function App() {
                         type="text"
                         value={categorySearch}
                         onChange={(e) => setCategorySearch(e.target.value)}
-                        placeholder="Buscar bloques (ej: trigger, if)..."
+                        placeholder="Search blocks (e.g., trigger, if)..."
                         className="w-full bg-[#1e1e1e] border border-[#3c3c3c] focus:border-[#007acc] rounded-lg py-1 pl-8 pr-7 text-xs text-gray-200 focus:outline-none transition placeholder:text-gray-500 font-mono"
                       />
                       {categorySearch && (
@@ -3993,12 +3993,12 @@ export default function App() {
                     {/* Category Filter Pills */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1">
                       {[
-                        { id: "all", label: "Todos", count: 11, icon: "🌐" },
-                        { id: "trigger", label: "Inicio/Fin", count: 2, icon: "🚀" },
-                        { id: "steps", label: "Pasos", count: 3, icon: "📦" },
+                        { id: "all", label: "All", count: 11, icon: "🌐" },
+                        { id: "trigger", label: "Entry/Exit", count: 2, icon: "🚀" },
+                        { id: "steps", label: "Steps", count: 3, icon: "📦" },
                         { id: "control", label: "Control", count: 2, icon: "🔀" },
-                        { id: "loops", label: "Bucles", count: 2, icon: "🔁" },
-                        { id: "parallel", label: "Paralelo", count: 2, icon: "⚡" },
+                        { id: "loops", label: "Loops", count: 2, icon: "🔁" },
+                        { id: "parallel", label: "Parallel", count: 2, icon: "⚡" },
                       ].map((cat) => (
                         <button
                           key={cat.id}
@@ -4022,199 +4022,199 @@ export default function App() {
                       {
                         id: "trigger",
                         cat: "trigger",
-                        name: "Lanzador de Pipeline",
+                        name: "Pipeline Ingress Trigger",
                         icon: "🚀",
-                        badge: "Disparador Ingress",
+                        badge: "Ingress Trigger",
                         isHat: true,
                         gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
                         tabColor: "bg-amber-500 border-amber-300/80",
                         description:
-                          "Punto de entrada oficial del microservicio WPipe. Define el disparador inicial que recibe la carga de trabajo y activa el pipeline: API REST FastAPI (POST /run), Kafka Topic Consumer, cola Redis Stream, Cron Job periódico o comando CLI.",
-                        params: "Tipo (API / Kafka / Redis / Cron / CLI), Parámetro de ruta/tópico/clave",
+                          "Official entry point of the WPipe microservice. Defines the trigger activating the pipeline: FastAPI REST API (POST /run), Kafka Topic Consumer, Redis Stream, Periodic Cron, or CLI command.",
+                        params: "Type (API / Kafka / Redis / Cron / CLI), Route/Topic/Key Parameter",
                         pythonSnippet: '@app.post("/run")\ndef run_pipeline(payload: dict):\n    return pipe.run(payload)',
                         action: () => {
                           addTriggerBlockToWorkspace();
-                          setStatusMessage("Añadido 'Lanzador de Pipeline' al canvas ✓");
+                          setStatusMessage("Added 'Pipeline Ingress Trigger' to canvas ✓");
                         },
                       },
                       {
                         id: "response",
                         cat: "trigger",
-                        name: "Cierre de Pipeline",
+                        name: "Pipeline Egress Terminal",
                         icon: "🏁",
-                        badge: "Cierre y Salida Egress",
+                        badge: "Egress Output",
                         isCap: true,
                         gradient: "from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 border-rose-400/80 shadow-rose-950/50",
                         tabColor: "bg-rose-600 border-rose-400/80",
                         description:
-                          "Bloque terminal Cap de cierre del microservicio WPipe (base plana terminal). Define la salida o respuesta final: Respuesta HTTP 200 JSON, publicación en tópico Kafka, cola Redis, exportación a archivo o retorno directo del contexto.",
-                        params: "Tipo (HTTP JSON / Kafka / Redis / Archivo / Terminate), Detalle/Payload",
+                          "Terminal Cap block for WPipe microservices. Defines the return value: HTTP 200 JSON, Kafka topic produce, Redis publish, file dump, or direct context pass-through.",
+                        params: "Type (HTTP JSON / Kafka / Redis / File / Terminate), Details/Payload",
                         pythonSnippet: 'return JSONResponse(\n    status_code=200,\n    content={"status": "success", "data": context}\n)',
                         action: () => {
                           addResponseBlockToWorkspace();
-                          setStatusMessage("Añadido 'Cierre de Pipeline' al canvas ✓");
+                          setStatusMessage("Added 'Pipeline Egress Terminal' to canvas ✓");
                         },
                       },
                       {
                         id: "step",
                         cat: "steps",
-                        name: "Paso de Catálogo",
+                        name: "Catalog Step",
                         icon: "📦",
-                        badge: "wpipe-steps Oficial & Plugins",
+                        badge: "Official & Plugins",
                         isHat: false,
                         gradient: "from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-400/80 shadow-blue-950/50",
                         tabColor: "bg-blue-600 border-blue-400/80",
                         description:
-                          "Inserta un paso modular verificado de la suite WPipe (196 pasos oficiales de wpipe-steps y plugins comunitarios como ecam_yolo o rss_parser). Incluye selectores directos de origen (Official/Plugin), categoría y filtro de búsqueda.",
-                        params: "Origen (Official/Plugin), Categoría, Filtro de texto, Estado, Namespace",
+                          "Inserts a verified modular step from the WPipe catalog (196 official steps from wpipe-steps + community plugins like ecam_yolo or rss_parser). Supports static AST parametrization.",
+                        params: "Source (Official/Plugin), Category, Text Search, Step Class, Namespace",
                         pythonSnippet: 'pipe.set_steps([\n    HttpRequest(url="https://api.site.com/v1"),\n    ImageECamYOLO(conf=0.25)\n])',
                         action: () => {
                           addStepBlockToWorkspace();
-                          setStatusMessage("Añadido 'Paso de Catálogo' al canvas ✓");
+                          setStatusMessage("Added 'Catalog Step' to canvas ✓");
                         },
                       },
                       {
                         id: "ai_step",
                         cat: "steps",
-                        name: "Paso con IA",
+                        name: "AI Generated Step",
                         icon: "✨",
-                        badge: "Dialecto A (@step + DTO)",
+                        badge: "Dialect A (@step + DTO)",
                         isHat: false,
                         gradient: "from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-400/80 shadow-purple-950/50",
                         tabColor: "bg-purple-600 border-purple-400/80",
                         description:
-                          "Genera un estado personalizado para WPipe a partir de una descripción en lenguaje natural. Produce automáticamente código tipado bajo Dialecto A: función @step en app/states/ y contrato Pydantic Context DTO en app/dto/.",
-                        params: "Nombre del estado, Prompt descriptivo en lenguaje natural",
-                        pythonSnippet: '@step(name="custom_ai")\n@to_obj(CustomContext)\ndef custom_ai_step(context: CustomContext) -> dict:\n    # Auto-generado por IA\n    return {"processed": True}',
+                          "Generates a custom WPipe state from a natural language specification. Generates Dialect A typed code: @step in app/states/ and Pydantic Context DTO contract in app/dto/.",
+                        params: "State Name, Natural Language Specification",
+                        pythonSnippet: '@step(name="custom_ai")\n@to_obj(CustomContext)\ndef custom_ai_step(context: CustomContext) -> dict:\n    # Auto-generated by AI\n    return {"processed": True}',
                         action: () => {
                           addAiStepBlockToWorkspace();
-                          setStatusMessage("Añadido 'Paso con IA' al canvas ✓");
+                          setStatusMessage("Added 'AI Generated Step' to canvas ✓");
                         },
                       },
                       {
                         id: "custom_file",
                         cat: "steps",
-                        name: "Paso Personalizado (.py)",
+                        name: "Custom Python Step (.py)",
                         icon: "📄",
-                        badge: "Archivo Python Local",
+                        badge: "Local Python File",
                         isHat: false,
                         gradient: "from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 border-teal-400/80 shadow-teal-950/50",
                         tabColor: "bg-teal-600 border-teal-400/80",
                         description:
-                          "Adjunta un archivo Python propio (.py) con tus funciones de negocio. WPipe Studio lo integra automáticamente en app/states/ al generar el microservicio empaquetado, preservando tu código original.",
-                        params: "Archivo Python (.py) adjunto, función exportada",
+                          "Attach your own Python script (.py) containing custom business logic. WPipe Studio integrates it automatically into app/states/ when generating the microservice.",
+                        params: "Python File (.py) attachment, Exported function",
                         pythonSnippet: 'from app.states.custom_module import my_custom_step\n\npipe.set_steps([my_custom_step])',
                         action: () => {
                           addUserFileStepBlockToWorkspace();
-                          setStatusMessage("Añadido 'Paso Personalizado (.py)' al canvas ✓");
+                          setStatusMessage("Added 'Custom Python Step (.py)' to canvas ✓");
                         },
                       },
                       {
                         id: "if",
                         cat: "control",
-                        name: "Condición (Si)",
+                        name: "Condition (If)",
                         icon: "🔀",
-                        badge: "Control Condition Simple",
+                        badge: "Condition Control",
                         isHat: false,
                         gradient: "from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 border-amber-300/80 shadow-amber-950/50",
                         tabColor: "bg-amber-500 border-amber-300/80",
                         description:
-                          "Bloque Condition de WPipe. Evalúa una expresión condicional booleana sobre el contexto de datos; si es True, ejecuta la rama contenida. Omite la rama falsa para flujos limpios y directos.",
-                        params: "Expresión condicional booleana (ej. status_code == 200)",
+                          "WPipe Condition C-Block. Evaluates a boolean expression on the data context; executes branch_true if True. Omits branch_false for clean single-path routing.",
+                        params: "Boolean conditional expression (e.g., status_code == 200)",
                         pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_success_step]\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_if");
-                          setStatusMessage("Añadida 'Condición Si' al canvas ✓");
+                          setStatusMessage("Added 'Condition If' to canvas ✓");
                         },
                       },
                       {
                         id: "if_else",
                         cat: "control",
-                        name: "Condición (Si / Sino)",
+                        name: "Condition (If / Else)",
                         icon: "⚖️",
-                        badge: "Control Condition Dual",
+                        badge: "Dual Branch Control",
                         isHat: false,
                         gradient: "from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 border-amber-400/80 shadow-amber-950/50",
                         tabColor: "bg-amber-600 border-amber-400/80",
                         description:
-                          "Bifurcación completa en WPipe. Ejecuta la rama branch_true si la condición es verdadera (True), o la rama branch_false si es falsa (False), facilitando el manejo de contingencias o errores.",
-                        params: "Expresión condicional, rama verdadera y rama falsa",
+                          "Full WPipe bifurcation. Runs branch_true when condition evaluates to True, or branch_false when False, providing robust fallback and error handling.",
+                        params: "Conditional expression, True branch steps, False branch steps",
                         pythonSnippet: 'Condition(\n    expression="status_code == 200",\n    branch_true=[notify_step],\n    branch_false=[error_handler_step]\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_if_else");
-                          setStatusMessage("Añadida 'Condición Si / Sino' al canvas ✓");
+                          setStatusMessage("Added 'Condition If / Else' to canvas ✓");
                         },
                       },
                       {
                         id: "while",
                         cat: "loops",
-                        name: "Bucle Mientras (While)",
+                        name: "Loop (While)",
                         icon: "🔁",
-                        badge: "Bucle Condicional While",
+                        badge: "While Loop",
                         isHat: false,
                         gradient: "from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 border-orange-400/80 shadow-orange-950/50",
                         tabColor: "bg-orange-600 border-orange-400/80",
                         description:
-                          "Repite los pasos contenidos continuamente mientras la condición sea True. El motor WPipe incorpora control automático de iteraciones y prevención de bloqueos infinitos.",
-                        params: "Expresión condicional de continuación (ej. retry_count < 3)",
+                          "Repeats enclosed steps continuously as long as condition remains True. The WPipe engine includes automatic iteration control and infinite loop guards.",
+                        params: "Loop continuation condition (e.g., retry_count < 3)",
                         pythonSnippet: 'Condition(\n    expression="retry_count < 3",\n    branch_true=[retry_step]\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_while");
-                          setStatusMessage("Añadido 'Bucle Mientras (While)' al canvas ✓");
+                          setStatusMessage("Added 'Loop While' to canvas ✓");
                         },
                       },
                       {
                         id: "for",
                         cat: "loops",
-                        name: "Bucle Repetir (For)",
+                        name: "Loop (For)",
                         icon: "🔢",
-                        badge: "Iterador Fijo For",
+                        badge: "Fixed Loop Iterator",
                         isHat: false,
                         gradient: "from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 border-orange-300/80 shadow-orange-950/50",
                         tabColor: "bg-orange-500 border-orange-300/80",
                         description:
-                          "Bloque For nativo de WPipe. Ejecuta los pasos contenidos un número exacto de iteraciones de manera secuencial y determinista, pasando el contexto actualizado en cada vuelta.",
-                        params: "Número entero de iteraciones (ej. 5), pasos contenidos",
+                          "WPipe native For C-Block. Executes contained steps for an exact number of iterations sequentially, mutating context deterministically on each pass.",
+                        params: "Integer iteration count (e.g., 5), Contained steps",
                         pythonSnippet: 'For(\n    iterations=5,\n    steps=[process_batch_step]\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_for");
-                          setStatusMessage("Añadido 'Bucle Repetir (For)' al canvas ✓");
+                          setStatusMessage("Added 'Loop For' to canvas ✓");
                         },
                       },
                       {
                         id: "parallel",
                         cat: "parallel",
-                        name: "Ejecución Paralela",
+                        name: "Parallel Execution",
                         icon: "⚡",
-                        badge: "Concurrencia Multi-hilo",
+                        badge: "Multithread Concurrency",
                         isHat: false,
                         gradient: "from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 border-emerald-400/80 shadow-emerald-950/50",
                         tabColor: "bg-emerald-600 border-emerald-400/80",
                         description:
-                          "Bloque Parallel de WPipe. Despacha múltiples ramas de pasos concurrentemente y fusiona los resultados en el contexto común según la política seleccionada (accumulate o last_wins).",
-                        params: "Ramas paralelas de pasos, Política de fusión (accumulate / last_wins)",
+                          "WPipe Parallel C-Block. Dispatches multiple step branches concurrently and merges outputs back into context using selected merge policy (accumulate or last_wins).",
+                        params: "Parallel step branches, Merge policy (accumulate / last_wins)",
                         pythonSnippet: 'Parallel(\n    steps=[step_fetch_user, step_fetch_orders],\n    merge_policy="accumulate"\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_parallel");
-                          setStatusMessage("Añadida 'Ejecución Paralela' al canvas ✓");
+                          setStatusMessage("Added 'Parallel Execution' to canvas ✓");
                         },
                       },
                       {
                         id: "background",
                         cat: "parallel",
-                        name: "Segundo Plano (Background)",
+                        name: "Background Task",
                         icon: "⏳",
-                        badge: "Hilo Asíncrono No Bloqueante",
+                        badge: "Non-blocking Async Thread",
                         isHat: false,
                         gradient: "from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 border-indigo-400/80 shadow-indigo-950/50",
                         tabColor: "bg-indigo-600 border-indigo-400/80",
                         description:
-                          "Bloque Background de WPipe. Ejecuta un paso en un hilo en segundo plano sin esperar su finalización ni bloquear el avance del pipeline principal (ideal para telemetría, auditoría o alertas).",
-                        params: "Paso asíncrono a lanzar en segundo plano",
+                          "WPipe Background C-Block. Spawns a step in a background daemon thread without waiting for completion or delaying main pipeline progression.",
+                        params: "Async step to run in background",
                         pythonSnippet: 'Background(\n    step=audit_logging_step\n)',
                         action: () => {
                           addControlBlockToWorkspace("wpipe_background");
-                          setStatusMessage("Añadida 'Tarea en Segundo Plano' al canvas ✓");
+                          setStatusMessage("Added 'Background Task' to canvas ✓");
                         },
                       },
                     ]
@@ -7160,9 +7160,9 @@ export default function App() {
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <div>
                 <h3 className="text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-300 font-heading">
-                  ❓ Guía de Arquitectura & FAQ
+                  ❓ Architecture Guide & FAQ
                 </h3>
-                <p className="text-xs text-gray-400">Detalles sobre Scratux, Intermediate Representation y Sandbox de WPipe Studio.</p>
+                <p className="text-xs text-gray-400">Details on Intermediate Representation, Dialect A, and WPipe Studio runtime.</p>
               </div>
               <button onClick={() => setShowFaqModal(false)} className="text-gray-400 hover:text-white font-bold p-1 text-lg">
                 ✕
@@ -7171,7 +7171,7 @@ export default function App() {
 
             <input
               type="text"
-              placeholder="Buscar respuestas..."
+              placeholder="Search answers..."
               value={faqSearch}
               onChange={(e) => setFaqSearch(e.target.value)}
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none"
@@ -7215,18 +7215,18 @@ export default function App() {
           <div className="bg-[#0f172a] border border-purple-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-purple-300 flex items-center gap-2 font-heading">
               <Sparkles size={16} />
-              <span>Crear Paso con IA (Dialecto A)</span>
+              <span>Create AI Step (Dialect A)</span>
             </h3>
             <p className="text-xs text-gray-400">
-              Describe lo que debe hacer tu paso. El backend generará automáticamente su código y su DTO Pydantic tipado.
+              Describe what your step should do. The generator produces @step logic and typed Pydantic Context DTO contracts.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-300 mb-1">Nombre del Paso</label>
+                <label className="block text-xs text-gray-300 mb-1">Step Name</label>
                 <input
                   type="text"
-                  placeholder="ej. ExtractMetadataStep"
+                  placeholder="e.g. ExtractMetadataStep"
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-100"
                   value={aiStepName}
                   onChange={(e) => setAiStepName(e.target.value)}
@@ -7234,10 +7234,10 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-300 mb-1">Prompt / Descripción</label>
+                <label className="block text-xs text-gray-300 mb-1">Prompt / Description</label>
                 <textarea
                   rows={4}
-                  placeholder="Describe la lógica, entradas requeridas y salidas que debe generar este paso..."
+                  placeholder="Describe step behavior, required inputs, and outputs to mutate in context..."
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-100 resize-none"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
@@ -7250,13 +7250,13 @@ export default function App() {
                 onClick={() => setShowAiModal(false)}
                 className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={handleCreateAiStep}
                 className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold shadow"
               >
-                Crear Paso
+                Create Step
               </button>
             </div>
           </div>
@@ -7270,7 +7270,7 @@ export default function App() {
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <h3 className="text-base font-bold text-gray-100 flex items-center gap-2 font-heading">
                 <CheckCircle size={18} className="text-emerald-400" />
-                <span>Resultados de Verificación de Calidad</span>
+                <span>Quality Verification Results</span>
               </h3>
               <button onClick={() => setVerificationModal(null)} className="text-gray-400 hover:text-white font-bold p-1">
                 ✕
@@ -7279,7 +7279,7 @@ export default function App() {
 
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between bg-gray-950 p-3 rounded-lg border border-gray-800">
-                <span className="font-semibold text-gray-300">Estado General</span>
+                <span className="font-semibold text-gray-300">Overall Status</span>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
                   {verificationModal.status}
                 </span>
@@ -7300,7 +7300,7 @@ export default function App() {
                 onClick={() => setVerificationModal(null)}
                 className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition shadow"
               >
-                Cerrar Resultados
+                Close Results
               </button>
             </div>
           </div>
@@ -7314,7 +7314,7 @@ export default function App() {
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-100 font-heading">
-                  ⚙️ Configurar Parámetros del Paso
+                  ⚙️ Configure Step Parameters
                 </h3>
                 <p className="text-xs text-amber-400 font-mono">
                   {configModalBlock.getFieldValue("STEP_NAME")} ({configModalBlock.getFieldValue("NAMESPACE")})
@@ -7335,7 +7335,7 @@ export default function App() {
                   <input
                     type="text"
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100 font-mono focus:border-amber-500 focus:outline-none"
-                    placeholder={`Por defecto: ${field.default ?? ""}`}
+                    placeholder={`Default: ${field.default ?? ""}`}
                     value={blockParamValues[field.name] ?? ""}
                     onChange={(e) =>
                       setBlockParamValues({
@@ -7356,11 +7356,11 @@ export default function App() {
                     autoVals[f.name] = f.default ?? "auto_val";
                   });
                   setBlockParamValues(autoVals);
-                  setStatusMessage("Valores auto-completados por el agente IA");
+                  setStatusMessage("Parameters auto-filled by AI agent");
                 }}
                 className="px-3 py-1.5 bg-purple-950 hover:bg-purple-900 text-purple-300 rounded-lg text-xs font-semibold border border-purple-700"
               >
-                🤖 Auto-Fill con IA
+                🤖 AI Auto-Fill
               </button>
 
               <div className="flex space-x-2">
@@ -7368,7 +7368,7 @@ export default function App() {
                   onClick={() => setConfigModalBlock(null)}
                   className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
                 >
-                  Cancelar
+                  Cancel
                 </button>
                 <button
                   onClick={() => {
@@ -7379,11 +7379,11 @@ export default function App() {
                       );
                     }
                     setConfigModalBlock(null);
-                    setStatusMessage(`Guardados parámetros para ${configModalBlock.getFieldValue("STEP_NAME")}`);
+                    setStatusMessage(`Saved parameters for ${configModalBlock.getFieldValue("STEP_NAME")}`);
                   }}
                   className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold shadow"
                 >
-                  Guardar
+                  Save
                 </button>
               </div>
             </div>
@@ -7411,10 +7411,10 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-indigo-200 font-heading">
-                    Configurar Paso con IA
+                    Configure AI Step
                   </h3>
                   <p className="text-[11px] text-purple-400 font-mono">
-                    Dialecto A: Generará @step, función y Context DTO tipado
+                    Dialect A: Generates @step, executor function, and typed Context DTO
                   </p>
                 </div>
               </div>
@@ -7429,12 +7429,12 @@ export default function App() {
             <div className="space-y-3 text-xs">
               <div>
                 <label className="text-gray-300 font-semibold font-mono block mb-1">
-                  Nombre del Estado / Función Python:
+                  State Name / Python Function:
                 </label>
                 <input
                   type="text"
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-gray-100 font-mono focus:border-purple-500 focus:outline-none"
-                  placeholder="ej: analyze_sales_summary"
+                  placeholder="e.g. analyze_sales_summary"
                   value={aiStepNameInput}
                   onChange={(e) => setAiStepNameInput(e.target.value.replace(/[^a-zA-Z0-9_]/g, "_"))}
                 />
@@ -7442,12 +7442,12 @@ export default function App() {
 
               <div>
                 <label className="text-gray-300 font-semibold font-mono block mb-1">
-                  Descripción del comportamiento (Prompt para la IA):
+                  Behavior Description (Prompt for AI generator):
                 </label>
                 <textarea
                   rows={4}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-gray-100 focus:border-purple-500 focus:outline-none resize-none leading-relaxed"
-                  placeholder="Describe en lenguaje natural qué debe hacer este paso, qué variables lee y qué variables escribe en el pipeline..."
+                  placeholder="Describe in natural language what this step must do, what variables it reads, and what variables it writes in context..."
                   value={aiPromptInput}
                   onChange={(e) => setAiPromptInput(e.target.value)}
                 />
@@ -7459,20 +7459,20 @@ export default function App() {
                 onClick={() => setShowAiConfigModal(false)}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={() => {
                   if (targetAiBlock) {
                     targetAiBlock.setFieldValue(aiStepNameInput || "custom_ai_state", "STEP_NAME");
-                    targetAiBlock.setFieldValue(aiPromptInput || "Paso generado con IA", "AI_PROMPT");
-                    setStatusMessage(`Paso IA configurado: ${aiStepNameInput}`);
+                    targetAiBlock.setFieldValue(aiPromptInput || "AI generated step", "AI_PROMPT");
+                    setStatusMessage(`AI Step configured: ${aiStepNameInput}`);
                   }
                   setShowAiConfigModal(false);
                 }}
                 className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow"
               >
-                Guardar y Aplicar al Bloque
+                Save & Apply to Block
               </button>
             </div>
           </div>
@@ -7502,16 +7502,16 @@ export default function App() {
             </div>
 
             <p className="text-xs text-gray-300 leading-relaxed">
-              Plataforma visual de ingeniería de microservicios y orquestación modular de pipelines Python de alto rendimiento bajo contratos Dialecto A.
+              Visual microservice engineering platform and modular Python pipeline orchestrator operating under strict Dialect A contracts.
             </p>
 
             <div className="bg-gray-950/90 rounded-xl p-3 border border-gray-800 space-y-2 text-xs font-mono">
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Autor Principal:</span>
+                <span className="text-gray-400">Principal Author:</span>
                 <span className="text-sky-300 font-semibold">William Rodriguez (wisrovi)</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Sitio Web:</span>
+                <span className="text-gray-400">Website:</span>
                 <a
                   href="https://wisrovi.dev"
                   target="_blank"
@@ -7522,15 +7522,15 @@ export default function App() {
                 </a>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Motor Core:</span>
+                <span className="text-gray-400">Core Engine:</span>
                 <span className="text-emerald-400">WPipe v2.5.13</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Catálogo de Pasos:</span>
-                <span className="text-purple-400">196 Oficiales + Plugins</span>
+                <span className="text-gray-400">Step Catalog:</span>
+                <span className="text-purple-400">196 Official + Plugins</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-400">Persistencia:</span>
+                <span className="text-gray-400">Persistence:</span>
                 <span className="text-amber-400">PostgreSQL 15 (wpostgresql)</span>
               </div>
             </div>
@@ -7540,7 +7540,7 @@ export default function App() {
                 onClick={() => setShowAboutModal(false)}
                 className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow"
               >
-                Cerrar
+                Close
               </button>
             </div>
           </div>
@@ -7572,7 +7572,7 @@ export default function App() {
           <div className="space-y-2.5">
             <div>
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <span>⚙️</span> Parámetros / Propiedades:
+                <span>⚙️</span> Parameters & Properties:
               </div>
               <div className="text-xs text-amber-200 font-mono bg-gray-900/90 px-3 py-1.5 rounded-lg border border-gray-800 leading-snug">
                 {hoveredPaletteBlock.params}
@@ -7581,7 +7581,7 @@ export default function App() {
 
             <div>
               <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <span>🐍</span> Equivalente WPipe Python:
+                <span>🐍</span> WPipe Python Code:
               </div>
               <pre className="text-xs text-emerald-300 font-mono bg-black/85 p-3 rounded-lg border border-gray-800 overflow-x-auto whitespace-pre-wrap leading-relaxed">
                 {hoveredPaletteBlock.pythonSnippet}
@@ -7590,7 +7590,7 @@ export default function App() {
           </div>
 
           <div className="mt-3 pt-2 border-t border-gray-800/80 flex items-center justify-between text-xs text-sky-400 font-semibold">
-            <span>👆 Haz clic para añadir al lienzo</span>
+            <span>👆 Click to insert block onto canvas</span>
             <span className="text-gray-500 font-mono text-[11px]">WPipe OS</span>
           </div>
         </div>

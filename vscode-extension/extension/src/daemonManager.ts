@@ -32,7 +32,7 @@ export class DaemonManager {
     const binaryPath = await this.resolveOrDownloadBinary();
     if (!binaryPath) {
       vscode.window.showWarningMessage(
-        "No se pudo localizar el binario wpipe-engine. Las funciones avanzadas de compilación local estarán limitadas."
+        "Could not locate the wpipe-engine binary. Advanced local compilation and simulation features will be limited."
       );
       return false;
     }
@@ -83,30 +83,30 @@ export class DaemonManager {
 
   private async downloadBinaryFromR2(targetPath: string): Promise<string | null> {
     const choice = await vscode.window.showInformationMessage(
-      "El motor nativo de WPipe (wpipe-engine) no está instalado. ¿Deseas descargarlo automáticamente para habilitar la compilación y depuración local?",
-      "Descargar ahora",
-      "Más tarde"
+      "WPipe Engine (wpipe-engine) is not installed. Would you like to automatically download it to enable local compilation, zero-latency execution, and hardware licensing?",
+      "Download Now",
+      "Later"
     );
 
-    if (choice !== "Descargar ahora") {
+    if (choice !== "Download Now") {
       return null;
     }
 
     return vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: "Descargando motor wpipe-engine desde Cloudflare Edge...",
+        title: "Downloading wpipe-engine from Cloudflare Edge...",
         cancellable: false,
       },
       async (progress) => {
         try {
           fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-          progress.report({ increment: 10, message: "Obteniendo manifiesto de versiones..." });
+          progress.report({ increment: 10, message: "Fetching release manifest..." });
 
           const manifestUrl = "https://api.wisrovi.dev/v1/downloads/latest";
           const manifestRes = await fetch(manifestUrl);
           if (!manifestRes.ok) {
-            throw new Error(`Error HTTP al consultar manifiesto: ${manifestRes.status} ${manifestRes.statusText}`);
+            throw new Error(`HTTP Error fetching manifest: ${manifestRes.status} ${manifestRes.statusText}`);
           }
           const manifest = (await manifestRes.json()) as any;
 
@@ -116,14 +116,14 @@ export class DaemonManager {
 
           const entry = manifest.binaries?.[targetKey];
           if (!entry || !entry.binary_url) {
-            throw new Error(`No se encontró un binario disponible para la arquitectura ${targetKey}`);
+            throw new Error(`No binary found for target architecture ${targetKey}`);
           }
 
-          progress.report({ increment: 30, message: `Descargando binario (${entry.binary_filename || "wpipe-engine"})...` });
+          progress.report({ increment: 30, message: `Downloading binary (${entry.binary_filename || "wpipe-engine"})...` });
 
           const binaryRes = await fetch(entry.binary_url);
           if (!binaryRes.ok) {
-            throw new Error(`Error HTTP al descargar binario: ${binaryRes.status} ${binaryRes.statusText}`);
+            throw new Error(`HTTP Error downloading binary: ${binaryRes.status} ${binaryRes.statusText}`);
           }
 
           const tmpPath = `${targetPath}.tmp`;
@@ -132,7 +132,7 @@ export class DaemonManager {
 
           const reader = binaryRes.body?.getReader();
           if (!reader) {
-            throw new Error("El cuerpo de la respuesta de descarga está vacío");
+            throw new Error("Response body is empty");
           }
 
           while (true) {
@@ -147,7 +147,7 @@ export class DaemonManager {
             fileStream.on("error", reject);
           });
 
-          progress.report({ increment: 30, message: "Verificando integridad criptográfica SHA-256..." });
+          progress.report({ increment: 30, message: "Verifying SHA-256 cryptographic integrity..." });
           const calculatedSha256 = hasher.digest("hex");
           const expectedSha256 = entry.binary_sha256;
 
@@ -156,7 +156,7 @@ export class DaemonManager {
               fs.unlinkSync(tmpPath);
             }
             throw new Error(
-              `Fallo de verificación de integridad SHA-256. Esperado: ${expectedSha256}, Obtenido: ${calculatedSha256}`
+              `SHA-256 integrity check failed. Expected: ${expectedSha256}, Got: ${calculatedSha256}`
             );
           }
 
@@ -166,9 +166,9 @@ export class DaemonManager {
           fs.renameSync(tmpPath, targetPath);
           fs.chmodSync(targetPath, 0o755);
 
-          progress.report({ increment: 30, message: "Instalación completada y verificada." });
+          progress.report({ increment: 30, message: "Installation completed and verified." });
           vscode.window.showInformationMessage(
-            `Motor WPipe Engine instalado con éxito (SHA-256 verificado: ${calculatedSha256.slice(0, 8)}...).`
+            `WPipe Engine installed successfully (SHA-256 verified: ${calculatedSha256.slice(0, 8)}...).`
           );
           return targetPath;
         } catch (err: any) {
@@ -178,12 +178,12 @@ export class DaemonManager {
             const launcher = `#!/bin/sh\nexec python3 "${devPath}" "$@"\n`;
             fs.writeFileSync(targetPath, launcher, { mode: 0o755 });
             vscode.window.showWarningMessage(
-              `Descarga fallida (${err.message}). Usando launcher de desarrollo local.`
+              `Download failed (${err.message}). Using local development launcher.`
             );
             return targetPath;
           }
 
-          vscode.window.showErrorMessage(`Error al descargar wpipe-engine: ${err.message}`);
+          vscode.window.showErrorMessage(`Failed to download wpipe-engine: ${err.message}`);
           return null;
         }
       }
@@ -192,16 +192,41 @@ export class DaemonManager {
 
   private async spawnDaemon(executablePath: string): Promise<boolean> {
     try {
+      // Ensure SSL_CERT_FILE is defined in child environment if available in OS
+      const caCandidates = [
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/ca-bundle.pem",
+        "/usr/local/share/certs/ca-root-nss.crt",
+        "/etc/ssl/cert.pem",
+      ];
+      let sslCertFile = process.env.SSL_CERT_FILE;
+      if (!sslCertFile) {
+        for (const candidate of caCandidates) {
+          if (fs.existsSync(candidate)) {
+            sslCertFile = candidate;
+            break;
+          }
+        }
+      }
+
+      const env = {
+        ...process.env,
+        ...(sslCertFile ? { SSL_CERT_FILE: sslCertFile } : {}),
+      };
+
       let proc: child_process.ChildProcess;
       if (executablePath.endsWith(".py")) {
         proc = child_process.spawn("python3", [executablePath, "daemon"], {
           detached: true,
           stdio: "ignore",
+          env,
         });
       } else {
         proc = child_process.spawn(executablePath, ["daemon"], {
           detached: true,
           stdio: "ignore",
+          env,
         });
       }
 
@@ -218,7 +243,7 @@ export class DaemonManager {
       }
       return false;
     } catch (e: any) {
-      vscode.window.showErrorMessage(`No se pudo iniciar el daemon wpipe-engine: ${e.message}`);
+      vscode.window.showErrorMessage(`Could not start wpipe-engine daemon: ${e.message}`);
       return false;
     }
   }

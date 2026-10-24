@@ -406,7 +406,7 @@ export default function App() {
           expires_at: editingLicense.expires_at || null,
         }),
       });
-      if (!res.ok) throw new Error("Error al actualizar licencia.");
+      if (!res.ok) throw new Error("Failed to update license.");
       showToast(`License ${editingLicense.license_key} updated successfully.`);
       setEditingLicense(null);
       fetchInitialData();
@@ -427,7 +427,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${masterKey}` },
         body: JSON.stringify({ license_id: licenseId, status: nextStatus }),
       });
-      showToast(`Estado cambiado a: ${nextStatus}`);
+      showToast(`Status changed to: ${nextStatus}`);
       fetchInitialData();
     } catch (err: any) {
       setError(err.message);
@@ -465,7 +465,7 @@ export default function App() {
         `UPDATE licenses SET status = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
         [targetStatus, ...ids]
       );
-      showToast(`${ids.length} licencias actualizadas a '${targetStatus}'.`);
+      showToast(`${ids.length} licenses updated to '${targetStatus}'.`);
       setSelectedLicenseIds(new Set());
       fetchInitialData();
     } catch (err: any) {
@@ -485,7 +485,7 @@ export default function App() {
         `UPDATE licenses SET max_seats = max_seats + ?, max_machines = max_machines + ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
         [delta, delta, ...ids]
       );
-      showToast(`+${delta} asiento añadido a ${ids.length} licencias.`);
+      showToast(`+${delta} seat(s) added to ${ids.length} licenses.`);
       setSelectedLicenseIds(new Set());
       fetchInitialData();
     } catch (err: any) {
@@ -1858,13 +1858,13 @@ export default function App() {
                 <h3 className="font-extrabold text-base text-white">VIP & Partner Authority</h3>
               </div>
               <p className="text-xs text-gray-300 leading-relaxed">
-                El flujo estándar de WPipe Studio cobra a través de **Lemon Squeezy** con tarjeta de crédito y crea la licencia vía webhooks automáticos.
+                The standard WPipe Studio purchase flow operates via **Lemon Squeezy** with automated webhook provisioning.
               </p>
               <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-xl space-y-2 text-xs text-indigo-200">
-                <span className="font-bold block text-white">🎯 Casos de Uso Soberano:</span>
+                <span className="font-bold block text-white">🎯 Sovereign Use Cases:</span>
                 <ul className="list-disc list-inside space-y-1 text-gray-300 text-[11px]">
-                  <li><strong>Partners Comerciales:</strong> Convenios B2B donde la facturación va por factura bancaria.</li>
-                  <li><strong>Universidades & Aceleradoras:</strong> Donación de cupos de 50 asientos para formación.</li>
+                  <li><strong>Commercial Partners:</strong> Enterprise B2B agreements billed via corporate wire invoice.</li>
+                  <li><strong>Universities & Accelerators:</strong> Educational grants providing up to 50 floating seats.</li>
                   <li><strong>Influencers & Ambassadors:</strong> Complimentary licenses for technical outreach.</li>
                   <li><strong>Internal Teams:</strong> Master licenses with unlimited seats for development.</li>
                 </ul>
@@ -2010,7 +2010,7 @@ export default function App() {
                         onClick={() => handleCopy(vipResult.license_key)}
                         className="px-2.5 py-1 bg-purple-900 hover:bg-purple-800 text-purple-200 rounded text-[11px] cursor-pointer"
                       >
-                        {copiedKey === vipResult.license_key ? "¡Copiado!" : "Copiar"}
+                        {copiedKey === vipResult.license_key ? "Copied!" : "Copy"}
                       </button>
                     </div>
 
@@ -2023,7 +2023,7 @@ export default function App() {
                         onClick={() => handleCopy(vipResult.admin_key)}
                         className="px-2.5 py-1 bg-purple-900 hover:bg-purple-800 text-purple-200 rounded text-[11px] cursor-pointer"
                       >
-                        {copiedKey === vipResult.admin_key ? "¡Copiado!" : "Copiar"}
+                        {copiedKey === vipResult.admin_key ? "Copied!" : "Copy"}
                       </button>
                     </div>
                   </div>

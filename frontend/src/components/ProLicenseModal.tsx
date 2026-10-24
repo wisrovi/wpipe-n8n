@@ -163,7 +163,7 @@ export const ProLicenseModal: React.FC<ProLicenseModalProps> = ({
               className="px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-emerald-500/40 text-emerald-300 font-semibold transition flex items-center gap-1.5"
             >
               <span>🔑</span>
-              <span>Portal de Licencias</span>
+              <span>License Portal</span>
             </a>
             {!status.isPro && (
               <a
@@ -173,7 +173,7 @@ export const ProLicenseModal: React.FC<ProLicenseModalProps> = ({
                 className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold transition shadow-sm flex items-center gap-1.5"
               >
                 <span>👑</span>
-                <span>Comprar Pro</span>
+                <span>Buy Pro</span>
               </a>
             )}
           </div>
@@ -181,7 +181,7 @@ export const ProLicenseModal: React.FC<ProLicenseModalProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg border border-gray-700 transition cursor-pointer"
           >
-            Cerrar
+            Close
           </button>
         </div>
       </div>

@@ -24,24 +24,24 @@ def main() -> None:
         prog="wpipe-engine",
         description="WPipe Studio Local Native Engine & Licensing Daemon (wisrovi SUITE)",
     )
-    subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Command: daemon (default)
-    daemon_parser = subparsers.add_parser("daemon", help="Iniciar el servidor daemon IPC")
-    daemon_parser.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help=f"Ruta del socket Unix (default: {DEFAULT_SOCKET_PATH})")
-    daemon_parser.add_argument("--http", action="store_true", help="Usar transporte HTTP local en lugar de socket Unix")
-    daemon_parser.add_argument("--host", default=DEFAULT_HTTP_HOST, help="Host HTTP local")
-    daemon_parser.add_argument("--port", type=int, default=DEFAULT_HTTP_PORT, help=f"Puerto HTTP local (default: {DEFAULT_HTTP_PORT})")
+    daemon_parser = subparsers.add_parser("daemon", help="Start the IPC daemon server")
+    daemon_parser.add_argument("--socket", default=DEFAULT_SOCKET_PATH, help=f"Unix socket path (default: {DEFAULT_SOCKET_PATH})")
+    daemon_parser.add_argument("--http", action="store_true", help="Use local HTTP transport instead of Unix socket")
+    daemon_parser.add_argument("--host", default=DEFAULT_HTTP_HOST, help="Local HTTP host")
+    daemon_parser.add_argument("--port", type=int, default=DEFAULT_HTTP_PORT, help=f"Local HTTP port (default: {DEFAULT_HTTP_PORT})")
 
     # Command: status
-    subparsers.add_parser("status", help="Mostrar estado actual de la licencia y cuotas")
+    subparsers.add_parser("status", help="Show current license status and block quotas")
 
     # Command: fingerprint
-    subparsers.add_parser("fingerprint", help="Calcular y mostrar el Machine Fingerprint del hardware")
+    subparsers.add_parser("fingerprint", help="Calculate and print hardware machine fingerprint")
 
     # Command: activate
-    activate_parser = subparsers.add_parser("activate", help="Activar una clave de licencia WPipe Pro")
-    activate_parser.add_argument("key", help="Clave de licencia (ej: WPIPE-PRO-XXXX-XXXX-XXXX)")
+    activate_parser = subparsers.add_parser("activate", help="Activate a WPipe Pro license key")
+    activate_parser.add_argument("key", help="License key (e.g., WPIPE-PRO-XXXX-XXXX-XXXX)")
 
     args = parser.parse_args()
 
@@ -50,15 +50,15 @@ def main() -> None:
     if args.command == "status":
         status = mgr.get_status()
         print("==================================================")
-        print("          ESTADO DE LICENCIA WPIPE STUDIO        ")
+        print("           WPIPE STUDIO LICENSE STATUS            ")
         print("==================================================")
-        print(f"Plan Activo:          {status.get('tier', 'free').upper()}")
-        print(f"Es Pro:               {'SÍ (Ilimitado)' if status.get('is_pro') else 'NO (Límite 5 bloques)'}")
-        print(f"Límite de Bloques:    {status.get('max_blocks') or 'Ilimitados'}")
+        print(f"Active Plan:          {status.get('tier', 'free').upper()}")
+        print(f"Is Pro:               {'YES (Unlimited)' if status.get('is_pro') else 'NO (5 blocks limit)'}")
+        print(f"Block Limit:          {status.get('max_blocks') or 'Unlimited'}")
         print(f"Machine Fingerprint:  {status.get('machine_fingerprint')}")
         if status.get("lease_expires_at"):
-            print(f"Expiración Lease:     {status.get('lease_expires_at')}")
-        print(f"Detalle:              {status.get('message')}")
+            print(f"Lease Expires:        {status.get('lease_expires_at')}")
+        print(f"Details:              {status.get('message')}")
         print("==================================================")
         sys.exit(0)
 
@@ -68,13 +68,13 @@ def main() -> None:
         sys.exit(0)
 
     elif args.command == "activate":
-        print(f"Activando clave {args.key} contra Cloudflare Edge...")
+        print(f"Activating key {args.key} against Cloudflare Edge...")
         ok, msg = mgr.activate_with_key(args.key)
         if ok:
             print(f"✅ {msg}")
             sys.exit(0)
         else:
-            print(f"❌ Error al activar: {msg}")
+            print(f"❌ Activation failed: {msg}")
             sys.exit(1)
 
     else:

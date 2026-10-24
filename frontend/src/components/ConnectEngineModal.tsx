@@ -19,6 +19,11 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
 
+  const isVsCode =
+    typeof (window as any).acquireVsCodeApi === "function" ||
+    window.location.search.includes("mode=vscode") ||
+    window.self !== window.top;
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -70,13 +75,13 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
               } animate-pulse`}
             />
             <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
-              {status.connected ? "Motor Local Conectado" : "Conectar wpipe-engine Local"}
+              {status.connected ? "Native Engine Connected" : "Connect Local wpipe-engine"}
             </h3>
           </div>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer"
-            title="Cerrar modal (Esc)"
+            title="Close modal (Esc)"
           >
             ✕
           </button>
@@ -90,7 +95,7 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
               <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-4 flex items-center justify-between">
                 <div>
                   <div className="text-emerald-400 text-sm font-semibold flex items-center space-x-1.5">
-                    <span>⚡ Estado: Óptimo & Activo</span>
+                    <span>⚡ Status: Active & Operational</span>
                     {status.verifiedCryptographically && (
                       <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono border border-emerald-500/30">
                         🛡️ Ed25519 OK
@@ -98,9 +103,9 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
                     )}
                   </div>
                   <div className="text-slate-300 text-xs mt-1">
-                    PID: <span className="font-mono text-white">{status.pid || "Activo"}</span> • Puerto:{" "}
-                    <span className="font-mono text-white">{status.port}</span> • Catálogo:{" "}
-                    <span className="font-mono text-white">{status.stepsCount} pasos</span>
+                    PID: <span className="font-mono text-white">{status.pid || "Active"}</span> • Port:{" "}
+                    <span className="font-mono text-white">{status.port}</span> • Catalog:{" "}
+                    <span className="font-mono text-white">{status.stepsCount} steps</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -120,10 +125,10 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
                 <div className="text-xs text-slate-300 bg-slate-800/60 p-3.5 rounded-xl border border-slate-700 space-y-1">
                   <div className="text-amber-400 font-bold flex items-center gap-1.5">
                     <span>👑</span>
-                    <span>Plan Pro Activo</span>
+                    <span>Pro License Active</span>
                   </div>
                   <div>
-                    Titular: <span className="text-white font-medium">{status.customerName}</span>. Bloques, paralelismo y pasos de IA ilimitados sin restricciones.
+                    Licensee: <span className="text-white font-medium">{status.customerName}</span>. Unlimited blocks, concurrency, and AI generation enabled without restrictions.
                   </div>
                 </div>
               )}
@@ -132,45 +137,59 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
             /* Disconnected state guide */
             <div className="space-y-4">
               <p className="text-sm text-slate-300 leading-relaxed">
-                Estás en <strong className="text-white">Modo Diseño</strong>. Puedes crear y exportar diagramas libremente. Para{" "}
-                <strong className="text-emerald-400">simular y compilar código Python en vivo</strong> sin subir tus datos a ningún servidor, inicia el motor local.
+                You are currently in <strong className="text-white">Design Mode</strong>. You can design, edit, and export pipelines. To{" "}
+                <strong className="text-emerald-400">simulate and run zero-latency Python code locally</strong> without transmitting your data to external servers, start the native engine.
               </p>
 
-              {/* Option 1: VS Code */}
-              <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4 hover:border-indigo-500/60 transition-colors">
-                <div className="flex items-center justify-between">
+              {/* In VS Code, show extension-native instruction; otherwise show Deep Link option */}
+              {isVsCode ? (
+                <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4 space-y-2">
                   <div className="flex items-center space-x-2.5">
-                    <span className="text-2xl">💻</span>
+                    <span className="text-2xl">⚡</span>
                     <div>
-                      <div className="text-sm font-semibold text-white">Opción 1: Abrir en VS Code</div>
-                      <div className="text-xs text-slate-400">Inicia el motor en segundo plano y vincula tu workspace</div>
+                      <div className="text-sm font-semibold text-white">Native VS Code Extension Mode</div>
+                      <div className="text-xs text-slate-400">
+                        The extension automatically manages <code className="text-emerald-400">wpipe-engine</code>. If it is stopped, press <kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-[11px] text-gray-200">Ctrl+Shift+P</kbd> and run <span className="text-sky-400">WPipe: Start Native Engine</span>.
+                      </div>
                     </div>
                   </div>
-                  <a
-                    href={vsCodeDeepLink}
-                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
-                  >
-                    <span>Lanzar</span>
-                    <span>↗</span>
-                  </a>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4 hover:border-indigo-500/60 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="text-2xl">💻</span>
+                      <div>
+                        <div className="text-sm font-semibold text-white">Option 1: Open in VS Code</div>
+                        <div className="text-xs text-slate-400">Launches the background daemon and binds your local workspace</div>
+                      </div>
+                    </div>
+                    <a
+                      href={vsCodeDeepLink}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <span>Launch</span>
+                      <span>↗</span>
+                    </a>
+                  </div>
+                </div>
+              )}
 
-              {/* Option 2: Terminal Daemon */}
+              {/* Option: Terminal Daemon */}
               <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
                     <span className="text-2xl">🚀</span>
                     <div>
-                      <div className="text-sm font-semibold text-white">Opción 2: Arrancar daemon en terminal</div>
-                      <div className="text-xs text-slate-400">Ejecuta el binario compilado wpipe-engine</div>
+                      <div className="text-sm font-semibold text-white">Start Daemon in Terminal</div>
+                      <div className="text-xs text-slate-400">Run the compiled native wpipe-engine binary</div>
                     </div>
                   </div>
                   <button
                     onClick={handleCopy}
                     className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-all cursor-pointer"
                   >
-                    {copied ? "✓ Copiado" : "Copiar"}
+                    {copied ? "✓ Copied" : "Copy"}
                   </button>
                 </div>
                 <div className="bg-black/60 p-2.5 rounded-lg border border-slate-800 font-mono text-xs text-emerald-400 select-all overflow-x-auto">
@@ -181,7 +200,7 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
               {/* Port & Test Connection */}
               <div className="pt-2 flex items-center space-x-3">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-medium">Puerto:</span>
+                  <span className="text-xs text-slate-400 font-medium">Port:</span>
                   <input
                     type="number"
                     value={port}
@@ -195,11 +214,11 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
                   className="flex-1 py-1.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-all shadow-md flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
                   {checking ? (
-                    <span>Comprobando...</span>
+                    <span>Checking...</span>
                   ) : (
                     <>
                       <span>🔄</span>
-                      <span>Comprobar Conexión</span>
+                      <span>Check Connection</span>
                     </>
                   )}
                 </button>
@@ -218,7 +237,7 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
               className="text-emerald-400 hover:text-emerald-300 font-medium underline flex items-center gap-1"
             >
               <span>🔑</span>
-              <span>Gestionar Licencia</span>
+              <span>Manage License</span>
             </a>
             <span className="text-slate-600">•</span>
             <a
@@ -227,14 +246,14 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
               rel="noopener noreferrer"
               className="text-sky-400 hover:text-sky-300 font-medium underline"
             >
-              Guía de Instalación
+              Installation Docs
             </a>
           </div>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs transition-colors cursor-pointer"
           >
-            Cerrar
+            Close
           </button>
         </div>
       </div>

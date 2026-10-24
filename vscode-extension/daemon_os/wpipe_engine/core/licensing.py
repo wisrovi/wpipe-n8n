@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+import ssl
 import threading
 
 from wpipe_engine.core.entitlements import (
@@ -30,6 +31,41 @@ from wpipe_engine.core.entitlements import (
 DEFAULT_PUBLIC_KEY_HEX = "470531dc5170a830ff8028efa9e400b3717965404a28626ffa9cdbe3404e9ed1"
 DEFAULT_LICENSE_SERVER_URL = os.environ.get("WPIPE_LICENSE_SERVER_URL", "https://api.wisrovi.dev")
 HEARTBEAT_INTERVAL_SECONDS = 1800  # 30 minutes
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    """Create an SSL context with resilient CA bundle resolution.
+
+    Checks standard OS certificate stores (Debian/Ubuntu/RHEL/macOS/Windows)
+    and certifi fallback to prevent SSL: CERTIFICATE_VERIFY_FAILED in PyInstaller bundles.
+    """
+    ctx = ssl.create_default_context()
+    ca_candidates = [
+        os.environ.get("SSL_CERT_FILE"),
+        "/etc/ssl/certs/ca-certificates.crt",      # Debian / Ubuntu
+        "/etc/pki/tls/certs/ca-bundle.crt",        # CentOS / RHEL / Fedora
+        "/etc/ssl/ca-bundle.pem",                  # OpenSUSE
+        "/usr/local/share/certs/ca-root-nss.crt",  # FreeBSD
+        "/etc/ssl/cert.pem",                       # macOS / Alpine
+    ]
+    for ca in ca_candidates:
+        if ca and os.path.exists(ca):
+            try:
+                ctx.load_verify_locations(cafile=ca)
+                return ctx
+            except Exception:
+                continue
+
+    try:
+        import certifi
+        ca_path = certifi.where()
+        if os.path.exists(ca_path):
+            ctx.load_verify_locations(cafile=ca_path)
+            return ctx
+    except Exception:
+        pass
+
+    return ctx
 
 
 def _base64url_decode(input_str: str) -> bytes:
@@ -102,11 +138,11 @@ def verify_lease_token(
     Returns (is_valid, payload_dict, message).
     """
     if not token or "." not in token:
-        return False, {}, "Token malformado o vacío"
+        return False, {}, "Malformed or empty lease token"
 
     parts = token.split(".")
     if len(parts) != 3:
-        return False, {}, "Estructura de token inválida (requiere 3 partes)"
+        return False, {}, "Invalid lease token structure (3 segments expected)"
 
     encoded_header, encoded_payload, encoded_signature = parts
     signed_data = f"{encoded_header}.{encoded_payload}".encode("utf-8")
@@ -116,7 +152,7 @@ def verify_lease_token(
         payload_bytes = _base64url_decode(encoded_payload)
         payload = json.loads(payload_bytes.decode("utf-8"))
     except Exception as e:
-        return False, {}, f"Error al decodificar token: {e}"
+        return False, {}, f"Error decoding lease token: {e}"
 
     # 1. Verify Ed25519 Cryptographic Signature
     try:
@@ -124,15 +160,15 @@ def verify_lease_token(
         pub_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_bytes)
         pub_key.verify(signature_bytes, signed_data)
     except Exception as e:
-        return False, payload, f"Firma criptográfica inválida o adulterada: {e}"
+        return False, payload, f"Invalid or tampered cryptographic signature: {e}"
 
     # 2. Check Machine Fingerprint Binding (mandatory: unbound tokens could be replayed anywhere)
     target_fp = expected_fingerprint or compute_machine_fingerprint()
     token_fp = payload.get("mfp", "")
     if not token_fp:
-        return False, payload, "El token de licencia no está vinculado a ninguna máquina (mfp ausente)."
+        return False, payload, "License token is not bound to any machine (mfp missing)."
     if token_fp != target_fp:
-        return False, payload, "El token de licencia pertenece a otra máquina física."
+        return False, payload, "License token belongs to another physical machine."
 
     # 3. Check Expiration & Grace Period
     now_sec = int(time.time())
@@ -143,10 +179,10 @@ def verify_lease_token(
     if now_sec > exp_sec:
         if now_sec <= (exp_sec + grace_sec):
             remaining_grace_days = max(1, (exp_sec + grace_sec - now_sec) // 86400)
-            return True, payload, f"Licencia en período de gracia ({remaining_grace_days} días restantes para renovar)"
-        return False, payload, "El período de arrendamiento de la licencia ha expirado"
+            return True, payload, f"License in grace period ({remaining_grace_days} days remaining to renew)"
+        return False, payload, "License lease duration has expired"
 
-    return True, payload, "Licencia activa y verificada"
+    return True, payload, "License active and cryptographically verified"
 
 
 class LicenseManager:
@@ -213,7 +249,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=7, context=_get_ssl_context()) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
                 if res.get("status") == "renewed":
                     data["expires_at"] = res.get("expires_at")
@@ -246,7 +282,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=7, context=_get_ssl_context()) as resp:
                 data.pop("lease_id", None)
                 data.pop("lease_token", None)
                 self.license_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -352,7 +388,7 @@ class LicenseManager:
                 headers={"Content-Type": "application/json", "User-Agent": "wpipe-engine/1.0.0"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=7, context=_get_ssl_context()) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 lease_token = result.get("lease_token")
                 if lease_token:
@@ -372,7 +408,7 @@ class LicenseManager:
                         }
                         self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
                         self._start_heartbeat_loop_if_needed()
-                        return True, f"¡Asiento Pro Flotante activado exitosamente! ({result.get('plan', 'Pro').upper()})"
+                        return True, f"Floating Pro seat activated successfully! ({result.get('plan', 'Pro').upper()})"
         except urllib.error.HTTPError as e:
             if e.code == 409:
                 err_data = json.loads(e.read().decode("utf-8", errors="ignore"))
@@ -386,14 +422,14 @@ class LicenseManager:
                     "message": err_data.get("message"),
                 }
                 self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
-                return False, f"Cupo lleno ({err_data.get('active_seats')}/{err_data.get('max_seats')} en uso). WPipe Studio funcionará en Capa Free (≤ 5 bloques). Libera un asiento en https://portal.wisrovi.dev."
+                return False, f"All seats occupied ({err_data.get('active_seats')}/{err_data.get('max_seats')} in use). WPipe Studio will operate in Free Tier (≤ 5 blocks). Release a seat at https://portal.wisrovi.dev."
             elif e.code in (400, 404):
                 err_msg = e.read().decode("utf-8", errors="ignore")
                 try:
                     err_json = json.loads(err_msg)
-                    return False, err_json.get("message", "Clave de licencia no encontrada o inválida.")
+                    return False, err_json.get("message", "License key not found or invalid.")
                 except Exception:
-                    return False, "Clave de licencia no encontrada o inválida."
+                    return False, "License key not found or invalid."
         except Exception:
             pass
 
@@ -406,18 +442,18 @@ class LicenseManager:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=7, context=_get_ssl_context()) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
                 lease_token = result.get("lease_token")
                 if not lease_token:
-                    return False, "La respuesta del servidor no incluyó el token de arrendamiento"
+                    return False, "Server response did not include a signed lease token."
 
                 # Verify locally before saving
                 is_valid, payload, msg = verify_lease_token(
                     lease_token, self.public_key_hex, expected_fingerprint=mfp
                 )
                 if not is_valid:
-                    return False, f"El token recibido falló la verificación criptográfica: {msg}"
+                    return False, f"Received lease token failed cryptographic verification: {msg}"
 
                 save_data = {
                     "license_key": clean_key,
@@ -428,7 +464,7 @@ class LicenseManager:
                     "expires_at": result.get("expires_at"),
                 }
                 self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
-                return True, f"¡Licencia {result.get('plan', 'Pro').upper()} activada exitosamente!"
+                return True, f"License {result.get('plan', 'Pro').upper()} activated successfully!"
         except urllib.error.HTTPError as e:
             err_msg = e.read().decode("utf-8", errors="ignore")
             try:
@@ -437,7 +473,7 @@ class LicenseManager:
             except Exception:
                 return False, f"HTTP {e.code}: {e.reason}"
         except Exception as e:
-            return False, f"Error de conexión con {self.api_url}: {e}"
+            return False, f"Connection error to {self.api_url}: {e}"
 
     def install_offline_lease_token(self, lease_token: str, customer_name: str = "Developer") -> tuple[bool, str]:
         """Manually install an offline signed lease token (e.g. for air-gapped corporate environments)."""
@@ -446,7 +482,7 @@ class LicenseManager:
             lease_token, self.public_key_hex, expected_fingerprint=mfp
         )
         if not is_valid:
-            return False, f"Token de arrendamiento inválido: {msg}"
+            return False, f"Invalid lease token: {msg}"
 
         save_data = {
             "license_key": payload.get("lic", "OFFLINE-PRO"),
@@ -457,4 +493,4 @@ class LicenseManager:
             "expires_at": datetime.fromtimestamp(payload.get("exp", 0), timezone.utc).isoformat(),
         }
         self.license_file.write_text(json.dumps(save_data, indent=2), encoding="utf-8")
-        return True, "Token de arrendamiento offline instalado exitosamente"
+        return True, "Offline lease token installed successfully"

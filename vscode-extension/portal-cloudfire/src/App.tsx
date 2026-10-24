@@ -484,10 +484,10 @@ export default function App() {
             </h1>
             <p className="text-xs text-emerald-400 font-semibold tracking-wider uppercase mt-1 flex items-center justify-center gap-1.5">
               <ShieldCheck size={14} />
-              <span>Portal de Clientes & Licencias</span>
+              <span>Customer & License Management Portal</span>
             </p>
             <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-              Gestión de puestos, activación para VS Code y acceso al diseñador visual de microservicios.
+              Seat management, VS Code 1-click activation, and direct visual microservice designer access.
             </p>
           </div>
 
@@ -506,7 +506,7 @@ export default function App() {
               }`}
             >
               <Mail size={13} />
-              <span>Correo (OTP)</span>
+              <span>Email (OTP)</span>
             </button>
             <button
               type="button"
@@ -521,7 +521,7 @@ export default function App() {
               }`}
             >
               <Key size={13} />
-              <span>Clave Admin</span>
+              <span>Admin Key</span>
             </button>
           </div>
 
@@ -546,20 +546,20 @@ export default function App() {
                 <form onSubmit={handleRequestOtp} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
-                      <span>Correo de compra</span>
-                      <span className="text-[10px] text-gray-500 font-normal">Acceso sin contraseña</span>
+                      <span>Purchaser Email</span>
+                      <span className="text-[10px] text-gray-500 font-normal">Passwordless Access</span>
                     </label>
                     <input
                       type="email"
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
-                      placeholder="tu-correo@empresa.com"
+                      placeholder="name@company.com"
                       className="w-full px-3.5 py-2.5 bg-gray-900/90 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-sans"
                       required
                       autoFocus
                     />
                     <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                      Te enviaremos un código de seguridad de 6 dígitos para validar tu acceso instantáneamente.
+                      We will send a 6-digit security code to instantly verify your access.
                     </p>
                   </div>
 
@@ -569,13 +569,13 @@ export default function App() {
                     className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Send size={14} />
-                    <span>{loading ? "Enviando código..." : "Enviar Código de Acceso"}</span>
+                    <span>{loading ? "Sending code..." : "Send Verification Code"}</span>
                   </button>
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Verificando correo:</span>
+                    <span className="text-xs text-gray-400">Verifying email:</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -586,7 +586,7 @@ export default function App() {
                       className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
                     >
                       <ArrowLeft size={12} />
-                      <span>Cambiar correo</span>
+                      <span>Change email</span>
                     </button>
                   </div>
 
@@ -596,7 +596,7 @@ export default function App() {
 
                   <div>
                     <label className="block text-xs font-medium text-gray-300 mb-1.5 text-center">
-                      Código de 6 dígitos
+                      6-digit Security Code
                     </label>
                     <input
                       type="text"
@@ -611,7 +611,7 @@ export default function App() {
                       autoFocus
                     />
                     <p className="text-[11px] text-gray-400 mt-1.5 text-center">
-                      Válido durante 10 minutos. Revisa tu bandeja de entrada o spam.
+                      Valid for 10 minutes. Check your inbox or spam folder.
                     </p>
                   </div>
 
@@ -621,7 +621,7 @@ export default function App() {
                     className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     <Lock size={14} />
-                    <span>{loading ? "Verificando..." : "Acceder al Portal"}</span>
+                    <span>{loading ? "Verifying..." : "Enter Portal"}</span>
                   </button>
                 </form>
               )}
@@ -633,7 +633,7 @@ export default function App() {
             <form onSubmit={handleLoginAdminKey} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-300 mb-1.5 flex items-center justify-between">
-                  <span>Clave de Administración</span>
+                  <span>Administration Key</span>
                   <span className="text-[10px] text-cyan-400 font-mono">WPIPE-ADM-...</span>
                 </label>
                 <input
@@ -646,7 +646,7 @@ export default function App() {
                   autoFocus
                 />
                 <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                  Clave privada emitida al comprar. Permite gestionar puestos, invocar terminales y liberar estaciones de trabajo.
+                  Private administration key issued on purchase. Used to manage floating seats, inspect terminals, and revoke workstations.
                 </p>
               </div>
 
@@ -654,10 +654,10 @@ export default function App() {
                 <div className="p-3 bg-sky-950/60 border border-sky-700/80 rounded-xl text-xs text-sky-200 space-y-2">
                   <div className="flex items-start gap-2 font-bold text-sky-300">
                     <Laptop size={14} className="shrink-0 mt-0.5" />
-                    <span>¡Has ingresado una Clave de Puesto (Workstation)!</span>
+                    <span>You entered a Workstation Key!</span>
                   </div>
                   <p className="text-[11px] leading-relaxed text-gray-300">
-                    Esta clave está lista para trabajar directamente en el Canvas o en VS Code. No necesitas entrar al portal para empezar a programar.
+                    This key is ready to use directly inside Web Studio or VS Code. You don't need to sign into the admin portal to start engineering.
                   </p>
                   <div className="flex flex-wrap gap-2 pt-1">
                     <a
@@ -666,13 +666,13 @@ export default function App() {
                       rel="noopener noreferrer"
                       className="px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white font-bold text-[11px] transition flex items-center gap-1"
                     >
-                      <span>⚡</span> Abrir Web Studio
+                      <span>⚡</span> Open Web Studio
                     </a>
                     <a
                       href={`vscode://wisrovi.wpipe-studio-vscode/activate?key=${encodeURIComponent(adminKeyInput.trim().toUpperCase())}`}
                       className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition flex items-center gap-1"
                     >
-                      <Sparkles size={11} /> Activar en VS Code
+                      <Sparkles size={11} /> Activate in VS Code
                     </a>
                   </div>
                 </div>
@@ -680,7 +680,7 @@ export default function App() {
                 <div className="p-3 bg-gray-900/80 border border-gray-800 rounded-xl text-[11px] text-gray-400 flex items-start gap-2">
                   <Key size={14} className="text-emerald-400 shrink-0 mt-0.5" />
                   <span>
-                    ¿No encuentras tu clave <code>WPIPE-ADM-...</code>? Usa la pestaña <strong>Correo (OTP)</strong> para entrar sin contraseña con el email con el que compraste.
+                    Can't find your <code>WPIPE-ADM-...</code> key? Switch to the <strong>Email (OTP)</strong> tab to sign in passwordless using your purchase email address.
                   </span>
                 </div>
               )}
@@ -691,20 +691,20 @@ export default function App() {
                 className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <Key size={14} />
-                <span>{loading ? "Autenticando..." : "Entrar con Clave Admin"}</span>
+                <span>{loading ? "Authenticating..." : "Sign In with Admin Key"}</span>
               </button>
             </form>
           )}
 
           <div className="mt-6 pt-5 border-t border-gray-800/80 text-center text-xs text-gray-400">
-            ¿Aún no tienes licencia?{" "}
+            Don't have a license yet?{" "}
             <a
               href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
               target="_blank"
               rel="noopener"
               className="text-emerald-400 hover:text-emerald-300 font-bold underline transition"
             >
-              Adquiere WPipe Studio Pro aquí
+              Get WPipe Studio Pro here
             </a>
           </div>
         </div>
@@ -765,7 +765,7 @@ export default function App() {
             <span className="text-cyan-400">⚡</span> Studio Canvas
           </a>
           <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold flex items-center gap-1">
-            <span>🔑</span> Portal Licencias
+            <span>🔑</span> License Portal
           </span>
           <a
             href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
@@ -773,7 +773,7 @@ export default function App() {
             rel="noopener"
             className="px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-gray-950 font-bold hover:brightness-110 transition shadow-sm"
           >
-            + Puestos
+            + Add Seats
           </a>
         </div>
 
@@ -875,13 +875,13 @@ export default function App() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-base">🚀</span>
-              <h3 className="text-sm font-extrabold text-white">¿Listo para construir microservicios y pipelines?</h3>
+              <h3 className="text-sm font-extrabold text-white">Ready to design & deploy pipelines?</h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold uppercase border border-emerald-500/40">
-                Tu clave está activa
+                Your key is active
               </span>
             </div>
             <p className="text-xs text-gray-300 max-w-2xl leading-relaxed">
-              Abre el diseñador visual en tu navegador o activa tu puesto de trabajo en VS Code con un solo clic usando tu clave <code className="text-emerald-400 font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded border border-emerald-500/30">{maskLicenseKey(data.license_key)}</code>.
+              Launch the visual IDE in your browser or bind your local workstation in VS Code with a single click using key <code className="text-emerald-400 font-mono font-bold bg-black/40 px-1.5 py-0.5 rounded border border-emerald-500/30">{maskLicenseKey(data.license_key)}</code>.
             </p>
           </div>
 
@@ -893,16 +893,16 @@ export default function App() {
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-black text-xs shadow-lg shadow-emerald-500/25 transition cursor-pointer flex items-center gap-2"
             >
               <span>⚡</span>
-              <span>Abrir WPipe Studio</span>
+              <span>Open WPipe Studio</span>
             </a>
 
             <a
               href={`vscode://wisrovi.wpipe-studio-vscode/activate?key=${encodeURIComponent(data.license_key)}`}
               className="px-3.5 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 text-xs font-bold transition cursor-pointer flex items-center gap-2 shadow-sm"
-              title="Activa esta licencia automáticamente en tu VS Code local"
+              title="Automatically activate this license in your local VS Code"
             >
               <Sparkles size={14} className="text-cyan-400" />
-              <span>Activar en VS Code (1-Clic)</span>
+              <span>Activate in VS Code (1-Click)</span>
             </a>
 
             <a
@@ -911,7 +911,7 @@ export default function App() {
               rel="noopener"
               className="px-3.5 py-2.5 rounded-xl bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white text-xs font-semibold transition"
             >
-              <span>📚 Documentación</span>
+              <span>📚 Documentation</span>
             </a>
           </div>
         </div>

@@ -6,6 +6,7 @@
 
 import * as http from "http";
 import * as os from "os";
+import * as vscode from "vscode";
 
 export interface LicenseStatus {
   tier: "free" | "pro" | "team" | "enterprise";
@@ -46,7 +47,22 @@ export class EngineIpcClient {
     this.socketPath = socketPath;
     this.httpHost = httpHost;
     this.httpPort = httpPort;
-    this.useHttp = os.platform() === "win32";
+    
+    // Check if user or environment configured custom engineUrl
+    try {
+      const config = vscode.workspace.getConfiguration("wpipe");
+      const customUrl = config.get<string>("engineUrl") || config.get<string>("canvasUrl");
+      if (customUrl) {
+        const u = new URL(customUrl);
+        this.httpHost = u.hostname || "127.0.0.1";
+        this.httpPort = parseInt(u.port, 10) || 49152;
+        this.useHttp = true;
+      } else {
+        this.useHttp = os.platform() === "win32";
+      }
+    } catch {
+      this.useHttp = os.platform() === "win32";
+    }
   }
 
   public setTransport(useHttp: boolean): void {
@@ -66,41 +82,53 @@ export class EngineIpcClient {
         timeout: 30000,
       };
 
-      if (this.useHttp) {
-        options.host = this.httpHost;
-        options.port = this.httpPort;
-      } else {
-        options.socketPath = this.socketPath;
-      }
+      const makeReq = (useHttpMode: boolean) => {
+        const reqOpts: http.RequestOptions = { ...options };
+        if (useHttpMode) {
+          reqOpts.host = this.httpHost;
+          reqOpts.port = this.httpPort;
+          delete reqOpts.socketPath;
+        } else {
+          reqOpts.socketPath = this.socketPath;
+          delete reqOpts.host;
+          delete reqOpts.port;
+        }
 
-      const req = http.request(options, (res) => {
-        let raw = "";
-        res.on("data", (chunk) => (raw += chunk));
-        res.on("end", () => {
-          try {
-            const parsed = raw ? JSON.parse(raw) : {};
-            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        const req = http.request(reqOpts, (res) => {
+          let raw = "";
+          res.on("data", (chunk) => (raw += chunk));
+          res.on("end", () => {
+            try {
+              const parsed = raw ? JSON.parse(raw) : {};
               resolve(parsed);
-            } else {
-              // Return parsed error payload or reject
-              resolve(parsed);
+            } catch {
+              resolve({ raw, statusCode: res.statusCode });
             }
-          } catch {
-            resolve({ raw, statusCode: res.statusCode });
+          });
+        });
+
+        req.on("error", (err) => {
+          // If Unix socket failed and we haven't tried HTTP yet, seamlessly fallback to HTTP
+          if (!useHttpMode) {
+            this.useHttp = true;
+            makeReq(true);
+          } else {
+            reject(err);
           }
         });
-      });
 
-      req.on("error", (err) => reject(err));
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("Request to wpipe-engine timed out"));
-      });
+        req.on("timeout", () => {
+          req.destroy();
+          reject(new Error("Request to wpipe-engine timed out"));
+        });
 
-      if (payload) {
-        req.write(payload);
-      }
-      req.end();
+        if (payload) {
+          req.write(payload);
+        }
+        req.end();
+      };
+
+      makeReq(this.useHttp);
     });
   }
 

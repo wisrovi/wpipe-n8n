@@ -125,6 +125,40 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
               );
             }
           }
+
+          // Auto-compile to disk whenever canvas is saved or updated
+          const projectObj = msg.canvasIr?.project || msg.canvasIr;
+          const defaultName = document
+            ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
+            : "main_pipeline";
+          const projectName = projectObj?.name || defaultName;
+          const canvasPayload = projectObj?.canvas_ir || projectObj;
+          const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
+
+          if (wsFolder && canvasPayload && canvasPayload.nodes && canvasPayload.nodes.length > 0) {
+            try {
+              const res = await this.ipcClient.compilePipeline(canvasPayload, projectName);
+              if (res && res.status === "success" && (res.files_dict || res.files)) {
+                const filesMap: Record<string, string> = res.files_dict || {};
+                if (!res.files_dict && Array.isArray(res.files)) {
+                  for (const item of res.files) {
+                    if (item && item.path && item.content) {
+                      filesMap[item.path] = item.content;
+                    }
+                  }
+                }
+                for (const [relPath, content] of Object.entries(filesMap)) {
+                  const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+                  await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
+                  await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
+                }
+                await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+                await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
+              }
+            } catch (err) {
+              console.warn("Auto-compile on saveCanvas:", err);
+            }
+          }
           break;
         }
 

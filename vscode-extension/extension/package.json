@@ -200,19 +200,29 @@
     "menus": {
       "view/title": [
         {
+          "command": "wpipe.openCanvas",
+          "when": "view == wpipeSteps",
+          "group": "navigation@1"
+        },
+        {
+          "command": "wpipe.newPipeline",
+          "when": "view == wpipeSteps",
+          "group": "navigation@2"
+        },
+        {
           "command": "wpipe-vscode.createNewStep",
           "when": "view == wpipeSteps",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "wpipe-vscode.refreshCatalog",
           "when": "view == wpipeSteps",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
           "command": "wpipeSteps.refreshEntry",
           "when": "view == wpipeSteps",
-          "group": "navigation"
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [

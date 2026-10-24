@@ -66,7 +66,7 @@ export class CatalogManager {
                     // Force correct repo field and resolve relative URLs
                     return items.map(item => ({ 
                         ...item, 
-                        repo: item.repo || defaultRepo,
+                        repo: defaultRepo,
                         requirements: resolveUrl(item.requirements),
                         examples: resolveUrl(item.examples)
                     }));

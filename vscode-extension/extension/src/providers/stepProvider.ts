@@ -56,8 +56,28 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 title: 'Check License Status',
             };
 
+            const canvasItem = new vscode.TreeItem('🎨 Open Visual Block Canvas', vscode.TreeItemCollapsibleState.None);
+            canvasItem.description = 'Blockly IDE';
+            canvasItem.tooltip = 'Open the Visual Block Canvas to design pipelines visually with drag-and-drop blocks';
+            canvasItem.iconPath = new vscode.ThemeIcon('circuit-board');
+            canvasItem.command = {
+                command: 'wpipe.openCanvas',
+                title: 'Open Block Canvas',
+            };
+
+            const newPipeItem = new vscode.TreeItem('➕ Create New Pipeline', vscode.TreeItemCollapsibleState.None);
+            newPipeItem.description = '.wpipe file';
+            newPipeItem.tooltip = 'Create a new visual pipeline file in your workspace';
+            newPipeItem.iconPath = new vscode.ThemeIcon('new-file');
+            newPipeItem.command = {
+                command: 'wpipe.newPipeline',
+                title: 'Create New Pipeline',
+            };
+
             return [
                 engineItem,
+                canvasItem,
+                newPipeItem,
                 new vscode.TreeItem('🚀 Workspace Pipelines', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed),
@@ -73,10 +93,19 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
         return [];
     }
 
-    private getLibItems(repo: string): LibraryItem[] {
-        return CatalogManager.getSteps()
-            .filter(s => s.repo === repo)
+    private getLibItems(repo: string): vscode.TreeItem[] {
+        const items = CatalogManager.getSteps()
+            .filter(s => (s.repo || '').toLowerCase() === repo.toLowerCase())
             .map(s => new LibraryItem(s));
+
+        if (items.length === 0) {
+            const emptyItem = new vscode.TreeItem(`No ${repo} plugins loaded`, vscode.TreeItemCollapsibleState.None);
+            emptyItem.description = 'Click "Refresh Cloud Catalog" to update';
+            emptyItem.iconPath = new vscode.ThemeIcon('info');
+            return [emptyItem];
+        }
+
+        return items;
     }
 
     private async searchPipelines(): Promise<vscode.TreeItem[]> {

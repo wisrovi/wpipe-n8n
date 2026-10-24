@@ -1598,7 +1598,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
             vertical: true,
           },
           drag: true,
-          wheel: false,
+          wheel: true, // Enables two-finger touchpad panning
         },
         grid: {
           spacing: 20,
@@ -1612,12 +1612,30 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
           startScale: 0.95,
           maxScale: 3,
           minScale: 0.3,
-          scaleSpeed: 1.2,
+          scaleSpeed: 1.15,
           pinch: true,
         },
         trashcan: true,
         sounds: false,
       });
+
+      // Laptop Touchpad Smart Zoom & Pan handler (Pinch-to-zoom & Ctrl+Wheel)
+      const containerEl = blocklyDivRef.current;
+      const onTouchpadWheel = (e: WheelEvent) => {
+        if (!workspaceRef.current) return;
+        // When user pinches on a trackpad or holds Ctrl while scrolling, browser fires wheel with ctrlKey: true
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const currentScale = workspaceRef.current.getScale();
+          const delta = -e.deltaY;
+          const factor = delta > 0 ? 1.05 : 0.95;
+          const newScale = Math.min(3, Math.max(0.3, currentScale * factor));
+          const clientX = e.clientX;
+          const clientY = e.clientY;
+          workspaceRef.current.zoom(clientX, clientY, factor > 1 ? 1 : -1);
+        }
+      };
+      containerEl.addEventListener("wheel", onTouchpadWheel, { passive: false });
 
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;

@@ -1,68 +1,89 @@
-# WPipe Studio — Extensión Oficial para VS Code
+# WPipe — Official VS Code Extension
 
-Diseña pipelines de datos visuales mediante bloques ensamblables al estilo Scratux/Scratch y compílalos directamente en microservicios Python limpios, tipados y listos para producción dentro de **Visual Studio Code**.
+Visual pipeline designer, native step registry, live DAG analysis, and microservice generator for **WPipe** inside **Visual Studio Code**.
 
-> **Autor**: William Rodriguez (AI Leader & Solutions Architect — [wisrovi.dev](https://wisrovi.dev))  
-> **Ecosistema**: WPipe OS / wisrovi SUITE  
-> **Coste de Servidor**: **0 €** (Ejecución 100% local en tu propio ordenador).
-
----
-
-## Tecnologías y Librerías Relevantes
-
-| Tecnología | Rol en la Extensión |
-|---|---|
-| **VS Code Extensibility API** | Registro de Custom Text Editors (`*.wpipe`), vistas en la Activity Bar, comandos y Status Bar Items. |
-| **Google Blockly & SVG Engine** | Motor gráfico interactivo de bloques con conectores puzzle, zoom, paneo y herramientas visuales. |
-| **TypeScript 5** | Tipado estricto y comunicación IPC asíncrona no bloqueante. |
-| **VS Code Webview API** | Renderizado del lienzo interactivo con aislamiento y seguridad CSP. |
-| **Unix Domain Sockets & HTTP** | Canal IPC de ultra-baja latencia para comunicarse con el daemon `wpipe-engine`. |
-| **Cloudflare Workers & D1** | Pasarela de licencias serverless integrada en `api.wisrovi.dev`. |
+> **Author**: William Steve Rodriguez Villamizar (Wisrovi) — [wisrovi.dev](https://wisrovi.dev)  
+> **Official Email**: `wisrovi.rodriguez@gmail.com`  
+> **Ecosystem**: WPipe OS / wisrovi SUITE  
+> **Version**: 2.0.0
 
 ---
 
-## Características Principales
+## Overview
 
-1. **Diseño Visual de Pipelines (`*.wpipe`)**:
-   - Haz clic en cualquier archivo `.wpipe` o usa el comando `WPipe: Crear Nuevo Pipeline Visual`.
-   - Ensambla pasos conectando piezas de puzzle visuales: Triggers REST, HTTP Requests, MySQL, Filtros de Seguridad y Bloques de Control.
-2. **Compilación Directa a Python**:
-   - Un clic en **Compilar a Python** genera la arquitectura completa en tu espacio de trabajo: `app/pipelines.py`, `app/main.py`, `Dockerfile`, `Makefile` y suite de pruebas `tests/test_pipeline.py`.
-3. **Smart AST Code Merge**:
-   - Preserva automáticamente tu código manual escrito dentro de los bloques `# >>> [WPIPE:CUSTOM_IMPORTS]` y `# >>> [WPIPE:CUSTOM_LOGIC]`.
-4. **Developer Cockpit & Tarjeta Enriquecida de Puesto**:
-   - Visualización de datos contextuales reales: Titular/Organización, vigencia del lease con días restantes, huella de hardware del equipo (`ID Máquina`), clave asignada protegida con alternador (👁️/🙈) y botón de copiado directo (📋).
-   - Diagnóstico en tiempo real del motor local `wpipe-engine` (PID activo, versión Python, transporte IPC, catálogo de 196 steps) y reinicio en un clic.
-   - Acceso directo en un clic al portal web de gestión de puestos (`portal.wisrovi.dev`) y soporte para activación profunda `vscode://wisrovi.wpipe-studio-vscode/activate?key=...`.
-5. **Modelo Freemium Transparente**:
-   - **Plan Free (Gratuito)**: Permite diseñar pipelines de hasta **5 bloques** sin registro ni tarjeta de crédito.
-   - **Plan Pro**: Desbloquea pipelines de complejidad ilimitada, ejecución paralela concurrente (`Parallel`), tareas en segundo plano (`Background`) y depuración paso a paso en vivo con breakpoints.
+`wpipe-vscode` unifies the mature native language tools of WPipe (AST parsing, Step Registry, CodeLens, Live DAG Preview, and Diagnostics) with the visual pipeline canvas and the high-performance local compilation engine (`wpipe-engine`).
 
 ---
 
-## Comandos Disponibles
+## Key Features
 
-- `WPipe: Abrir Lienzo de Bloques`
-- `WPipe: Crear Nuevo Pipeline Visual`
-- `WPipe: Activar Clave de Licencia Pro`
-- `WPipe: Ver Estado de Licencia`
-- `WPipe: Compilar Pipeline a Python`
-- `WPipe: Iniciar Motor Nativo (wpipe-engine)`
+1. **Native Step Registry (`wpipeSteps`)**:
+   - Live Activity Bar explorer indexing the **196 official steps** from `wpipe-steps`, community plugins, and your local workspace steps.
+   - One-click import generation and step execution.
+
+2. **Interactive Live DAG Preview (`DAGPanel`)**:
+   - Full flowchart visualization powered by Mermaid and Lezer AST parser.
+   - Two-way navigation: click on any node to jump directly to its definition (`gotoLine`).
+   - Algorithmic computational complexity inspection (Big-O analysis) and high-resolution export (SVG/PNG).
+
+3. **Python Pipeline Intelligence**:
+   - **CodeLens**: One-click actions over `@step` (*Run Step*), pipeline definitions (*Preview DAG*, *Run Pipeline*, *Open Dashboard*), and `.set_steps(...)` (*Add Logic Block*).
+   - **Hover Documentation**: Immediate access to step versions, author, and documentation.
+   - **QuickFix Code Actions**: Convert Python functions into decorated WPipe steps.
+   - **Rich Snippets**: Pre-configured templates for Python and YAML.
+
+4. **Visual Pipeline Canvas (`*.wpipe`, `*.wpipe.json`)**:
+   - Interactive visual block canvas.
+   - Direct compilation to production microservices (`app/pipelines.py`, `app/states/`, `Dockerfile`, `Makefile`, and `tests/`).
+   - Seamless AST merge preserving custom user logic.
+
+5. **Integrated Engine Daemon (`wpipe-engine`)**:
+   - Native local execution daemon with zero cloud overhead.
+   - Cryptographically verified Ed25519 licensing with seat management.
+   - Step-by-step local simulation with accurate traceback attribution.
 
 ---
 
-## Empaquetado y Publicación (.vsix)
+## Commands
 
-Para compilar y empaquetar la extensión en un archivo instalable `.vsix`:
+- `WPipe: Preview Pipeline DAG`
+- `WPipe: Open Block Canvas`
+- `WPipe: Create New Visual Pipeline`
+- `WPipe: Create New Advanced Step`
+- `WPipe: Search & Import Steps (Catalog)`
+- `WPipe: Refresh Cloud Catalog`
+- `WPipe: Open Web Dashboard`
+- `WPipe: Replay Log Errors`
+- `WPipe: Find Step Usage (Impact Analysis)`
+- `WPipe: Show Cheat Sheet / Help`
+- `WPipe: Compile Pipeline to Python`
+- `WPipe: Start Native Engine (wpipe-engine)`
+- `WPipe: Stop Native Engine (wpipe-engine)`
+- `WPipe: Check License Status`
+- `WPipe: Activate Pro License Key`
+
+---
+
+## Building and Packaging (.vsix)
 
 ```bash
-# 1. Instalar dependencias
+# 1. Install dependencies
 npm install
 
-# 2. Compilar TypeScript
+# 2. Compile bundle with esbuild
 npm run compile
 
-# 3. Empaquetar extensión
-npx vsce package
+# 3. Package extension
+npx vsce package --no-git-tag-version
 ```
-El archivo `wpipe-studio-vscode-1.0.0.vsix` resultante puede instalarse en cualquier VS Code desde el menú *Extensions › Install from VSIX...*.
+
+Installs into VS Code via:
+```bash
+code --install-extension wpipe-vscode-2.0.0.vsix --force
+```
+
+---
+
+## License
+
+Proprietary © William Steve Rodriguez Villamizar (Wisrovi). All rights reserved.

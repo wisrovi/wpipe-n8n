@@ -97,10 +97,13 @@ export interface SimulationResult {
     label?: string;
     duration_ms: number;
     status: string;
+    error?: string;
   }>;
   output_context: Record<string, any>;
   paused_breakpoint?: string | null;
   error?: string;
+  stderr?: string;
+  stdout?: string;
 }
 
 /** Raised when an operation needs a running wpipe-engine. */

@@ -74,6 +74,7 @@ class ASTCompiler:
             "from states.ai_sentiment_step import AISentimentStep",
         }
 
+        user_custom_states: dict[str, str] = {}
         step_names_for_readme: list[str] = []
 
         # 2. Recursive hierarchical renderer for C-blocks
@@ -143,6 +144,56 @@ class ASTCompiler:
                 args_str = ", ".join(f"{k}={repr(v)}" for k, v in params.items())
                 return f"{pad}{fn}({args_str})"
 
+            # User-imported step or step with custom code snippet
+            code_snippet = data.get("code_snippet") or data.get("custom_code")
+            origin = data.get("origin")
+            block_type = data.get("block_type")
+
+            if code_snippet or origin == "user_imported" or block_type == "wpipe_user_file_step":
+                safe_stem = sanitize_ident(fn)
+                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
+                module_name = f"states.{safe_stem}"
+                imports.add(f"from {module_name} import {class_name}")
+                step_names_for_readme.append(class_name)
+
+                # Generate state file content if not already built
+                state_file_path = f"app/states/{safe_stem}.py"
+                if state_file_path not in user_custom_states:
+                    if code_snippet and code_snippet.strip():
+                        # Use provided user code directly
+                        user_custom_states[state_file_path] = code_snippet
+                    else:
+                        user_custom_states[state_file_path] = f'''"""User-defined custom step: {class_name}."""
+
+from typing import Any
+from loguru import logger
+from dto.context import PipelineContextDTO
+from wpipe import step, to_obj
+from wpipe.timeout import timeout_sync
+from wpipe.util import object_to_dict
+
+
+@step(name="{class_name}", version="1.0.0", description="User custom pipeline step")
+class {class_name}:
+    """Custom user state implementation."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.config = kwargs
+
+    @timeout_sync(30)
+    @to_obj(PipelineContextDTO)
+    def __call__(self, context: Any) -> dict[str, Any]:
+        raw_dict = object_to_dict(context)
+        if raw_dict.get("error") == {{}}:
+            raw_dict["error"] = None
+        ctx = PipelineContextDTO(**raw_dict)
+        logger.info(f"{class_name} executing for tx: {{ctx.transaction_id}}")
+        ctx.status = "SUCCESS"
+        ctx.metrics["{safe_stem}"] = True
+        return ctx.model_dump()
+'''
+                return f"{pad}{class_name}()"
+
             fn_lower = fn.lower()
             if "transform" in fn_lower or fn == "TransformPayloadStep":
                 imports.add("from states.transform_payload_step import TransformPayloadStep")
@@ -154,11 +205,51 @@ class ASTCompiler:
                 step_names_for_readme.append("AISentimentStep")
                 th = data.get("params", {}).get("threshold", 0.5)
                 return f'{pad}AISentimentStep(threshold={th})'
-            else:
+            elif fn == "CleanDataStep" or "clean" in fn_lower:
                 imports.add("from states.clean_data_step import CleanDataStep")
                 step_names_for_readme.append("CleanDataStep")
                 pfx = data.get("params", {}).get("prefix", "clean_")
                 return f'{pad}CleanDataStep(prefix="{pfx}")'
+            else:
+                # Custom or unknown step: produce dedicated state so errors or custom logic run faithfully
+                safe_stem = sanitize_ident(fn)
+                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
+                module_name = f"states.{safe_stem}"
+                imports.add(f"from {module_name} import {class_name}")
+                step_names_for_readme.append(class_name)
+
+                state_file_path = f"app/states/{safe_stem}.py"
+                if state_file_path not in user_custom_states:
+                    user_custom_states[state_file_path] = f'''"""Dynamic pipeline step: {class_name}."""
+
+from typing import Any
+from loguru import logger
+from dto.context import PipelineContextDTO
+from wpipe import step, to_obj
+from wpipe.timeout import timeout_sync
+from wpipe.util import object_to_dict
+
+
+@step(name="{class_name}", version="1.0.0", description="Dynamic pipeline step")
+class {class_name}:
+    """Dynamic step state implementation."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.config = kwargs
+
+    @timeout_sync(30)
+    @to_obj(PipelineContextDTO)
+    def __call__(self, context: Any) -> dict[str, Any]:
+        raw_dict = object_to_dict(context)
+        if raw_dict.get("error") == {{}}:
+            raw_dict["error"] = None
+        ctx = PipelineContextDTO(**raw_dict)
+        logger.info(f"{class_name} executing for tx: {{ctx.transaction_id}}")
+        ctx.status = "SUCCESS"
+        ctx.metrics["{safe_stem}"] = True
+        return ctx.model_dump()
+'''
+                return f"{pad}{class_name}()"
 
         # 3. Filter root execution steps
         root_nodes = [
@@ -216,7 +307,7 @@ os.makedirs("output", exist_ok=True)
 pipe: Pipeline = Pipeline(pipeline_name="{project_name}")
 pipe.tracking_db = settings.tracking_db
 pipe.collect_system_metrics = True
-pipe.show_progress = True
+pipe.show_progress = False
 pipe.max_retries = 3
 pipe.retry_delay = 0.5
 
@@ -252,13 +343,28 @@ def execute_pipeline(payload: dict[str, Any]) -> dict[str, Any]:
         return result
     except Exception as err:
         logger.error(f"Error executing {project_name}: {{err}}")
-        return {{"error": str(err), "status": "failed"}}
+        raise
 
 
 if __name__ == "__main__":
-    test_payload = {{"transaction_id": "test_run", "input_data": {{"mode": "direct"}}}}
-    res = execute_pipeline(test_payload)
-    print("Execution result:", res)
+    import json
+    import sys
+    test_payload = {{"transaction_id": "sim_run", "input_data": {{"mode": "direct"}}}}
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        try:
+            test_payload = json.loads(sys.argv[1])
+        except Exception:
+            pass
+    try:
+        res = execute_pipeline(test_payload)
+        print("WPIPE_SIMULATION_SUCCESS")
+        print(json.dumps(res, default=str))
+    except Exception as exc:
+        print("WPIPE_SIMULATION_FAILED", file=sys.stderr)
+        print(f"{{type(exc).__name__}}: {{exc}}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 '''
 
         # 6. Main.py
@@ -1432,6 +1538,9 @@ explicit_package_bases = true
             "run_tests_docker.sh": run_tests_docker,
             "wpipe.config.json": wpipe_config_json,
         }
+
+        # Include dynamically generated custom state files
+        raw_files.update(user_custom_states)
 
         # Apply isort and Black formatting deterministically to all generated Python files
         formatted_files: dict[str, str] = {}

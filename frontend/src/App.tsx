@@ -490,10 +490,12 @@ function getGitHubDirectoryItems(files: { path: string; content: string }[], cur
 }
 
 export default function App() {
-  // Splash Screen
-  const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [splashProgress, setSplashProgress] = useState<number>(0);
-  const [splashFadeOut, setSplashFadeOut] = useState<boolean>(false);
+  const isEmbeddedInVSCode = typeof window !== "undefined" && (window.location.search.includes("mode=vscode") || window.self !== window.top);
+
+  // Splash Screen (Skipped immediately when embedded inside VS Code editor)
+  const [showSplash, setShowSplash] = useState<boolean>(!isEmbeddedInVSCode);
+  const [splashProgress, setSplashProgress] = useState<number>(isEmbeddedInVSCode ? 100 : 0);
+  const [splashFadeOut, setSplashFadeOut] = useState<boolean>(isEmbeddedInVSCode);
 
   // Top Menu State
   const [projectName, setProjectName] = useState<string>("main_pipeline");
@@ -1055,6 +1057,12 @@ export default function App() {
 
   // Splash Screen initial loader
   useEffect(() => {
+    if (isEmbeddedInVSCode) {
+      setShowSplash(false);
+      setSplashProgress(100);
+      setSplashFadeOut(true);
+      return;
+    }
     let progress = 0;
     const timer = setInterval(() => {
       progress += 25;
@@ -1406,6 +1414,7 @@ export default function App() {
       const res = await loadProjectHybrid(projectId, engineStatus.connected, engineStatus.port);
       const project: ProjectDetail = res.project;
       setActiveProjectId(project.id);
+      localStorage.setItem("studio_active_project_id", project.id);
       setProjectName(project.name);
       setCustomDockerImage(project.docker_image || "python:3.11-slim");
       const files = (project.generated_files && project.generated_files.length > 0)
@@ -1429,6 +1438,18 @@ export default function App() {
       setStatusMessage(`Error: ${err.message}`);
     }
   };
+
+  // Restore previously active project on engine connection
+  useEffect(() => {
+    if (!engineStatus.connected) return;
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    if (isVSCode) return; // In VS Code mode, the webview message init handles document state
+
+    const lastProjId = localStorage.getItem("studio_active_project_id");
+    if (lastProjId && !activeProjectId) {
+      handleOpenProject(lastProjId);
+    }
+  }, [engineStatus.connected]);
 
   // 1. Simulation History Loader
   const loadSimulationHistory = async (projId: string) => {
@@ -1636,6 +1657,34 @@ export default function App() {
           );
         } catch {}
       }, 400);
+    } else if (engineStatus.connected) {
+      // Auto-save to Local Disk (~/.wpipe/workspaces/) with debounce when running in browser with connected engine
+      if (vsCodeSyncTimerRef.current) {
+        clearTimeout(vsCodeSyncTimerRef.current);
+      }
+      vsCodeSyncTimerRef.current = setTimeout(async () => {
+        try {
+          const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
+          const workspaceState = getWorkspaceStateJson();
+          if (workspaceState) {
+            (canvasIr as any).workspace_state = workspaceState;
+          }
+          const projPayload = {
+            id: activeProjectId || undefined,
+            name: projectName || "my_pipeline",
+            description: `Microservice ${projectName} auto-saved from canvas`,
+            protocol: "fastapi",
+            docker_image: customDockerImage,
+            canvas_ir: canvasIr,
+            generated_files: generatedFiles,
+          };
+          const res = await saveProjectHybrid(projPayload, true, engineStatus.port);
+          if (res.project?.id) {
+            setActiveProjectId(res.project.id);
+            localStorage.setItem("studio_active_project_id", res.project.id);
+          }
+        } catch {}
+      }, 1000);
     }
   };
 
@@ -1669,6 +1718,7 @@ export default function App() {
       );
       if (res.project?.id) {
         setActiveProjectId(res.project.id);
+        localStorage.setItem("studio_active_project_id", res.project.id);
       }
       await fetchUserProjects();
       setStatusMessage(`Microservice '${projectName}' saved ✓ (Local PC ~/.wpipe)`);
@@ -2626,9 +2676,18 @@ export default function App() {
 
       let duration: number;
       const stepOutput: Record<string, any> = {};
+      let isStepError = false;
+      let stepErrorMessage = "";
+
       if (liveEngine) {
-        const real = timeline.find((t) => t.node_id === currentStep.id) || timeline[i];
+        const real = timeline.find((t: any) => t.node_id === currentStep.id || t.label === currentStep.name) || timeline[i];
         duration = Math.round(real?.duration_ms ?? 0);
+        if (real?.status === "error" || engineResult?.status === "error") {
+          if (real?.status === "error" || (!timeline.some((t: any) => t.status === "error") && i === stepsToRun.length - 1)) {
+            isStepError = true;
+            stepErrorMessage = real?.error || engineResult?.error || "Pipeline step execution failed";
+          }
+        }
       } else {
         // Synthetic values: clearly marked as fake demo data.
         duration = Math.floor(40 + Math.random() * 80);
@@ -2638,6 +2697,25 @@ export default function App() {
           currentContext[w] = stepOutput[w];
         });
         setSimContext({ ...currentContext });
+      }
+
+      if (isStepError) {
+        highlightBlocklyBlock(currentStep.name, "error");
+        setSimSteps((prev) =>
+          prev.map((item, idx) => (idx === i ? { ...item, status: "error", durationMs: duration, outputData: { error: stepErrorMessage } } : item))
+        );
+        setSimLogs((prev) => [
+          ...prev,
+          { time: new Date().toLocaleTimeString(), level: "ERROR", msg: `${tag} ❌ Step ${currentStep.name} failed: ${stepErrorMessage}` },
+        ]);
+        if (engineResult?.stderr) {
+          const errLines = engineResult.stderr.split("\n").filter((l: string) => l.trim()).slice(-3).join(" | ");
+          setSimLogs((prev) => [
+            ...prev,
+            { time: new Date().toLocaleTimeString(), level: "ERROR", msg: `${tag} [Traceback] ${errLines}` },
+          ]);
+        }
+        break; // Stop remaining steps because real pipeline threw an exception
       }
 
       highlightBlocklyBlock(currentStep.name, "success");
@@ -2657,12 +2735,15 @@ export default function App() {
 
     setCpuUsage(0);
     setIsSimulating(false);
+    const hasAnyError = liveEngine && engineResult?.status === "error";
     setStatusMessage(
       simulationAbortRef.current
         ? "🛑 Simulation aborted"
-        : liveEngine
-          ? "✓ Live engine simulation finished"
-          : "✓ FAKE demo finished — install wpipe-engine for a real simulation"
+        : hasAnyError
+          ? `❌ Pipeline simulation failed: ${engineResult?.error || "Step error encountered"}`
+          : liveEngine
+            ? "✓ Live engine simulation finished successfully"
+            : "✓ FAKE demo finished — install wpipe-engine for a real simulation"
     );
 
     // Persist completed live runs in the engine project history (never for fake demos).
@@ -2755,7 +2836,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. TOP MENU BAR (VS Code style 5-menu title bar) */}
+      {/* 2. TOP MENU BAR (Hidden when running inside VS Code editor) */}
+      {!isEmbeddedInVSCode && (
       <header className="h-11 border-b border-gray-800/80 bg-[#0f172a]/95 backdrop-blur-md px-3 flex items-center justify-between relative z-40 shadow-md">
         {/* Left: Sidebar Toggle + Brand + 5 Menus */}
         <div className="flex items-center space-x-1.5">
@@ -3807,12 +3889,14 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
       {/* 3. MAIN WORKSPACE CONTAINER (Flush with Top Header) */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#07090e]">
         {/* WORKSPACE ROW: GLOBAL ACTIVITY BAR + UNIFIED PRIMARY SIDEBAR + MAIN TABS VIEWPORT */}
         <div className="flex-1 flex overflow-hidden relative bg-[#1e1e1e]">
-          {/* 1. GLOBAL ACTIVITY BAR (w-12 bg-[#181818]) */}
+          {/* 1. GLOBAL ACTIVITY BAR (Hidden in VS Code since VS Code already has its native Activity Bar) */}
+          {!isEmbeddedInVSCode && (
           <div className="w-12 bg-[#181818] border-r border-[#2b2b2b] flex flex-col justify-between items-center py-2 shrink-0 z-20 select-none">
             {/* Top Activity Icons */}
             <div className="flex flex-col items-center w-full space-y-2">
@@ -3953,6 +4037,7 @@ export default function App() {
               </button>
             </div>
           </div>
+          )}
 
           {/* 2. UNIFIED PRIMARY SIDEBAR (w-72 bg-[#252526]) */}
           {showSidebar && (

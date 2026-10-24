@@ -1,9 +1,15 @@
 {
-  "name": "wpipe-studio-vscode",
-  "displayName": "WPipe Studio — Visual Pipeline Canvas & Compiler",
-  "description": "Visual block-based pipeline designer and microservice generator for WPipe inside VS Code.",
-  "version": "1.0.0",
+  "name": "wpipe-vscode",
+  "displayName": "WPipe",
+  "description": "Visual pipeline canvas designer, native step registry, live DAG analysis, and microservice generator for WPipe inside VS Code.",
+  "version": "2.0.0",
   "publisher": "wisrovi",
+  "author": {
+    "name": "William Steve Rodriguez Villamizar (Wisrovi)",
+    "email": "wisrovi.rodriguez@gmail.com",
+    "url": "https://wisrovi.dev"
+  },
+  "homepage": "https://wisrovi.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/wisrovi/wpipe-studio.git"
@@ -14,8 +20,10 @@
   },
   "categories": [
     "Programming Languages",
-    "Other",
-    "Linters"
+    "Snippets",
+    "Visualization",
+    "Linters",
+    "Other"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -23,62 +31,238 @@
     "onCommand:wpipe.openCanvas",
     "onCommand:wpipe.newPipeline",
     "onCommand:wpipe.activateLicense",
-    "onView:wpipe.sidebarView"
+    "onView:wpipe.sidebarView",
+    "onView:wpipeSteps",
+    "onCommand:wpipe-vscode.previewDAG",
+    "onCommand:wpipe-vscode.openDashboard",
+    "onCommand:wpipe-vscode.showCheatSheet",
+    "onCommand:wpipe-vscode.refreshCatalog",
+    "onLanguage:python",
+    "onLanguage:yaml"
   ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "wpipe-studio-container",
-          "title": "WPipe Studio",
-          "icon": "media/icon.svg"
+          "id": "wpipe-explorer",
+          "title": "WPipe",
+          "icon": "media/lateral_icon.png"
         }
       ]
     },
     "views": {
-      "wpipe-studio-container": [
+      "wpipe-explorer": [
         {
           "type": "webview",
           "id": "wpipe.sidebarView",
           "name": "WPipe Studio"
+        },
+        {
+          "id": "wpipeSteps",
+          "name": "Step Registry",
+          "icon": "media/icon.png"
         }
       ]
     },
+    "jsonValidation": [
+      {
+        "fileMatch": "*.wpipe.yaml",
+        "url": "./wpipe-schema.json"
+      },
+      {
+        "fileMatch": "pipeline_configs/*.yaml",
+        "url": "./wpipe-schema.json"
+      }
+    ],
     "commands": [
       {
         "command": "wpipe.openCanvas",
         "title": "WPipe: Open Block Canvas",
-        "category": "WPipe"
+        "category": "WPipe",
+        "icon": "$(circuit-board)"
       },
       {
         "command": "wpipe.newPipeline",
         "title": "WPipe: Create New Visual Pipeline",
-        "category": "WPipe"
-      },
-      {
-        "command": "wpipe.activateLicense",
-        "title": "WPipe: Activate Pro License Key",
-        "category": "WPipe"
-      },
-      {
-        "command": "wpipe.checkLicenseStatus",
-        "title": "WPipe: Check License Status",
-        "category": "WPipe"
+        "category": "WPipe",
+        "icon": "$(new-file)"
       },
       {
         "command": "wpipe.compileCurrentPipeline",
         "title": "WPipe: Compile Pipeline to Python",
-        "category": "WPipe"
+        "category": "WPipe",
+        "icon": "$(code)"
+      },
+      {
+        "command": "wpipe.activateLicense",
+        "title": "WPipe: Activate Pro License Key",
+        "category": "WPipe",
+        "icon": "$(key)"
+      },
+      {
+        "command": "wpipe.checkLicenseStatus",
+        "title": "WPipe: Check License Status",
+        "category": "WPipe",
+        "icon": "$(shield)"
       },
       {
         "command": "wpipe.startDaemon",
         "title": "WPipe: Start Native Engine (wpipe-engine)",
-        "category": "WPipe"
+        "category": "WPipe",
+        "icon": "$(play)"
       },
       {
         "command": "wpipe.stopDaemon",
         "title": "WPipe: Stop Native Engine (wpipe-engine)",
-        "category": "WPipe"
+        "category": "WPipe",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "wpipe-vscode.refreshCatalog",
+        "title": "WPipe: Refresh Cloud Catalog",
+        "category": "WPipe",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "wpipe-vscode.searchSteps",
+        "title": "WPipe: Search & Import Steps (Catalog)",
+        "category": "WPipe",
+        "icon": "$(search)"
+      },
+      {
+        "command": "wpipe-vscode.previewDAG",
+        "title": "WPipe: Preview Pipeline DAG",
+        "category": "WPipe",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "wpipe-vscode.openDashboard",
+        "title": "WPipe: Open Web Dashboard",
+        "category": "WPipe",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "wpipe-vscode.replayLogs",
+        "title": "WPipe: Replay Log Errors",
+        "category": "WPipe",
+        "icon": "$(history)"
+      },
+      {
+        "command": "wpipe-vscode.findStepUsage",
+        "title": "WPipe: Find Step Usage (Impact Analysis)",
+        "category": "WPipe",
+        "icon": "$(search-stop)"
+      },
+      {
+        "command": "wpipe-vscode.showCheatSheet",
+        "title": "WPipe: Show Cheat Sheet / Help",
+        "category": "WPipe",
+        "icon": "$(question)"
+      },
+      {
+        "command": "wpipe-vscode.openAiAssistant",
+        "title": "WPipe: AI Pipeline Assistant",
+        "category": "WPipe",
+        "icon": "$(robot)"
+      },
+      {
+        "command": "wpipe-vscode.createNewStep",
+        "title": "WPipe: Create New Advanced Step",
+        "category": "WPipe",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "wpipeSteps.runStep",
+        "title": "Run this Step (One-Click Test)",
+        "category": "WPipe",
+        "icon": "$(play)"
+      },
+      {
+        "command": "wpipeSteps.refreshEntry",
+        "title": "Refresh Steps",
+        "category": "WPipe",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "wpipeSteps.installRequirements",
+        "title": "WPipe: Install Dependencies (pip)",
+        "category": "WPipe",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "wpipeSteps.viewExamples",
+        "title": "WPipe: View Online Examples",
+        "category": "WPipe",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "wpipeSteps.downloadExample",
+        "title": "WPipe: Use Example as Template",
+        "category": "WPipe",
+        "icon": "$(cloud-download)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "wpipe-vscode.createNewStep",
+          "when": "view == wpipeSteps",
+          "group": "navigation"
+        },
+        {
+          "command": "wpipe-vscode.refreshCatalog",
+          "when": "view == wpipeSteps",
+          "group": "navigation"
+        },
+        {
+          "command": "wpipeSteps.refreshEntry",
+          "when": "view == wpipeSteps",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "wpipeSteps.runStep",
+          "when": "view == wpipeSteps && viewItem == workspaceStep",
+          "group": "inline"
+        },
+        {
+          "command": "wpipe-vscode.findStepUsage",
+          "when": "view == wpipeSteps && viewItem == workspaceStep",
+          "group": "inline"
+        },
+        {
+          "command": "wpipeSteps.installRequirements",
+          "when": "view == wpipeSteps && viewItem == libraryStep",
+          "group": "1_setup"
+        },
+        {
+          "command": "wpipeSteps.downloadExample",
+          "when": "view == wpipeSteps && viewItem == libraryStep",
+          "group": "2_content"
+        },
+        {
+          "command": "wpipeSteps.viewExamples",
+          "when": "view == wpipeSteps && viewItem == libraryStep",
+          "group": "2_content"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == .py || resourceExtname == .yaml || resourceExtname == .yml",
+          "command": "wpipe-vscode.previewDAG",
+          "group": "navigation"
+        }
+      ]
+    },
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./snippets/python.json"
+      },
+      {
+        "language": "yaml",
+        "path": "./snippets/yaml.json"
       }
     ],
     "customEditors": [
@@ -97,8 +281,26 @@
       }
     ],
     "configuration": {
-      "title": "WPipe Studio",
+      "title": "WPipe",
       "properties": {
+        "wpipe.excludePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional glob patterns to exclude when searching for workspace steps."
+        },
+        "wpipe.maxSearchFiles": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum number of files to scan when looking for workspace steps."
+        },
+        "wpipe.enableBackupFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically create a .wpipe.mermaid backup file when previewing a DAG."
+        },
         "wpipe.daemonPath": {
           "type": "string",
           "default": "",
@@ -106,7 +308,11 @@
         },
         "wpipe.daemonTransport": {
           "type": "string",
-          "enum": ["auto", "socket", "http"],
+          "enum": [
+            "auto",
+            "socket",
+            "http"
+          ],
           "default": "auto",
           "description": "IPC transport protocol to communicate with local daemon."
         },
@@ -124,14 +330,18 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node && cp src/steps_catalog.json dist/",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch"
   },
-  "author": "William Rodriguez <wisrovi.rodriguez@gmail.com> (https://wisrovi.dev)",
   "license": "Proprietary",
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.80.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@lezer/python": "^1.1.19",
+    "esbuild": "^0.28.2"
   }
 }

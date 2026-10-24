@@ -33,13 +33,13 @@ CANVAS_STATIC_DIR = _base / "canvas_static"
 STEPS_CATALOG_FILE = _base / "steps_catalog.json"
 
 # Search paths for canvas_static:
-# 1. Inside PyInstaller bundle or package directory
-# 2. ~/.wpipe/canvas_static
-# 3. Monorepo sibling frontend/dist
+# 1. ~/.wpipe/canvas_static (user/live workspace updates)
+# 2. Monorepo sibling frontend/dist
+# 3. Inside PyInstaller bundle or package directory
 candidate_dirs = [
-    CANVAS_STATIC_DIR,
     Path.home() / ".wpipe" / "canvas_static",
     Path(__file__).resolve().parent.parent.parent.parent.parent / "frontend" / "dist",
+    CANVAS_STATIC_DIR,
 ]
 for cand in candidate_dirs:
     if cand.exists() and (cand / "index.html").exists():

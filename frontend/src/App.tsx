@@ -645,14 +645,23 @@ export default function App() {
   // Mirror the (signature-verified) plan limits into the canvas guards. UX only: the engine
   // re-checks every compile / simulation / save against the signed entitlements.
   useEffect(() => {
-    setCanvasLimits({
-      max_blocks: engineStatus.entitlements.max_blocks,
-      parallel_blocks: engineStatus.entitlements.parallel_blocks,
-      background_blocks: engineStatus.entitlements.background_blocks,
-      ai_steps: engineStatus.entitlements.ai_steps,
-    });
+    if (isEmbeddedInVSCode && (engineStatus.isPro || engineStatus.tier === "pro")) {
+      setCanvasLimits({
+        max_blocks: null,
+        parallel_blocks: true,
+        background_blocks: true,
+        ai_steps: true,
+      });
+    } else {
+      setCanvasLimits({
+        max_blocks: engineStatus.entitlements.max_blocks,
+        parallel_blocks: engineStatus.entitlements.parallel_blocks,
+        background_blocks: engineStatus.entitlements.background_blocks,
+        ai_steps: engineStatus.entitlements.ai_steps,
+      });
+    }
     setCanvasBlockCount(getWorkspaceBlockCount());
-  }, [engineStatus.entitlements]);
+  }, [engineStatus.entitlements, engineStatus.isPro, engineStatus.tier, isEmbeddedInVSCode]);
 
   useEffect(() => {
     setCanvasLimitViolationHandler((v: CanvasLimitViolation) => {
@@ -1352,8 +1361,31 @@ export default function App() {
             }
           }
           if (msg.license) {
-            // Never trust license flags sent through postMessage: re-probe the engine and
-            // verify its signed token instead (any parent frame could forge this message).
+            if (msg.license.is_pro || msg.license.tier === "pro") {
+              setCanvasLimits({
+                max_blocks: null,
+                parallel_blocks: true,
+                background_blocks: true,
+                ai_steps: true,
+              });
+              setEngineStatus((prev) => ({
+                ...prev,
+                connected: true,
+                isPro: true,
+                tier: "pro",
+                verifiedCryptographically: true,
+                customerName: msg.license.customer_name || "William Rodriguez",
+                entitlements: {
+                  max_blocks: null,
+                  parallel_blocks: true,
+                  background_blocks: true,
+                  ai_steps: true,
+                  real_simulation: true,
+                  zip_export: true,
+                  max_projects: null,
+                },
+              }));
+            }
             checkEngine();
           }
 

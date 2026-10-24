@@ -106,15 +106,23 @@ export async function verifyEd25519Token(
     const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadB64));
     const payload = JSON.parse(payloadJson) as VerifiedLicensePayload;
 
-    // Check expiration timestamp
+    // Check expiration timestamp and grace period (matching backend licensing.py)
     const nowSeconds = Date.now() / 1000;
-    if (payload.exp && nowSeconds > payload.exp) {
-      return {
-        valid: false,
-        tier: "free",
-        payload,
-        error: `El pase flotante expiró el ${new Date(payload.exp * 1000).toLocaleString()}`,
-      };
+    const expSeconds = payload.exp || 0;
+    const graceDays = payload.grace_days ?? 7;
+    const graceSeconds = graceDays * 86400;
+
+    if (expSeconds && nowSeconds > expSeconds) {
+      if (nowSeconds <= expSeconds + graceSeconds) {
+        // Valid within grace period
+      } else {
+        return {
+          valid: false,
+          tier: "free",
+          payload,
+          error: `El pase flotante expiró el ${new Date(expSeconds * 1000).toLocaleString()}`,
+        };
+      }
     }
 
     const plan = (payload.plan || "pro").toLowerCase() as "pro" | "team" | "enterprise";

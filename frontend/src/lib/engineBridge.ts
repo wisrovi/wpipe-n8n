@@ -142,12 +142,11 @@ async function toEngineError(resp: Response, fallback: string): Promise<Error> {
  * Get active engine base URL (e.g. http://127.0.0.1:49152)
  */
 export function getEngineBaseUrl(port: number = DEFAULT_ENGINE_PORT): string {
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") &&
-    window.location.port === String(port)
-  ) {
-    return window.location.origin;
+  if (typeof window !== "undefined") {
+    // If the page itself is served directly by wpipe-engine on any host/IP/port
+    if (window.location.port === String(port) || window.location.search.includes("mode=vscode")) {
+      return window.location.origin;
+    }
   }
   return `http://127.0.0.1:${port}`;
 }
@@ -156,12 +155,10 @@ export function getEngineBaseUrl(port: number = DEFAULT_ENGINE_PORT): string {
  * Resolve API path: relative if on local engine, absolute if on studio.wisrovi.dev
  */
 export function getEngineApiUrl(path: string, port: number = DEFAULT_ENGINE_PORT): string {
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") &&
-    window.location.port === String(port)
-  ) {
-    return path;
+  if (typeof window !== "undefined") {
+    if (window.location.port === String(port) || window.location.search.includes("mode=vscode")) {
+      return path;
+    }
   }
   return `http://127.0.0.1:${port}${path}`;
 }
@@ -188,21 +185,22 @@ export function disconnectedEngineStatus(port: number = DEFAULT_ENGINE_PORT): En
 export async function probeEngineStatus(
   preferredPort: number = DEFAULT_ENGINE_PORT
 ): Promise<EngineStatus> {
-  const portsToTry = [
-    preferredPort,
-    ...FALLBACK_ENGINE_PORTS.filter((p) => p !== preferredPort),
-  ];
+  const isVscodeMode = typeof window !== "undefined" && (window.location.search.includes("mode=vscode") || window.self !== window.top);
+  const portsToTry = isVscodeMode
+    ? [preferredPort]
+    : [preferredPort, ...FALLBACK_ENGINE_PORTS.filter((p) => p !== preferredPort)];
 
   for (const port of portsToTry) {
     const baseUrl = getEngineBaseUrl(port);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
+      const cleanBase = baseUrl.replace(/\/+$/, "");
       const [healthResp, statusResp, catalogResp] = await Promise.allSettled([
-        fetch(`${baseUrl}/health`, { signal: controller.signal }),
-        fetch(`${baseUrl}/v1/license/status`, { signal: controller.signal }),
-        fetch(`${baseUrl}/api/v1/catalog/steps`, { signal: controller.signal }),
+        fetch(`${cleanBase}/health`, { signal: controller.signal }),
+        fetch(`${cleanBase}/v1/license/status`, { signal: controller.signal }),
+        fetch(`${cleanBase}/api/v1/catalog/steps`, { signal: controller.signal }),
       ]);
 
       clearTimeout(timeoutId);

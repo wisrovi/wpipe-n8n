@@ -2761,15 +2761,46 @@ export default function App() {
 
           {/* Brand Logo */}
           <div className="flex items-center space-x-2 mr-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-md">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center font-black text-gray-950 text-xs shadow-md shadow-emerald-500/20">
               W
             </div>
-            <span className="font-extrabold text-sm text-transparent bg-clip-text bg-gradient-to-r from-sky-300 to-indigo-200 font-heading tracking-tight">
+            <span className="font-extrabold text-sm text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-cyan-200 font-heading tracking-tight">
               WPipe Studio
             </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-mono">
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
               v2.5.10
             </span>
+          </div>
+
+          {/* Universal Suite Switcher (Visible on desktop) */}
+          <div className="hidden 2xl:flex items-center gap-1 p-0.5 bg-gray-900/90 border border-gray-800 rounded-full text-[10px] font-semibold mr-2">
+            <a
+              href="https://wpipe-studio.wisrovi.dev"
+              target="_blank"
+              rel="noopener"
+              className="px-2 py-0.5 rounded-full text-gray-400 hover:text-white transition"
+            >
+              Docs
+            </a>
+            <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-bold">
+              ⚡ Canvas
+            </span>
+            <a
+              href="https://portal.wisrovi.dev"
+              target="_blank"
+              rel="noopener"
+              className="px-2 py-0.5 rounded-full text-gray-400 hover:text-white transition"
+            >
+              🔑 Portal
+            </a>
+            <a
+              href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
+              target="_blank"
+              rel="noopener"
+              className="px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-gray-950 font-bold hover:brightness-110 transition shadow-sm"
+            >
+              👑 Pro
+            </a>
           </div>
 
           {/* 1. File Menu Dropdown */}
@@ -3576,6 +3607,18 @@ export default function App() {
 
         {/* Far Right: Engine Status + Fully Right-Aligned PRO Badge + User Account Menu */}
         <div className="flex items-center space-x-2.5">
+          {/* Quick suite portal link */}
+          <a
+            href="https://portal.wisrovi.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-xs font-semibold transition"
+            title="Abrir Portal de Gestión de Licencias & Seats"
+          >
+            <span>🔑</span>
+            <span className="hidden xl:inline">Portal Licencias</span>
+          </a>
+
           {/* Local Engine Bridge Status Widget */}
           <EngineStatusWidget
             status={engineStatus}
@@ -3666,6 +3709,44 @@ export default function App() {
                     <FolderPlus size={14} className="text-sky-400" />
                     <span>New Microservice</span>
                   </button>
+
+                  <div className="h-px bg-gray-800/80 my-1" />
+
+                  {/* Suite Ecosystem Navigation */}
+                  <a
+                    href="https://portal.wisrovi.dev"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowUserMenu(false)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <span>🔑</span>
+                    <span>Portal de Licencias & Seats</span>
+                  </a>
+
+                  <a
+                    href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowUserMenu(false)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <span>👑</span>
+                    <span>Comprar / Upgrade a Pro</span>
+                  </a>
+
+                  <a
+                    href="https://wpipe-studio.wisrovi.dev"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowUserMenu(false)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-300 hover:text-white hover:bg-gray-800/60 flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <span>🌐</span>
+                    <span>Documentación & Web Suite</span>
+                  </a>
+
+                  <div className="h-px bg-gray-800/80 my-1" />
 
                   <button
                     onClick={() => {
@@ -7895,17 +7976,24 @@ export default function App() {
                   Install / Connect wpipe-engine
                 </button>
               )}
-              {!limitNotice.needsEngine && (
-                <button
-                  onClick={() => {
-                    setLimitNotice(null);
-                    setShowProModal(true);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold cursor-pointer"
-                >
-                  👑 Upgrade to PRO
-                </button>
-              )}
+              <a
+                href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>👑</span>
+                <span>Comprar Licencia Pro</span>
+              </a>
+              <a
+                href="https://portal.wisrovi.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-[#1e293b] hover:bg-[#334155] border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🔑</span>
+                <span>¿Ya compraste? Ir al Portal</span>
+              </a>
               <button
                 onClick={() => setLimitNotice(null)}
                 className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold cursor-pointer"

@@ -154,15 +154,34 @@ export const ProLicenseModal: React.FC<ProLicenseModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-800 bg-gray-950/80 flex items-center justify-between text-xs">
-          <span className="text-gray-400 font-mono text-[11px]">
-            Engine Port: {status.port || 49152} • Status: {status.connected ? "Connected" : "Standby"}
-          </span>
+        <div className="p-4 border-t border-gray-800 bg-gray-950/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <a
+              href="https://portal.wisrovi.dev"
+              target="_blank"
+              rel="noopener"
+              className="px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-emerald-500/40 text-emerald-300 font-semibold transition flex items-center gap-1.5"
+            >
+              <span>🔑</span>
+              <span>Portal de Licencias</span>
+            </a>
+            {!status.isPro && (
+              <a
+                href="https://wisrovi.lemonsqueezy.com/checkout/buy/b2c96716-71a7-4df5-9d58-1ea58e1a5d96"
+                target="_blank"
+                rel="noopener"
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-gray-950 font-bold transition shadow-sm flex items-center gap-1.5"
+              >
+                <span>👑</span>
+                <span>Comprar Pro</span>
+              </a>
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-gray-950 font-bold rounded-xl shadow-md transition cursor-pointer"
+            className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg border border-gray-700 transition cursor-pointer"
           >
-            Accept & Close
+            Cerrar
           </button>
         </div>
       </div>

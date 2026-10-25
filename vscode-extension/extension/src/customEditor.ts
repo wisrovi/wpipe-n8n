@@ -510,7 +510,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     );
 
     // Dynamic scan for latest built assets with fallback
-    let scriptName = "index-BH3LqxU6.js";
+    let scriptName = "index-C5oZqxyM.js";
     let cssName = "index-BjFwZUMG.css";
     try {
       const assetsDir = path.join(this.context.extensionPath, "media", "canvas", "assets");

@@ -23,19 +23,32 @@ export class CatalogManager {
     public static async init(context: vscode.ExtensionContext): Promise<void> {
         const cacheUri = vscode.Uri.joinPath(context.globalStorageUri, 'catalog_cache.json');
         
-        // 1. Load from cache
+        // 1. Load from cache or embedded file, and ensure relative URLs are resolved
+        const baseUrl = this.OFFICIAL_URL.substring(0, this.OFFICIAL_URL.lastIndexOf('/') + 1);
+        const normalizeItem = (item: any) => ({
+            ...item,
+            requirements: item.requirements && !item.requirements.startsWith('http')
+                ? `${baseUrl}${item.requirements.replace(/^(\.\/|\/)/, '')}`
+                : item.requirements,
+            examples: item.examples && !item.examples.startsWith('http')
+                ? `${baseUrl}${item.examples.replace(/^(\.\/|\/)/, '')}`
+                : item.examples
+        });
+
         try {
             const cacheData = await vscode.workspace.fs.readFile(cacheUri);
             const cached = JSON.parse(new TextDecoder().decode(cacheData));
-            if (Array.isArray(cached) && cached.length > 0) this.catalog = cached;
-            else throw new Error("Empty cache");
+            if (Array.isArray(cached) && cached.length > 0) {
+                this.catalog = cached.map(normalizeItem);
+            } else throw new Error("Empty cache");
         } catch (e) {
             // Cache doesn't exist or is invalid, load embedded data
             try {
                 const catalogUri = vscode.Uri.joinPath(context.extensionUri, 'dist', 'steps_catalog.json');
                 const catalogData = await vscode.workspace.fs.readFile(catalogUri);
                 const raw = JSON.parse(new TextDecoder().decode(catalogData));
-                this.catalog = Array.isArray(raw) ? raw : (raw.default || []);
+                const list = Array.isArray(raw) ? raw : (raw.default || []);
+                this.catalog = list.map(normalizeItem);
             } catch (e2) {}
         }
 
@@ -63,8 +76,8 @@ export class CatalogManager {
                     const resolveUrl = (path: string | undefined) => {
                         if (!path) return undefined;
                         if (path.startsWith('http')) return path;
-                        // Join base URL with relative path, ensuring no double slashes in the middle
-                        return `${baseUrl}${path.startsWith('/') ? path.substring(1) : path}`;
+                        const clean = path.replace(/^(\.\/|\/)/, '');
+                        return `${baseUrl}${clean}`;
                     };
 
                     // Force correct repo field and resolve relative URLs

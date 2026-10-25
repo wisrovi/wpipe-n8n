@@ -35,8 +35,18 @@ export async function findStepUsage(arg?: any) {
         const files = await vscode.workspace.findFiles('**/*.py', defaultExcludes);
 
         for (const file of files) {
-            const doc = await vscode.workspace.openTextDocument(file);
-            const content = doc.getText();
+            let content = '';
+            try {
+                const rawBytes = await vscode.workspace.fs.readFile(file);
+                content = new TextDecoder().decode(rawBytes);
+            } catch {
+                try {
+                    const doc = await vscode.workspace.openTextDocument(file);
+                    content = doc.getText();
+                } catch {
+                    continue;
+                }
+            }
             const lines = content.split('\n');
 
             lines.forEach((line, index) => {

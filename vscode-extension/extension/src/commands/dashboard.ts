@@ -5,7 +5,10 @@ export async function openDashboard(context: vscode.ExtensionContext, dbPath?: a
     console.log('🚀 WPipe: openDashboard called with:', dbPath);
 
     if (vscode.env.uiKind === vscode.UIKind.Web) {
-        vscode.window.showErrorMessage('WPipe Dashboard requires a local Python environment.');
+        // If port is specified or we can connect, allow webview to render against remote or container daemon
+        const defaultPort = '8035';
+        DashboardPanel.createOrShow(context.extensionUri, defaultPort);
+        vscode.window.showInformationMessage(`🌐 Opening WPipe Dashboard Webview (Port ${defaultPort})...`);
         return;
     }
 
@@ -22,6 +25,25 @@ export async function openDashboard(context: vscode.ExtensionContext, dbPath?: a
     // Only auto-use the path if it actually looks like a database file
     if (potentialDbPath && (potentialDbPath.endsWith('.db') || potentialDbPath.endsWith('.sqlite') || potentialDbPath.endsWith('.sqlite3'))) {
         finalDbPath = potentialDbPath;
+    }
+
+    // Auto-detect tracking database in workspace before prompting dialog
+    if (!finalDbPath) {
+        const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+        const dbFiles = await vscode.workspace.findFiles('**/*.{db,sqlite,sqlite3}', defaultExcludes, 10);
+        if (dbFiles.length === 1) {
+            finalDbPath = dbFiles[0].fsPath;
+        } else if (dbFiles.length > 1) {
+            const dbItems = dbFiles.map(f => ({
+                label: path.basename(f.fsPath),
+                description: vscode.workspace.asRelativePath(f),
+                fsPath: f.fsPath
+            }));
+            const chosen = await vscode.window.showQuickPick(dbItems, {
+                placeHolder: 'Select detected WPipe tracking database'
+            });
+            if (chosen) finalDbPath = chosen.fsPath;
+        }
     }
 
     if (!finalDbPath) {

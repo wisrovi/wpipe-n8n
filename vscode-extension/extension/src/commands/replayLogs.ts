@@ -78,11 +78,24 @@ export async function replayLogErrors() {
     // Group errors by file
     const fileToDecorations = new Map<string, { uri: vscode.Uri; decs: { range: vscode.Range; hoverMessage: string }[] }>();
 
-    const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+    // Also look for workspace files by exact name to handle subfolder module paths (e.g. app/states/test_state)
+    const allWorkspacePy = await vscode.workspace.findFiles('**/*.py', defaultExcludes);
+    const pyMap = new Map<string, vscode.Uri>();
+    for (const f of allWorkspacePy) {
+        pyMap.set(path.basename(f.fsPath, '.py'), f);
+    }
+
     for (const error of errors) {
-        const files = await vscode.workspace.findFiles(`**/${error.module}.py`, defaultExcludes);
-        if (files.length > 0) {
-            const fileUri = files[0];
+        const cleanModule = error.module.replace(/\.py$/, '');
+        const baseName = path.basename(cleanModule);
+        let fileUri = pyMap.get(cleanModule) || pyMap.get(baseName);
+
+        if (!fileUri) {
+            const files = await vscode.workspace.findFiles(`**/${baseName}.py`, defaultExcludes, 1);
+            if (files.length > 0) fileUri = files[0];
+        }
+
+        if (fileUri) {
             const fsPath = fileUri.fsPath;
             if (!fileToDecorations.has(fsPath)) {
                 fileToDecorations.set(fsPath, { uri: fileUri, decs: [] });
@@ -107,7 +120,11 @@ export async function replayLogErrors() {
     
     // Highlight nodes in the DAG if open
     if (DAGPanel.currentPanel) {
-        const stepNames = errors.map(e => e.function);
+        const stepNames = errors.map(e => {
+            const func = e.function || '';
+            const mod = e.module ? path.basename(e.module, '.py') : '';
+            return func || mod;
+        }).filter(Boolean);
         DAGPanel.currentPanel.highlightNodes(stepNames, 'error');
     }
 }

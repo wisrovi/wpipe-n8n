@@ -423,22 +423,26 @@ export async function activate(context: vscode.ExtensionContext) {
         {
           label: "$(split-horizontal) Condition",
           detail: "Boolean branching (True/False)",
-          snippet: "Condition(\n    expression=\"${1:value > 100}\",\n    branch_true=[${2:step_true}],\n    branch_false=[${3:step_false}]\n)",
+          snippet: "Condition(\n    expression=\"${1:status_code == 200}\",\n    branch_true=[${2:step_true}],\n    branch_false=[${3:step_false}]\n),",
+          importName: "Condition"
         },
         {
           label: "$(sync) For Loop",
           detail: "Iterative loop with validation",
-          snippet: "For(\n    iterations=${1:10},\n    validation_expression=\"${2:status != 'error'}\",\n    steps=[${3:step_to_repeat}]\n)",
+          snippet: "For(\n    iterations=${1:3},\n    steps=[${2:step_to_repeat}]\n),",
+          importName: "For"
         },
         {
           label: "$(zap) Parallel",
           detail: "Concurrent multi-step execution",
-          snippet: "Parallel(\n    steps=[${1:step1}, ${2:step2}],\n    max_workers=${3:2}\n)",
+          snippet: "Parallel(\n    steps=[${1:step1}, ${2:step2}],\n    merge_policy=\"${3:accumulate}\"\n),",
+          importName: "Parallel"
         },
         {
           label: "$(run-all) Background",
           detail: "Asynchronous fire-and-forget task",
-          snippet: "Background(${1:slow_step})",
+          snippet: "Background(step=${1:async_task_step}),",
+          importName: "Background"
         },
       ];
 
@@ -446,6 +450,19 @@ export async function activate(context: vscode.ExtensionContext) {
         placeHolder: "Select a logic block to insert inside set_steps...",
       });
       if (sel) {
+        // Ensure wpipe control structure is imported in the document
+        const docText = editor.document.getText();
+        if (!new RegExp(`\\b${sel.importName}\\b`).test(docText)) {
+          await editor.edit((eb) => {
+            const importMatch = docText.match(/from\s+wpipe\s+import\s+([^;\r\n]+)/);
+            if (importMatch) {
+              const startPos = editor.document.positionAt(importMatch.index! + importMatch[0].length);
+              eb.insert(startPos, `, ${sel.importName}`);
+            } else {
+              eb.insert(new vscode.Position(0, 0), `from wpipe import ${sel.importName}\n`);
+            }
+          });
+        }
         editor.insertSnippet(new vscode.SnippetString(sel.snippet));
       }
     }),

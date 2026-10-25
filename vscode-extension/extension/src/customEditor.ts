@@ -278,7 +278,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             if (hasRealNodes || hasRealBlocks) {
               WPipeCanvasEditorProvider.isInternalSyncing = true;
               try {
-                const res = await this.ipcClient.compilePipeline(canvasPayload, projectName);
+                // Read existing pipeline code if present to merge safely
+                let existingPyCode = "";
+                const pyTarget = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+                try {
+                  const existingBytes = await vscode.workspace.fs.readFile(pyTarget);
+                  existingPyCode = Buffer.from(existingBytes).toString("utf8");
+                } catch {}
+
+                const res = await this.ipcClient.compilePipeline(canvasPayload, projectName, existingPyCode);
                 if (res && res.status === "success" && (res.files_dict || res.files)) {
                   const filesMap: Record<string, string> = res.files_dict || {};
                   if (!res.files_dict && Array.isArray(res.files)) {
@@ -290,6 +298,18 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                   }
                   for (const [relPath, content] of Object.entries(filesMap)) {
                     const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+                    // If file already exists on disk and is a state implementation or helper, do NOT overwrite it from scratch!
+                    let fileAlreadyExists = false;
+                    try {
+                      await vscode.workspace.fs.stat(targetUri);
+                      fileAlreadyExists = true;
+                    } catch {}
+
+                    if (fileAlreadyExists && relPath.startsWith("app/states/") && !relPath.endsWith("__init__.py")) {
+                      // Preserve existing custom state implementation
+                      continue;
+                    }
+
                     await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
                     await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
                   }

@@ -132,6 +132,31 @@ def sanitize_ident(name: str) -> str:
 class ASTCompiler:
     """Compiles Canvas IR to Python source files while preserving user custom code blocks."""
 
+    @staticmethod
+    def _extract_balanced_brackets(text: str, pattern: str, open_ch: str = "[", close_ch: str = "]") -> str | None:
+        """Extract balanced bracket content ignoring quotes."""
+        match = re.search(pattern, text)
+        if not match:
+            return None
+        start_idx = match.end()
+        depth = 1
+        in_quote = None
+        for i in range(start_idx, len(text)):
+            ch = text[i]
+            if ch in ('"', "'") and (i == 0 or text[i - 1] != '\\'):
+                if not in_quote:
+                    in_quote = ch
+                elif in_quote == ch:
+                    in_quote = None
+            elif not in_quote:
+                if ch == open_ch:
+                    depth += 1
+                elif ch == close_ch:
+                    depth -= 1
+                    if depth == 0:
+                        return text[start_idx:i]
+        return None
+
     def compile_canvas(
         self,
         canvas_ir: dict[str, Any],
@@ -497,11 +522,15 @@ class {class_name}:
             steps_code = ",\n".join(render_step(n, 8) for n in root_nodes)
         elif existing_pipeline_code and "set_steps" in existing_pipeline_code:
             # Preserve existing steps if pipeline has them rather than overwriting with default template
-            m_steps = re.search(r"(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)", existing_pipeline_code)
-            if m_steps:
-                steps_code = m_steps.group(1).rstrip()
+            steps_balanced = self._extract_balanced_brackets(existing_pipeline_code, r"(?:set_steps|steps)\s*\(\s*\[")
+            if steps_balanced is not None:
+                steps_code = steps_balanced.rstrip()
             else:
-                steps_code = "        # No steps configured"
+                m_steps = re.search(r"(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)", existing_pipeline_code)
+                if m_steps:
+                    steps_code = m_steps.group(1).rstrip()
+                else:
+                    steps_code = "        # No steps configured"
         else:
             steps_code = "\n".join([
                 "        CleanDataStep(prefix='clean_'),",

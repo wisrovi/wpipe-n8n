@@ -234,6 +234,28 @@ export class DAGPanel {
                     } else {
                         current = loopId;
                     }
+                } else if (n.type === 'wpipe_while') {
+                    loopsCount++;
+                    const whileId = makeId('While');
+                    const label = (n.condition || 'retry_count < 3').replace(/"/g, "'");
+                    graph += `  ${whileId}["🔁 While (${label})"]:::control\n`;
+                    graph += `  ${current} --> ${whileId}\n`;
+
+                    if (n.branchTrue && n.branchTrue.length > 0) {
+                        const bodyStart = makeId('WhileBody');
+                        const firstBody = n.branchTrue[0];
+                        const bodyLabel = (firstBody.stepName || firstBody.type).replace(/"/g, "'");
+                        graph += `  ${bodyStart}["${bodyLabel}"]:::customStep\n`;
+                        graph += `  ${whileId} -->|do| ${bodyStart}\n`;
+                        const bodyEnd = buildSubgraph(n.branchTrue.slice(1), bodyStart);
+                        const whileEndId = makeId('EndWhile');
+                        graph += `  ${whileEndId}((•)):::control\n`;
+                        graph += `  ${bodyEnd} --> ${whileEndId}\n`;
+                        graph += `  ${whileId} -->|done| ${whileEndId}\n`;
+                        current = whileEndId;
+                    } else {
+                        current = whileId;
+                    }
                 } else if (n.type === 'wpipe_parallel') {
                     parallelCount++;
                     const parId = makeId('Parallel');

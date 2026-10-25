@@ -116,6 +116,19 @@ export class PipelineDecompiler {
         raw: tr,
       };
     } else if (tr.startsWith("For(")) {
+      const isWhile = tr.includes("validation_expression=");
+      if (isWhile) {
+        const valMatch = tr.match(/validation_expression\s*=\s*(["'])([\s\S]*?)\1/);
+        const cond = valMatch ? valMatch[2] : "retry_count < 3";
+        const stepsRaw = this.extractBalanced(tr, /steps\s*=\s*\[/);
+        const stepTokens = stepsRaw !== null ? this.tokenize(stepsRaw) : [];
+        return {
+          type: "wpipe_while",
+          condition: cond,
+          branchTrue: stepTokens.map((t) => this.parseItem(t)),
+          raw: tr,
+        };
+      }
       const itersMatch = tr.match(/iterations\s*=\s*(\d+)/);
       const iters = itersMatch ? parseInt(itersMatch[1], 10) : 3;
 
@@ -220,6 +233,22 @@ export class PipelineDecompiler {
           id: makeId(),
           fields: {
             ITERATIONS: String(item.iterations || 3),
+          },
+        };
+        if (item.branchTrue && item.branchTrue.length > 0) {
+          block.inputs = {
+            DO: {
+              block: chainNodes(item.branchTrue),
+            },
+          };
+        }
+        return block;
+      } else if (itype === "wpipe_while") {
+        const block: any = {
+          type: "wpipe_while",
+          id: makeId(),
+          fields: {
+            CONDITION: item.condition || "retry_count < 3",
           },
         };
         if (item.branchTrue && item.branchTrue.length > 0) {

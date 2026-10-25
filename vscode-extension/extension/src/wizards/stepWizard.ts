@@ -39,8 +39,11 @@ export async function createNewStepWizard() {
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join('');
 
-    // 2. Prepare file names
-    const fileName = stepName.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() + '.py';
+    // 2. Prepare file names (normalize to snake_case)
+    const fileName = formattedStepName
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+        .toLowerCase() + '.py';
     const filePath = path.join(statesPath, fileName);
 
     // 3. Advanced Step Template (based on snippet)

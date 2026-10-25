@@ -550,7 +550,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob: https:; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} data:; connect-src ${webview.cspSource} http://127.0.0.1:* http://localhost:* ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob: https:; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https://fonts.gstatic.com data:; connect-src ${webview.cspSource} http://127.0.0.1:* http://localhost:* ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WPipe Studio Canvas</title>
   <link rel="stylesheet" crossorigin href="${cssUri}">

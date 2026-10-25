@@ -50,13 +50,14 @@ export async function openDashboard(context: vscode.ExtensionContext, dbPath?: a
     }
 
     const port = await vscode.window.showInputBox({
-        placeHolder: '5000',
+        placeHolder: '8035',
         prompt: 'Enter port for the dashboard',
-        value: '5000'
-    }) || '5000';
+        value: '8035'
+    }) || '8035';
 
     const terminal = vscode.window.createTerminal('WPipe Dashboard');
-    let cmd = `wpipe dashboard --db "${finalDbPath}" --port ${port}`;
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    let cmd = `${pythonCmd} -m wpipe.dashboard --db "${finalDbPath}" --port ${port}`;
     if (configPath) cmd += ` --config-dir "${configPath}"`;
 
     terminal.show();

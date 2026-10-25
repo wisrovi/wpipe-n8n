@@ -27,7 +27,8 @@ export class CatalogManager {
         try {
             const cacheData = await vscode.workspace.fs.readFile(cacheUri);
             const cached = JSON.parse(new TextDecoder().decode(cacheData));
-            if (Array.isArray(cached)) this.catalog = cached;
+            if (Array.isArray(cached) && cached.length > 0) this.catalog = cached;
+            else throw new Error("Empty cache");
         } catch (e) {
             // Cache doesn't exist or is invalid, load embedded data
             try {

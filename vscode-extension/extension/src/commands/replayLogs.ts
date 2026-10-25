@@ -34,8 +34,8 @@ export async function replayLogErrors() {
 
     if (!logUri || logUri.length === 0) return;
 
-    const logPath = logUri[0].fsPath;
-    const content = fs.readFileSync(logPath, 'utf8');
+    const fileBytes = await vscode.workspace.fs.readFile(logUri[0]);
+    const content = new TextDecoder().decode(fileBytes);
     const lines = content.split('\n');
 
     const errors: LogError[] = [];

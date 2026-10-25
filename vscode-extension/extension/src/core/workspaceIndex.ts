@@ -63,7 +63,7 @@ export class WorkspaceIndex {
                                 if (!name && node.node.parent) {
                                     let funcDef = node.node.parent.getChild('FunctionDefinition') || node.node.parent.getChild('ClassDefinition');
                                     if (funcDef) {
-                                        let varName = funcDef.getChild('VariableName');
+                                        let varName = funcDef.getChild('VariableName') || funcDef.getChild('ClassName');
                                         if (varName) name = content.substring(varName.from, varName.to);
                                     }
                                 }

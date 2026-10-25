@@ -24,8 +24,9 @@ export async function findStepUsage(arg?: any) {
         title: `Analyzing impact for step: ${stepName}`,
         cancellable: false
     }, async (progress) => {
-        // Search for the step name in all .py files
-        const files = await vscode.workspace.findFiles('**/*.py', '**/node_modules/**');
+        // Search for the step name in all .py files excluding cache and virtualenvs
+        const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+        const files = await vscode.workspace.findFiles('**/*.py', defaultExcludes);
         const usages: { file: vscode.Uri, line: number, text: string }[] = [];
 
         for (const file of files) {

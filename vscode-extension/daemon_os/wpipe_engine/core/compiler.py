@@ -15,6 +15,107 @@ DEFAULT_STEP_CONSTRUCTOR_ARGS: dict[str, dict[str, Any]] = {
     "NmapScanStep": {"target": "127.0.0.1"},
 }
 
+CATALOG_CONTEXT_TO_STEP: dict[str, str] = {
+    "wpipe_steps.connectivity.rss:RSSContext": "RSSParserStep",
+    "wpipe_steps.connectivity.webhook:WebhookContext": "WebhookTriggerStep",
+    "wpipe_steps.connectivity.sftp:SFTPContext": "SftpTransferStep",
+    "wpipe_steps.connectivity.graphql:GraphQLContext": "GraphQLQueryStep",
+    "wpipe_steps.connectivity.http:HttpRequestContext": "HttpRequestStep",
+    "wpipe_steps.connectivity.oauth2:OAuth2Context": "OAuth2AuthStep",
+    "wpipe_steps.database.redis.sortsets.add_to_sorted_set_async:AddToSortedSetContext": "RedisSortsetsAddAsync",
+    "wpipe_steps.database.redis.sortsets.delete_sorted_set_async:DeleteSortedSetContext": "RedisSortsetsDeleteAsync",
+    "wpipe_steps.database.redis.sortsets.get_rank_sync:GetRankContext": "RedisSortsetsGetRankSync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_by_score_async:GetSortedSetByScoreContext": "RedisSortsetsGetByScoreAsync",
+    "wpipe_steps.database.redis.sortsets.get_score_sync:GetScoreContext": "RedisSortsetsGetScoreSync",
+    "wpipe_steps.database.redis.sortsets.get_ttl_sync:GetTtlContext": "RedisSortedSetGetTtlSync",
+    "wpipe_steps.database.redis.sortsets.get_rank_async:GetRankContext": "RedisSortsetsGetRankAsync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_by_score_sync:GetSortedSetByScoreContext": "RedisSortsetsGetByScoreSync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_reverse_async:GetSortedSetReverseContext": "RedisSortsetsGetReverseAsync",
+    "wpipe_steps.database.redis.sortsets.add_to_sorted_set_sync:AddToSortedSetContext": "RedisSortsetsAddSync",
+    "wpipe_steps.database.redis.sortsets.set_ttl_sync:SetTtlSortedSetContext": "RedisSortsetsSetTtlSync",
+    "wpipe_steps.database.redis.sortsets.increment_score_async:IncrementScoreContext": "RedisSortsetsIncrementScoreAsync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_reverse_sync:GetSortedSetReverseContext": "RedisSortsetsGetReverseSync",
+    "wpipe_steps.database.redis.sortsets.remove_from_sorted_set_async:RemoveFromSortedSetContext": "RedisSortsetsRemoveAsync",
+    "wpipe_steps.database.redis.sortsets.get_ttl_async:GetTtlContext": "RedisSortedSetGetTtlAsync",
+    "wpipe_steps.database.redis.sortsets.delete_sorted_set_sync:DeleteSortedSetContext": "RedisSortsetsDeleteSync",
+    "wpipe_steps.database.redis.sortsets.remove_from_sorted_set_sync:RemoveFromSortedSetContext": "RedisSortsetsRemoveSync",
+    "wpipe_steps.database.redis.sortsets.set_ttl_async:SetTtlSortedSetContext": "RedisSortsetsSetTtlAsync",
+    "wpipe_steps.database.redis.sortsets.get_score_async:GetScoreContext": "RedisSortsetsGetScoreAsync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_sync:GetSortedSetContext": "RedisSortsetsGetSync",
+    "wpipe_steps.database.redis.sortsets.get_sorted_set_async:GetSortedSetContext": "RedisSortsetsGetAsync",
+    "wpipe_steps.database.redis.sortsets.increment_score_sync:IncrementScoreContext": "RedisSortsetsIncrementScoreSync",
+    "wpipe_steps.database.redis.queue.publish_async:QueuePublishContext": "RedisQueuePublishAsync",
+    "wpipe_steps.database.redis.queue.on_message_sync:QueueOnMessageContext": "RedisQueueOnMessageSync",
+    "wpipe_steps.database.redis.queue.get_queue_length_sync:QueueLengthContext": "RedisQueueGetLengthSync",
+    "wpipe_steps.database.redis.queue.publish_sync:QueuePublishContext": "RedisQueuePublishSync",
+    "wpipe_steps.database.redis.queue.get_queue_length_async:QueueLengthContext": "RedisQueueGetLengthAsync",
+    "wpipe_steps.database.redis.queue.on_message_async:QueueOnMessageContext": "RedisQueueOnMessageAsync",
+    "wpipe_steps.database.redis.geo.search_nearby_sync:SearchNearbyContext": "RedisGeoSearchNearbySync",
+    "wpipe_steps.database.redis.geo.get_positions_async:GetPositionsContext": "RedisGeoGetPositionsAsync",
+    "wpipe_steps.database.redis.geo.search_nearby_with_distance_sync:SearchNearbyWithDistanceContext": "RedisGeoSearchNearbyDistSync",
+    "wpipe_steps.database.redis.geo.get_distance_async:GetDistanceContext": "RedisGeoGetDistanceAsync",
+    "wpipe_steps.database.redis.geo.search_nearby_with_distance_async:SearchNearbyWithDistanceContext": "RedisGeoSearchNearbyDistAsync",
+    "wpipe_steps.database.redis.geo.get_distance_sync:GetDistanceContext": "RedisGeoGetDistanceSync",
+    "wpipe_steps.database.redis.geo.add_location_async:AddLocationContext": "RedisGeoAddAsync",
+    "wpipe_steps.database.redis.geo.search_nearby_async:SearchNearbyContext": "RedisGeoSearchNearbyAsync",
+    "wpipe_steps.database.redis.geo.get_positions_sync:GetPositionsContext": "RedisGeoGetPositionsSync",
+    "wpipe_steps.database.redis.geo.add_location_sync:AddLocationContext": "RedisGeoAddSync",
+    "wpipe_steps.database.redis.hyperloglog.count_sync:HyperLogLogCountContext": "RedisHLLCountSync",
+    "wpipe_steps.database.redis.hyperloglog.add_async:HyperLogLogAddContext": "RedisHLLAddAsync",
+    "wpipe_steps.database.redis.hyperloglog.add_sync:HyperLogLogAddContext": "RedisHLLAddSync",
+    "wpipe_steps.database.redis.hyperloglog.count_async:HyperLogLogCountContext": "RedisHLLCountAsync",
+    "wpipe_steps.database.redis.transactions.execute_transaction_async:ExecuteTransactionContext": "RedisTransactionExecuteAsync",
+    "wpipe_steps.database.redis.transactions.execute_transaction_sync:ExecuteTransactionContext": "RedisTransactionExecuteSync",
+    "wpipe_steps.database.redis.sets.add_to_set_async:AddToSetContext": "RedisSetAddAsync",
+    "wpipe_steps.database.redis.sets.extend_ttl_sync:SetExtendTtlContext": "RedisSetExtendTtlSync",
+    "wpipe_steps.database.redis.sets.extend_ttl_async:SetExtendTtlContext": "RedisSetExtendTtlAsync",
+    "wpipe_steps.database.redis.sets.get_set_members_sync:GetSetMembersContext": "RedisSetGetMembersSync",
+    "wpipe_steps.database.redis.sets.add_to_set_sync:AddToSetContext": "RedisSetAddSync",
+    "wpipe_steps.database.redis.sets.get_ttl_sync:SetTtlContext": "RedisSetGetTtlSync",
+    "wpipe_steps.database.redis.sets.is_member_async:IsMemberContext": "RedisSetIsMemberAsync",
+    "wpipe_steps.database.redis.sets.get_set_members_async:GetSetMembersContext": "RedisSetGetMembersAsync",
+    "wpipe_steps.database.redis.sets.is_member_sync:IsMemberContext": "RedisSetIsMemberSync",
+    "wpipe_steps.database.redis.sets.get_ttl_async:SetTtlContext": "RedisSetGetTtlAsync",
+    "wpipe_steps.database.redis.sets.remove_from_set_sync:RemoveFromSetContext": "RedisSetRemoveSync",
+    "wpipe_steps.database.redis.sets.remove_from_set_async:RemoveFromSetContext": "RedisSetRemoveAsync",
+    "wpipe_steps.database.redis.streams.add_to_stream_sync:AddToStreamContext": "RedisStreamAddSync",
+    "wpipe_steps.database.redis.streams.read_from_stream_sync:ReadFromStreamContext": "RedisStreamReadSync",
+    "wpipe_steps.database.redis.streams.on_message_sync:StreamOnMessageContext": "RedisStreamOnMessageSync",
+    "wpipe_steps.database.redis.streams.add_to_stream_async:AddToStreamContext": "RedisStreamAddAsync",
+    "wpipe_steps.database.redis.streams.read_from_stream_async:ReadFromStreamContext": "RedisStreamReadAsync",
+    "wpipe_steps.database.redis.streams.on_message_async:StreamOnMessageContext": "RedisStreamOnMessageAsync",
+    "wpipe_steps.database.redis.pubsub.publish_message_sync:PublishMessageContext": "RedisPubsubPublishSync",
+    "wpipe_steps.database.redis.pubsub.publish_message_async:PublishMessageContext": "RedisPubsubPublishAsync",
+    "wpipe_steps.database.redis.pubsub.on_message_sync:OnMessageContext": "RedisPubsubOnMessageSync",
+    "wpipe_steps.database.redis.pubsub.on_message_async:OnMessageContext": "RedisPubsubOnMessageAsync",
+    "wpipe_steps.database.redis.pipeline.execute_pipeline_sync:ExecutePipelineContext": "RedisPipelineExecuteSync",
+    "wpipe_steps.database.redis.pipeline.execute_pipeline_async:ExecutePipelineContext": "RedisPipelineExecuteAsync",
+    "wpipe_steps.database.redis.bitmaps.extend_ttl_sync:BitmapExtendTtlContext": "RedisBitmapExtendTtlSync",
+    "wpipe_steps.database.redis.bitmaps.count_bits_sync:CountBitsContext": "RedisBitmapCountBitsSync",
+    "wpipe_steps.database.redis.bitmaps.extend_ttl_async:BitmapExtendTtlContext": "RedisBitmapExtendTtlAsync",
+    "wpipe_steps.database.redis.bitmaps.get_ttl_sync:BitmapTtlContext": "RedisBitmapGetTtlSync",
+    "wpipe_steps.database.redis.bitmaps.get_ttl_async:BitmapTtlContext": "RedisBitmapGetTtlAsync",
+    "wpipe_steps.database.redis.bitmaps.get_bit_sync:GetBitContext": "RedisBitmapGetBitSync",
+    "wpipe_steps.database.redis.bitmaps.get_bit_async:GetBitContext": "RedisBitmapGetBitAsync",
+    "wpipe_steps.database.redis.bitmaps.set_bit_async:SetBitContext": "RedisBitmapSetBitAsync",
+    "wpipe_steps.database.redis.bitmaps.count_bits_async:CountBitsContext": "RedisBitmapCountBitsAsync",
+    "wpipe_steps.database.redis.bitmaps.set_bit_sync:SetBitContext": "RedisBitmapSetBitSync",
+    "wpipe_steps.database.redis.hash.read_all_hash_async:ReadAllHashContext": "RedisHashReadAllAsync",
+    "wpipe_steps.database.redis.hash.extend_ttl_sync:HashExtendTtlContext": "RedisHashExtendTtlSync",
+    "wpipe_steps.database.redis.hash.extend_ttl_async:HashExtendTtlContext": "RedisHashExtendTtlAsync",
+    "wpipe_steps.database.redis.hash.create_hash_async:CreateHashContext": "RedisHashCreateAsync",
+    "wpipe_steps.database.redis.hash.get_ttl_sync:HashTtlContext": "RedisHashGetTtlSync",
+    "wpipe_steps.database.redis.hash.read_all_hash_sync:ReadAllHashContext": "RedisHashReadAllSync",
+    "wpipe_steps.database.redis.hash.get_ttl_async:HashTtlContext": "RedisHashGetTtlAsync",
+    "wpipe_steps.database.redis.hash.delete_hash_field_sync:DeleteHashFieldContext": "RedisHashDeleteSync",
+    "wpipe_steps.database.redis.hash.update_hash_async:UpdateHashContext": "RedisHashUpdateAsync",
+    "wpipe_steps.database.redis.hash.read_hash_async:ReadHashContext": "RedisHashReadAsync",
+    "wpipe_steps.database.redis.hash.create_hash_sync:CreateHashContext": "RedisHashCreateSync",
+    "wpipe_steps.database.redis.hash.read_hash_sync:ReadHashContext": "RedisHashReadSync",
+    "wpipe_steps.database.redis.hash.update_hash_sync:UpdateHashContext": "RedisHashUpdateSync",
+    "wpipe_steps.database.redis.hash.delete_hash_field_async:DeleteHashFieldContext": "RedisHashDeleteAsync"
+}
+
 
 def sanitize_ident(name: str) -> str:
     s = re.sub(r"[^0-9a-zA-Z_]", "_", name)
@@ -88,7 +189,9 @@ class ASTCompiler:
             ns = data.get("namespace", "")
 
             if kind == "condition":
-                raw_expr = data.get("condition_expression") or data.get("expression") or "status_code == 200"
+                raw_expr = data.get("condition_expression") or data.get("expression") or "http_response.get('status_code') == 200"
+                if raw_expr.strip() == "status_code == 200":
+                    raw_expr = "http_response.get('status_code') == 200"
                 expr = raw_expr.replace('"', '\\"')
                 true_kids = get_children(node.get("id", ""), "if_body")
                 false_kids = get_children(node.get("id", ""), "else_body")
@@ -131,7 +234,9 @@ class ASTCompiler:
 
             # Standard and catalog step handling
             if ns and ns.startswith("wpipe_steps"):
-                step_class = fn if fn.endswith("Step") else f"{fn}Step"
+                step_class = CATALOG_CONTEXT_TO_STEP.get(f"{ns}:{fn}")
+                if not step_class:
+                    step_class = fn if fn.endswith("Step") else f"{fn}Step"
                 if step_class != fn:
                     imports.add(f"from {ns} import {step_class} as {fn}")
                 else:
@@ -260,6 +365,13 @@ class {class_name}:
 
         if root_nodes:
             steps_code = ",\n".join(render_step(n, 8) for n in root_nodes)
+        elif existing_pipeline_code and "set_steps" in existing_pipeline_code:
+            # Preserve existing steps if pipeline has them rather than overwriting with default template
+            m_steps = re.search(r"(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)", existing_pipeline_code)
+            if m_steps:
+                steps_code = m_steps.group(1).rstrip()
+            else:
+                steps_code = "        # No steps configured"
         else:
             steps_code = "\n".join([
                 "        CleanDataStep(prefix='clean_'),",
@@ -465,6 +577,8 @@ def run_pipeline_endpoint(request: PipelineRequestDTO) -> PipelineResponseDTO:
     """
     tx_id = request.transaction_id or generate_transaction_id()
     payload = {{"transaction_id": tx_id, "input_data": request.payload}}
+    if isinstance(request.payload, dict):
+        payload.update(request.payload)
 
     try:
         result = handle_pipeline_event(payload)
@@ -1132,6 +1246,8 @@ def test_execute_pipeline_success() -> None:
     payload = {{
         "transaction_id": "tx_test_456",
         "input_data": {{"user_id": 42, "text": "excellent"}},
+        "url": "https://httpbin.org/get",
+        "method": "GET",
     }}
     result = execute_pipeline(payload)
     assert result.get("status") in ("CLEANED", "TRANSFORMED", "SCORED", "success", "PENDING")
@@ -1163,7 +1279,7 @@ def test_app_version_and_root_path() -> None:
 
 def test_run_endpoint() -> None:
     """Verify /run endpoint triggers pipeline execution and returns response DTO."""
-    payload = {"transaction_id": "tx_api_1", "payload": {"metric": "value"}}
+    payload = {"transaction_id": "tx_api_1", "payload": {"metric": "value", "url": "https://httpbin.org/get", "method": "GET"}}
     response = client.post("/run", json=payload)
     assert response.status_code == 200
     data = response.json()

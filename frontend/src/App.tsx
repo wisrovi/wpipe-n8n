@@ -1325,16 +1325,43 @@ export default function App() {
 
   // VS Code Webview Bridge Event Listener
   useEffect(() => {
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    const hasVsCodeApi = typeof (window as any).acquireVsCodeApi === "function";
+    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top || hasVsCodeApi;
     if (!isVSCode) return;
 
-    // Notify parent VS Code webview that the studio canvas is mounted and ready
+    let vscodeNativeApi: any = null;
     try {
-      window.parent.postMessage({ type: "ready" }, "*");
-      if (window.top && window.top !== window.parent) {
-        window.top.postMessage({ type: "ready" }, "*");
+      if (hasVsCodeApi) {
+        vscodeNativeApi = (window as any).acquireVsCodeApi();
       }
-    } catch {}
+    } catch {
+      // In case acquireVsCodeApi was already called on window
+      vscodeNativeApi = (window as any).vscode;
+    }
+    if (vscodeNativeApi && !(window as any).vscode) {
+      (window as any).vscode = vscodeNativeApi;
+    }
+
+    const postToVsCode = (msg: any) => {
+      if ((window as any).vscode && typeof (window as any).vscode.postMessage === "function") {
+        (window as any).vscode.postMessage(msg);
+      }
+      try {
+        window.postMessage(msg, "*");
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(msg, "*");
+        }
+        if (window.top && window.top !== window && window.top !== window.parent) {
+          window.top.postMessage(msg, "*");
+        }
+      } catch {}
+    };
+
+    // Store postToVsCode on window for use by auto-sync hooks
+    (window as any).__postToVsCode = postToVsCode;
+
+    // Notify parent VS Code that the studio canvas is mounted and ready
+    postToVsCode({ type: "ready" });
 
     const handleVsCodeMessage = (event: MessageEvent) => {
       const msg = event.data;
@@ -1389,34 +1416,8 @@ export default function App() {
             checkEngine();
           }
 
-          // Immediately trigger initial sync to generate project files on disk
-          setTimeout(() => {
-            try {
-              const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);
-              const workspaceState = getWorkspaceStateJson();
-              const payload = {
-                type: "saveCanvas",
-                canvasIr: {
-                  format: "wpipe",
-                  project: {
-                    id: activeProjectId || "pipeline",
-                    name: projectName,
-                    protocol: "fastapi",
-                    docker_image: customDockerImage,
-                    canvas_ir: canvasIr,
-                    workspace_state: workspaceState,
-                    generated_files: generatedFiles,
-                  },
-                },
-              };
-              window.parent.postMessage(payload, "*");
-              if (window.top && window.top !== window.parent) {
-                window.top.postMessage(payload, "*");
-              }
-            } catch (initErr) {
-              console.warn("Initial sync trigger error:", initErr);
-            }
-          }, 500);
+          // Ready after init
+          setStatusMessage("✓ Visual blocks synced");
         } catch (err: any) {
           console.warn("Failed to load initial VS Code pipeline:", err);
         }
@@ -1424,9 +1425,20 @@ export default function App() {
         try {
           if (msg.data) {
             const raw = typeof msg.data === "string" ? msg.data : JSON.stringify(msg.data);
-            const project = parseWpipeFileContent(raw);
-            if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
-              loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+            const parsedObj = typeof msg.data === "object" ? msg.data : JSON.parse(raw);
+            const wsState =
+              parsedObj?.project?.workspace_state ||
+              parsedObj?.workspace_state ||
+              parsedObj?.project?.canvas_ir?.workspace_state ||
+              parsedObj?.canvas_ir?.workspace_state;
+
+            if (wsState) {
+              loadWorkspaceStateJson(wsState);
+            } else {
+              const project = parseWpipeFileContent(raw);
+              if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
+                loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+              }
             }
           }
         } catch {}
@@ -1668,7 +1680,7 @@ export default function App() {
   };
 
   // 6. Live Split View Workspace Sync & VS Code Document Auto-Save
-  const handleWorkspaceChanged = (ws: any) => {
+  const handleWorkspaceChanged = (ws: any, isUserEvent: boolean = false) => {
     setCanvasBlockCount(getWorkspaceBlockCount());
     if (isSplitView) {
       if (!engineStatus.connected) {
@@ -1688,9 +1700,9 @@ export default function App() {
       }
     }
 
-    // Auto-sync canvas changes to VS Code document in VS Code mode
+    // Auto-sync canvas changes to VS Code document in VS Code mode (ONLY on real user events)
     const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
-    if (isVSCode) {
+    if (isVSCode && isUserEvent) {
       if (vsCodeSyncTimerRef.current) {
         clearTimeout(vsCodeSyncTimerRef.current);
       }
@@ -1716,15 +1728,19 @@ export default function App() {
               },
             },
           };
-          window.parent.postMessage(payload, "*");
-          if (window.top && window.top !== window.parent) {
-            window.top.postMessage(payload, "*");
+          if (typeof (window as any).__postToVsCode === "function") {
+            (window as any).__postToVsCode(payload);
+          } else {
+            window.parent.postMessage(payload, "*");
+            if (window.top && window.top !== window.parent) {
+              window.top.postMessage(payload, "*");
+            }
           }
         } catch (syncErr) {
           console.warn("Error posting saveCanvas:", syncErr);
         }
       }, 400);
-    } else if (engineStatus.connected) {
+    } else if (engineStatus.connected && isUserEvent) {
       // Auto-save to Local Disk (~/.wpipe/workspaces/) with debounce when running in browser with connected engine
       if (vsCodeSyncTimerRef.current) {
         clearTimeout(vsCodeSyncTimerRef.current);
@@ -4944,51 +4960,55 @@ export default function App() {
                   <span>Blockly Canvas</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    switchMainTab("python");
-                    handleSyncPythonCode();
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    activeMainTab === "python"
-                      ? "bg-[#252526] text-purple-400 border border-purple-600/50 shadow-sm"
-                      : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
-                  }`}
-                >
-                  <Code size={13} className="text-purple-400" />
-                  <span>Code & Files</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#2b2b2b] text-gray-300 font-mono">
-                    {generatedFiles.length > 0 ? generatedFiles.length : 35}
-                  </span>
-                </button>
+                {!isEmbeddedInVSCode && (
+                  <>
+                    <button
+                      onClick={() => {
+                        switchMainTab("python");
+                        handleSyncPythonCode();
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                        activeMainTab === "python"
+                          ? "bg-[#252526] text-purple-400 border border-purple-600/50 shadow-sm"
+                          : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
+                      }`}
+                    >
+                      <Code size={13} className="text-purple-400" />
+                      <span>Code & Files</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#2b2b2b] text-gray-300 font-mono">
+                        {generatedFiles.length > 0 ? generatedFiles.length : 35}
+                      </span>
+                    </button>
 
-                <button
-                  onClick={() => switchMainTab("simulation")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    activeMainTab === "simulation"
-                      ? "bg-[#252526] text-emerald-400 border border-emerald-600/50 shadow-sm"
-                      : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
-                  }`}
-                >
-                  <span>🎮</span>
-                  <span>Live Simulation</span>
-                  {isSimulating && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
-                </button>
+                    <button
+                      onClick={() => switchMainTab("simulation")}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                        activeMainTab === "simulation"
+                          ? "bg-[#252526] text-emerald-400 border border-emerald-600/50 shadow-sm"
+                          : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
+                      }`}
+                    >
+                      <span>🎮</span>
+                      <span>Live Simulation</span>
+                      {isSimulating && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
+                    </button>
 
-                <button
-                  onClick={() => {
-                    switchMainTab("flowchart");
-                    handleOpenFlowchart();
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
-                    activeMainTab === "flowchart"
-                      ? "bg-[#252526] text-indigo-400 border border-indigo-600/50 shadow-sm"
-                      : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
-                  }`}
-                >
-                  <GitMerge size={13} className="text-indigo-400" />
-                  <span>Flow (Mermaid DAG)</span>
-                </button>
+                    <button
+                      onClick={() => {
+                        switchMainTab("flowchart");
+                        handleOpenFlowchart();
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition cursor-pointer ${
+                        activeMainTab === "flowchart"
+                          ? "bg-[#252526] text-indigo-400 border border-indigo-600/50 shadow-sm"
+                          : "text-gray-400 hover:text-white hover:bg-[#252526]/50"
+                      }`}
+                    >
+                      <GitMerge size={13} className="text-indigo-400" />
+                      <span>Flow (Mermaid DAG)</span>
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -6658,7 +6678,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* 4. GLOBAL VS CODE STATUS BAR (Bottom bar) */}
+          {/* 4. GLOBAL VS CODE STATUS BAR (Bottom bar) - Oculta en modo VS Code para no duplicar la barra nativa */}
+          {!isEmbeddedInVSCode && (
           <div className="h-6 bg-[#007acc] text-white flex items-center justify-between px-3 text-[11px] font-mono select-none shrink-0 z-20">
             <div className="flex items-center gap-3">
               <div
@@ -6769,6 +6790,7 @@ export default function App() {
               </span>
             </div>
           </div>
+          )}
       </div>
 
 

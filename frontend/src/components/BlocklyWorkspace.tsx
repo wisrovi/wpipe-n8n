@@ -69,7 +69,7 @@ function getCategoryOptions(repoFilter: string): [string, string][] {
   return options;
 }
 
-function getStepOptions(repoFilter: string, catFilter: string, searchTerm: string = ""): [string, string][] {
+function getStepOptions(repoFilter: string, catFilter: string, searchTerm: string = "", currentVal?: string): [string, string][] {
   let filtered = globalCatalog;
   if (repoFilter === "Official") {
     filtered = filtered.filter(isOfficial);
@@ -94,25 +94,38 @@ function getStepOptions(repoFilter: string, catFilter: string, searchTerm: strin
     });
   }
 
-  if (filtered.length === 0) {
-    if (globalCatalog.length === 0) {
-      return [
-        ["📦 HttpRequest (connectivity)", "HttpRequest"],
-        ["📦 NmapScanStep (security)", "NmapScanStep"],
-        ["📦 MySQLQuery (database)", "MySQLQuery"],
-        ["📦 RedisCacheStep (database)", "RedisCacheStep"],
-        ["📦 ImageECamYOLO (vision)", "ImageECamYOLO"],
-      ];
-    }
-    return [["(Sin estados disponibles)", "none"]];
-  }
-
-  // Return up to 100 options for responsive UI
-  return filtered.slice(0, 100).map((s) => {
+  const options: [string, string][] = filtered.slice(0, 100).map((s) => {
     const label = s.func_name || s.name;
     const cat = s.category ? ` [${s.category}]` : "";
     return [`📦 ${label}${cat}`, label];
   });
+
+  // If currentVal is provided and not already in options, prepend it (supports custom workspace steps like Queso)
+  if (currentVal && currentVal !== "none" && !options.some((opt) => opt[1] === currentVal)) {
+    options.unshift([`🛠️ ${currentVal} (Workspace / Custom)`, currentVal]);
+  }
+
+  if (options.length === 0) {
+    return [["(Sin estados disponibles)", "none"]];
+  }
+
+  return options;
+}
+
+export class DynamicStepDropdown extends Blockly.FieldDropdown {
+  protected doClassValidation_(newValue?: string): string | null {
+    if (typeof newValue !== "string") return null;
+    return newValue;
+  }
+
+  public getText(): string {
+    const val = this.getValue();
+    const options = this.getOptions(false);
+    for (const opt of options) {
+      if (opt[1] === val) return String(opt[0]);
+    }
+    return val ? `🛠️ ${val} (Workspace / Custom)` : super.getText();
+  }
 }
 
 export function createCollapseToggleField(): Blockly.FieldImage {
@@ -315,12 +328,13 @@ export function registerWPipeBlocklyBlocks() {
       this.appendDummyInput()
         .appendField("Estado:")
         .appendField(
-          new Blockly.FieldDropdown(function () {
+          new DynamicStepDropdown(function () {
             const block = this.getSourceBlock();
             const repo = block ? block.getFieldValue("REPO_FILTER") || "ALL" : "ALL";
             const cat = block ? block.getFieldValue("CAT_FILTER") || "ALL" : "ALL";
             const q = block ? block.getFieldValue("SEARCH_FILTER") || "" : "";
-            return getStepOptions(repo, cat, q);
+            const curVal = block ? block.getFieldValue("STEP_NAME") : undefined;
+            return getStepOptions(repo, cat, q, curVal);
           }),
           "STEP_NAME"
         );
@@ -831,10 +845,13 @@ export function getWorkspaceStateJson(): any {
   }
 }
 
+let isLoadingWorkspaceState = false;
+
 export function loadWorkspaceStateJson(state: any): boolean {
   if (!activeWorkspaceRef || !state) return false;
   // Loading saved designs never deletes user blocks; the engine still enforces limits on use.
   suppressLimitEnforcement = true;
+  isLoadingWorkspaceState = true;
   try {
     activeWorkspaceRef.clear();
     Blockly.serialization.workspaces.load(state, activeWorkspaceRef);
@@ -850,13 +867,14 @@ export function loadWorkspaceStateJson(state: any): boolean {
   } finally {
     setTimeout(() => {
       suppressLimitEnforcement = false;
-    }, 0);
+      isLoadingWorkspaceState = false;
+    }, 600);
   }
 }
 
 export function addStepBlockToWorkspace(
-  initialStepName: string = "HttpRequest",
-  initialNamespace: string = "wpipe_steps.connectivity",
+  initialStepName: string = "HttpRequestContext",
+  initialNamespace: string = "wpipe_steps.connectivity.http",
   stepOrigin: string = "catalog"
 ) {
   if (!activeWorkspaceRef || !guardInsert("wpipe_step")) return;
@@ -1576,7 +1594,7 @@ ${mermaidDag}
 }
 
 interface BlocklyWorkspaceProps {
-  onWorkspaceChange?: (workspace: Blockly.WorkspaceSvg) => void;
+  onWorkspaceChange?: (workspace: Blockly.WorkspaceSvg, isUserEvent?: boolean) => void;
   onBlockSelected?: (blockData: any) => void;
 }
 
@@ -1640,46 +1658,50 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;
 
+      const isVSCodeEnv = window.location.search.includes("mode=vscode") || window.self !== window.top || typeof (window as any).acquireVsCodeApi === "function";
+
       // Starter template: 4 blocks (Trigger -> HttpRequest -> Condition -> Response).
-      // It fits the Free plan (max 5 blocks) so a new user can compile it right away.
-      const triggerBlock = ws.newBlock("wpipe_trigger");
-      triggerBlock.setFieldValue("api", "TRIGGER_TYPE");
-      triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
-      triggerBlock.initSvg();
-      triggerBlock.render();
-      attachBlockCollapseBehavior(triggerBlock);
-      triggerBlock.moveBy(80, 50);
+      // Only created in standalone browser mode; in VS Code we wait for document/pipeline init state
+      if (!isVSCodeEnv) {
+        const triggerBlock = ws.newBlock("wpipe_trigger");
+        triggerBlock.setFieldValue("api", "TRIGGER_TYPE");
+        triggerBlock.setFieldValue("/run", "TRIGGER_PARAM");
+        triggerBlock.initSvg();
+        triggerBlock.render();
+        attachBlockCollapseBehavior(triggerBlock);
+        triggerBlock.moveBy(80, 50);
 
-      // 1. Catalog step (HttpRequest)
-      const block1 = ws.newBlock("wpipe_step");
-      block1.setFieldValue("HttpRequest", "STEP_NAME");
-      block1.setFieldValue("wpipe_steps.connectivity", "NAMESPACE");
-      block1.initSvg();
-      block1.render();
-      attachBlockCollapseBehavior(block1);
-      if (triggerBlock.nextConnection && block1.previousConnection) {
-        triggerBlock.nextConnection.connect(block1.previousConnection);
-      }
+        // 1. Catalog step (HttpRequestContext)
+        const block1 = ws.newBlock("wpipe_step");
+        block1.setFieldValue("HttpRequestContext", "STEP_NAME");
+        block1.setFieldValue("wpipe_steps.connectivity.http", "NAMESPACE");
+        block1.initSvg();
+        block1.render();
+        attachBlockCollapseBehavior(block1);
+        if (triggerBlock.nextConnection && block1.previousConnection) {
+          triggerBlock.nextConnection.connect(block1.previousConnection);
+        }
 
-      // 2. Simple IF condition (wpipe_if)
-      const blockIf = ws.newBlock("wpipe_if");
-      blockIf.setFieldValue("status_code == 200", "CONDITION");
-      blockIf.initSvg();
-      blockIf.render();
-      attachBlockCollapseBehavior(blockIf);
-      if (block1.nextConnection && blockIf.previousConnection) {
-        block1.nextConnection.connect(blockIf.previousConnection);
-      }
+        // 2. Simple IF condition (wpipe_if)
+        const blockIf = ws.newBlock("wpipe_if");
+        blockIf.setFieldValue("status_code == 200", "CONDITION");
+        blockIf.initSvg();
+        blockIf.render();
+        attachBlockCollapseBehavior(blockIf);
+        if (block1.nextConnection && blockIf.previousConnection) {
+          block1.nextConnection.connect(blockIf.previousConnection);
+        }
 
-      // 3. Pipeline egress (wpipe_response)
-      const blockResponse = ws.newBlock("wpipe_response");
-      blockResponse.setFieldValue("http_json", "RESPONSE_TYPE");
-      blockResponse.setFieldValue('{"status": "success", "data": context}', "RESPONSE_PARAM");
-      blockResponse.initSvg();
-      blockResponse.render();
-      attachBlockCollapseBehavior(blockResponse);
-      if (blockIf.nextConnection && blockResponse.previousConnection) {
-        blockIf.nextConnection.connect(blockResponse.previousConnection);
+        // 3. Pipeline egress (wpipe_response)
+        const blockResponse = ws.newBlock("wpipe_response");
+        blockResponse.setFieldValue("http_json", "RESPONSE_TYPE");
+        blockResponse.setFieldValue('{"status": "success", "data": context}', "RESPONSE_PARAM");
+        blockResponse.initSvg();
+        blockResponse.render();
+        attachBlockCollapseBehavior(blockResponse);
+        if (blockIf.nextConnection && blockResponse.previousConnection) {
+          blockIf.nextConnection.connect(blockResponse.previousConnection);
+        }
       }
 
       // Initial auto-centering so blocks are not stuck in the corner
@@ -1709,8 +1731,9 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
             onBlockSelected(null);
           }
         }
-        if (onWorkspaceChange) {
-          onWorkspaceChange(ws);
+        if (onWorkspaceChange && !isLoadingWorkspaceState) {
+          const isUser = !!e && !(e as any).isUiEvent && ((e as any).recordUndo !== false);
+          onWorkspaceChange(ws, isUser);
         }
       });
     }

@@ -9,9 +9,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { EngineIpcClient } from "./ipcClient";
+import { PipelineDecompiler } from "./core/decompiler";
 
 export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "wpipe.canvasEditor";
+  private static isInternalSyncing = false;
+  private static activePanels = new Map<string, { panel: vscode.WebviewPanel; document: vscode.TextDocument }>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -23,7 +26,41 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     ipcClient: EngineIpcClient
   ): vscode.Disposable {
     const provider = new WPipeCanvasEditorProvider(context, ipcClient);
-    return vscode.window.registerCustomEditorProvider(
+
+    // Watch for direct user changes in app/pipelines.py and states/*.py to decompile into blocks
+    const handleFileChange = async (uri: vscode.Uri) => {
+      if (WPipeCanvasEditorProvider.isInternalSyncing) return;
+      const fsPath = uri.fsPath;
+      if (fsPath.endsWith("pipelines.py")) {
+        try {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await provider.handlePythonCodeChange(doc);
+        } catch (e) {
+          console.warn("Could not handle pipelines.py change:", e);
+        }
+      } else if (fsPath.includes("/states/") && fsPath.endsWith(".py")) {
+        // State created or modified: refresh workspace step index and tree
+        try {
+          await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
+          const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
+          if (wsFolder) {
+            const pipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+            const pipeDoc = await vscode.workspace.openTextDocument(pipeUri);
+            await provider.handlePythonCodeChange(pipeDoc);
+          }
+        } catch {}
+      }
+    };
+
+    const pythonWatcher = vscode.workspace.onDidSaveTextDocument(async (doc) => {
+      await handleFileChange(doc.uri);
+    });
+
+    const fsWatcher = vscode.workspace.createFileSystemWatcher("**/{app/pipelines.py,pipelines.py,states/*.py,app/states/*.py}");
+    fsWatcher.onDidChange((uri) => handleFileChange(uri));
+    fsWatcher.onDidCreate((uri) => handleFileChange(uri));
+
+    const customEditorReg = vscode.window.registerCustomEditorProvider(
       WPipeCanvasEditorProvider.viewType,
       provider,
       {
@@ -33,6 +70,72 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         supportsMultipleEditorsPerDocument: false,
       }
     );
+
+    return vscode.Disposable.from(customEditorReg, pythonWatcher, fsWatcher);
+  }
+
+  public async handlePythonCodeChange(pyDoc: vscode.TextDocument): Promise<void> {
+    try {
+      const code = pyDoc.getText();
+      const workspaceState = PipelineDecompiler.decompile(code);
+      if (!workspaceState) return;
+
+      const wsFolder = vscode.workspace.getWorkspaceFolder(pyDoc.uri);
+      const rootPath = wsFolder ? wsFolder.uri.fsPath : path.dirname(path.dirname(pyDoc.uri.fsPath));
+
+      WPipeCanvasEditorProvider.isInternalSyncing = true;
+      try {
+        // 1. Update all open visual canvas panels
+        for (const [docUriStr, entry] of WPipeCanvasEditorProvider.activePanels.entries()) {
+          const { panel, document } = entry;
+          panel.webview.postMessage({
+            type: "update",
+            data: {
+              format: "wpipe",
+              project: {
+                name: path.basename(document.uri.fsPath, path.extname(document.uri.fsPath)),
+                canvas_ir: {
+                  workspace_state: workspaceState,
+                },
+                workspace_state: workspaceState,
+              },
+            },
+          });
+        }
+
+        // 2. Persist updated workspace_state in all matching .wpipe files in workspace
+        const wpipeFiles = await vscode.workspace.findFiles("**/*.wpipe", "**/node_modules/**", 10);
+        for (const wFileUri of wpipeFiles) {
+          try {
+            const rawBytes = await vscode.workspace.fs.readFile(wFileUri);
+            const rawStr = Buffer.from(rawBytes).toString("utf8");
+            let curObj: any = {};
+            try {
+              curObj = JSON.parse(rawStr);
+            } catch {
+              curObj = {};
+            }
+            if (!curObj.project) curObj.project = {};
+            curObj.project.workspace_state = workspaceState;
+            if (!curObj.project.canvas_ir) curObj.project.canvas_ir = {};
+            curObj.project.canvas_ir.workspace_state = workspaceState;
+
+            await vscode.workspace.fs.writeFile(
+              wFileUri,
+              Buffer.from(JSON.stringify(curObj, null, 2), "utf8")
+            );
+          } catch (writeErr) {
+            console.warn("Failed updating .wpipe file on python change:", writeErr);
+          }
+        }
+      } finally {
+        setTimeout(() => {
+          WPipeCanvasEditorProvider.isInternalSyncing = false;
+        }, 400);
+      }
+    } catch (err) {
+      console.error("Error during Python -> Canvas decompilation:", err);
+    }
   }
 
   public async resolveCustomTextEditor(
@@ -40,10 +143,16 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    WPipeCanvasEditorProvider.activePanels.set(document.uri.toString(), {
+      panel: webviewPanel,
+      document,
+    });
+
     await this.setupWebview(webviewPanel, document);
 
     // Listen to changes in the text document
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (WPipeCanvasEditorProvider.isInternalSyncing) return;
       if (e.document.uri.toString() === document.uri.toString()) {
         try {
           const updatedJson = JSON.parse(document.getText());
@@ -56,6 +165,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     });
 
     webviewPanel.onDidDispose(() => {
+      WPipeCanvasEditorProvider.activePanels.delete(document.uri.toString());
       changeDocumentSubscription.dispose();
     });
   }
@@ -76,7 +186,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document, licenseStatus);
 
     // Synchronize initial document content
-    const sendInitialData = () => {
+    const sendInitialData = async () => {
       let docContent: any = {};
       if (document) {
         try {
@@ -86,6 +196,23 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           docContent = {};
         }
       }
+
+      // Always ensure workspace_state reflects current app/pipelines.py if present
+      try {
+        const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
+        if (wsFolder) {
+          const pyUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+          const pyBytes = await vscode.workspace.fs.readFile(pyUri);
+          const pyCode = Buffer.from(pyBytes).toString("utf8");
+          const decompiledState = PipelineDecompiler.decompile(pyCode);
+          if (decompiledState) {
+            if (!docContent.project) docContent.project = {};
+            docContent.project.workspace_state = decompiledState;
+            if (!docContent.project.canvas_ir) docContent.project.canvas_ir = {};
+            docContent.project.canvas_ir.workspace_state = decompiledState;
+          }
+        }
+      } catch {}
 
       webviewPanel.webview.postMessage({
         type: "init",
@@ -140,29 +267,44 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             }
           }
 
-          // 2. Auto-compile microservice to disk whenever canvas is modified
+          // 2. Auto-compile microservice to disk ONLY if canvas has actual nodes
           if (wsFolder) {
-            try {
-              const res = await this.ipcClient.compilePipeline(canvasPayload || { nodes: [] }, projectName);
-              if (res && res.status === "success" && (res.files_dict || res.files)) {
-                const filesMap: Record<string, string> = res.files_dict || {};
-                if (!res.files_dict && Array.isArray(res.files)) {
-                  for (const item of res.files) {
-                    if (item && item.path && item.content) {
-                      filesMap[item.path] = item.content;
+            // Guard against empty canvas overwrite: check if canvasPayload has nodes
+            const rawNodes = canvasPayload?.nodes || [];
+            const hasRealNodes = rawNodes.length > 0;
+            const wsBlocks = canvasPayload?.workspace_state?.blocks?.blocks || [];
+            const hasRealBlocks = wsBlocks.length > 0;
+
+            if (hasRealNodes || hasRealBlocks) {
+              WPipeCanvasEditorProvider.isInternalSyncing = true;
+              try {
+                const res = await this.ipcClient.compilePipeline(canvasPayload, projectName);
+                if (res && res.status === "success" && (res.files_dict || res.files)) {
+                  const filesMap: Record<string, string> = res.files_dict || {};
+                  if (!res.files_dict && Array.isArray(res.files)) {
+                    for (const item of res.files) {
+                      if (item && item.path && item.content) {
+                        filesMap[item.path] = item.content;
+                      }
                     }
                   }
+                  for (const [relPath, content] of Object.entries(filesMap)) {
+                    const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+                    await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
+                    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
+                  }
+                  await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+                  await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
                 }
-                for (const [relPath, content] of Object.entries(filesMap)) {
-                  const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
-                  await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
-                  await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
-                }
-                await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
-                await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
+              } catch (err) {
+                console.warn("Auto-compile on saveCanvas:", err);
+              } finally {
+                setTimeout(() => {
+                  WPipeCanvasEditorProvider.isInternalSyncing = false;
+                }, 400);
               }
-            } catch (err) {
-              console.warn("Auto-compile on saveCanvas:", err);
+            } else {
+              console.log("Skipping microservice compilation for empty canvas to prevent overwriting user code.");
             }
           }
           break;
@@ -244,152 +386,82 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
   }
 
   public getHtmlForWebview(
-    _webview: vscode.Webview,
+    webview: vscode.Webview,
     _document?: vscode.TextDocument,
     _license?: any
   ): string {
-    const config = vscode.workspace.getConfiguration("wpipe");
-    const rawUrl = config.get<string>("canvasUrl") || "http://127.0.0.1:49152";
-    const canvasUrl = rawUrl.replace(/\/+$/, "");
+    const canvasUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, "media", "canvas"))
+    );
+
+    // Dynamic scan for latest built assets with fallback
+    let scriptName = "index-CNaXF8rg.js";
+    let cssName = "index-BjFwZUMG.css";
+    try {
+      const assetsDir = path.join(this.context.extensionPath, "media", "canvas", "assets");
+      if (fs.existsSync(assetsDir)) {
+        const files = fs.readdirSync(assetsDir);
+        const jsFiles = files.filter((f: string) => f.startsWith("index-") && f.endsWith(".js"));
+        const cssFiles = files.filter((f: string) => f.startsWith("index-") && f.endsWith(".css"));
+        if (jsFiles.length > 0) {
+          // Pick the latest modified JS file to prevent caching issues
+          jsFiles.sort((a, b) => {
+            const statA = fs.statSync(path.join(assetsDir, a));
+            const statB = fs.statSync(path.join(assetsDir, b));
+            return statB.mtimeMs - statA.mtimeMs;
+          });
+          scriptName = jsFiles[0];
+        }
+        if (cssFiles.length > 0) {
+          cssFiles.sort((a, b) => {
+            const statA = fs.statSync(path.join(assetsDir, a));
+            const statB = fs.statSync(path.join(assetsDir, b));
+            return statB.mtimeMs - statA.mtimeMs;
+          });
+          cssName = cssFiles[0];
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read assets dir:", e);
+    }
+
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, "media", "canvas", "assets", scriptName))
+    );
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.context.extensionPath, "media", "canvas", "assets", cssName))
+    );
 
     return `<!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * http://localhost:* http://127.0.0.1:* ${canvasUrl} https://*.wisrovi.dev https://*.pages.dev;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob: https:; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} data:; connect-src ${webview.cspSource} http://127.0.0.1:* http://localhost:* ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WPipe Studio Canvas</title>
+  <link rel="stylesheet" crossorigin href="${cssUri}">
   <style>
-    * {
-      box-sizing: border-box;
+    html, body, #root {
+      width: 100%;
+      height: 100%;
       margin: 0;
       padding: 0;
-    }
-    html, body {
-      width: 100vw;
-      height: 100vh;
       overflow: hidden;
-      background-color: #0f172a;
-      display: flex;
-      flex-direction: column;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    #studioFrame {
-      width: 100%;
-      height: 100%;
-      border: none;
-      flex: 1;
-      display: block;
-      background: #0f172a;
-    }
-    #fallback {
-      display: none;
-      flex: 1;
-      width: 100%;
-      height: 100%;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      color: #94a3b8;
-      text-align: center;
-      padding: 24px;
-      gap: 16px;
-    }
-    .logo-badge {
-      width: 54px;
-      height: 54px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #0284c7, #38bdf8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 26px;
-      font-weight: bold;
-      color: white;
-      box-shadow: 0 8px 24px rgba(2, 132, 199, 0.35);
-    }
-    .btn-retry {
-      background: #0284c7;
-      color: white;
-      border: none;
-      padding: 9px 20px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background 0.2s;
-    }
-    .btn-retry:hover {
-      background: #0369a1;
+      background-color: #07090e;
+      color: #f8fafc;
     }
   </style>
 </head>
-<body>
-  <iframe
-    id="studioFrame"
-    src="${canvasUrl}/?mode=vscode"
-    allow="clipboard-read; clipboard-write; microphone; camera"
-  ></iframe>
+<body class="bg-[#07090e] text-gray-100 antialiased font-sans w-full h-full m-0 p-0 overflow-hidden">
+  <div id="root" class="w-full h-full min-h-screen"></div>
 
-  <div id="fallback">
-    <div class="logo-badge">W</div>
-    <h2 style="color: #f8fafc; font-size: 20px; font-weight: 700;">WPipe Studio</h2>
-    <p style="max-width: 440px; font-size: 13px; line-height: 1.6;">
-      Connecting to WPipe Studio visual block canvas at <code>${canvasUrl}</code>.
-    </p>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
-      <button class="btn-retry" onclick="reloadFrame()">Reconnect Local Canvas</button>
-      <button class="btn-retry" style="background: #334155;" onclick="loadCloudFallback()">Open Cloud PWA</button>
-    </div>
-  </div>
-
-  <script>
+  <script type="module">
+    // Expose acquireVsCodeApi directly to the native React canvas app
     const vscode = acquireVsCodeApi();
-    const frame = document.getElementById('studioFrame');
-    const fallback = document.getElementById('fallback');
-    const baseUrl = ${JSON.stringify(canvasUrl)};
-
-    function reloadFrame() {
-      fallback.style.display = 'none';
-      frame.style.display = 'block';
-      frame.src = baseUrl + '/?mode=vscode&t=' + Date.now();
-    }
-
-    function loadCloudFallback() {
-      fallback.style.display = 'none';
-      frame.style.display = 'block';
-      frame.src = 'https://studio.wisrovi.dev/?mode=vscode&t=' + Date.now();
-    }
-
-    // Health probe: if local engine is offline, seamlessly switch to cloud PWA
-    fetch(baseUrl + '/health')
-      .then((res) => {
-        if (!res.ok && res.status >= 500) throw new Error('Daemon unhealthy');
-      })
-      .catch((e) => {
-        console.warn('Local engine offline, falling back to cloud PWA:', e);
-        loadCloudFallback();
-      });
-
-    // Bridge message communication between iframe and VS Code extension
-    window.addEventListener('message', (event) => {
-      if (!event.data) return;
-      if (event.data.type === 'ready' || event.data.type === 'saveCanvas' || event.data.type === 'compile' || event.data.type === 'simulate') {
-        // Message from inner canvas frame to VS Code
-        vscode.postMessage(event.data);
-      } else if (event.data.type === 'init' || event.data.type === 'update' || event.data.type === 'simulateResult') {
-        // Message from VS Code to inner canvas frame
-        if (frame && frame.contentWindow) {
-          frame.contentWindow.postMessage(event.data, '*');
-        }
-      }
-    });
-
-    frame.onerror = () => {
-      fallback.style.display = 'flex';
-      frame.style.display = 'none';
-    };
+    window.vscode = vscode;
+    window.__postToVsCode = (msg) => vscode.postMessage(msg);
   </script>
+  <script type="module" crossorigin src="${scriptUri}"></script>
 </body>
 </html>`;
   }

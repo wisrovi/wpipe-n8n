@@ -56,6 +56,25 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 title: 'Check License Status',
             };
 
+            const activateItem = new vscode.TreeItem('🔑 Activate Pro License', vscode.TreeItemCollapsibleState.None);
+            activateItem.description = 'Enter License Key';
+            activateItem.tooltip = 'Activate WPipe Studio Pro with your license key';
+            activateItem.iconPath = new vscode.ThemeIcon('key');
+            activateItem.command = {
+                command: 'wpipe.activateLicense',
+                title: 'Activate Pro License',
+            };
+
+            const isOffline = engineLabel.includes('Offline');
+            const startEngineItem = new vscode.TreeItem(isOffline ? '▶️ Start Engine Daemon' : '⏹️ Stop Engine Daemon', vscode.TreeItemCollapsibleState.None);
+            startEngineItem.description = isOffline ? 'Start local wpipe-engine' : 'Stop background daemon';
+            startEngineItem.tooltip = isOffline ? 'Launch native wpipe-engine daemon' : 'Stop native wpipe-engine daemon';
+            startEngineItem.iconPath = new vscode.ThemeIcon(isOffline ? 'play' : 'stop');
+            startEngineItem.command = {
+                command: isOffline ? 'wpipe.startDaemon' : 'wpipe.stopDaemon',
+                title: isOffline ? 'Start Engine' : 'Stop Engine',
+            };
+
             const canvasItem = new vscode.TreeItem('🎨 Open Visual Block Canvas', vscode.TreeItemCollapsibleState.None);
             canvasItem.description = 'Blockly IDE';
             canvasItem.tooltip = 'Open the Visual Block Canvas to design pipelines visually with drag-and-drop blocks';
@@ -63,6 +82,15 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
             canvasItem.command = {
                 command: 'wpipe.openCanvas',
                 title: 'Open Block Canvas',
+            };
+
+            const dagPreviewItem = new vscode.TreeItem('📊 Preview Pipeline DAG', vscode.TreeItemCollapsibleState.None);
+            dagPreviewItem.description = 'Mermaid Visualizer';
+            dagPreviewItem.tooltip = 'Preview the Mermaid DAG flow of active pipeline';
+            dagPreviewItem.iconPath = new vscode.ThemeIcon('graph');
+            dagPreviewItem.command = {
+                command: 'wpipe-vscode.previewDAG',
+                title: 'Preview Pipeline DAG',
             };
 
             const newPipeItem = new vscode.TreeItem('➕ Create New Pipeline', vscode.TreeItemCollapsibleState.None);
@@ -74,10 +102,23 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 title: 'Create New Pipeline',
             };
 
+            const newStepItem = new vscode.TreeItem('✨ Wizard: Create New Step', vscode.TreeItemCollapsibleState.None);
+            newStepItem.description = 'Generate @step';
+            newStepItem.tooltip = 'Generate a new state/step file in app/states/';
+            newStepItem.iconPath = new vscode.ThemeIcon('sparkle');
+            newStepItem.command = {
+                command: 'wpipe-vscode.createNewStep',
+                title: 'Create New Step',
+            };
+
             return [
                 engineItem,
+                activateItem,
+                startEngineItem,
                 canvasItem,
+                dagPreviewItem,
                 newPipeItem,
+                newStepItem,
                 new vscode.TreeItem('🚀 Workspace Pipelines', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded),
                 new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed),

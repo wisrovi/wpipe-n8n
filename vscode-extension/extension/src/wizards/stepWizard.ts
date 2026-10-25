@@ -9,7 +9,16 @@ export async function createNewStepWizard() {
     }
 
     const rootPath = workspaceFolders[0].uri.fsPath;
-    const statesPath = path.join(rootPath, 'states');
+    let statesPath = path.join(rootPath, 'states');
+    try {
+        const appStatesUri = vscode.Uri.file(path.join(rootPath, 'app', 'states'));
+        const stat = await vscode.workspace.fs.stat(appStatesUri);
+        if (stat) {
+            statesPath = path.join(rootPath, 'app', 'states');
+        }
+    } catch {
+        // Fall back to root/states if app/states doesn't exist
+    }
 
     // 1. Ask for Step Name
     const stepName = await vscode.window.showInputBox({
@@ -98,7 +107,13 @@ class ${formattedStepName}:
         const doc = await vscode.workspace.openTextDocument(fileUri);
         await vscode.window.showTextDocument(doc);
 
-        vscode.window.showInformationMessage(`✅ Step '${formattedStepName}' created successfully in states/${fileName}`);
+        const relStatesDir = path.relative(rootPath, statesPath);
+        vscode.window.showInformationMessage(`✅ Step '${formattedStepName}' created successfully in ${relStatesDir}/${fileName}`);
+
+        // Automatically re-index workspace steps and refresh sidebar tree view
+        try {
+            await vscode.commands.executeCommand('wpipeSteps.refreshEntry');
+        } catch {}
     } catch (err: any) {
         vscode.window.showErrorMessage(`❌ Failed to create step: ${err.message}`);
     }

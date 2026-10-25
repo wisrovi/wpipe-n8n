@@ -11,7 +11,7 @@ export class DAGPanel {
     public static async createOrShow(uri: vscode.Uri, doc: vscode.TextDocument) {
         if (DAGPanel.currentPanel) { 
             DAGPanel.currentPanel._panel.reveal(); 
-            await DAGPanel.currentPanel._update(doc, true); 
+            await DAGPanel.currentPanel.updateDocument(doc, true); 
             return; 
         }
         const p = vscode.window.createWebviewPanel('wpipeDAG', 'WPipe Analysis', vscode.ViewColumn.Two, { 
@@ -34,7 +34,7 @@ export class DAGPanel {
         this._panel.onDidDispose(() => { DAGPanel.currentPanel = undefined; }, null, this._disposables);
         
         // Inicialización
-        this._update(doc, true);
+        this.updateDocument(doc, true);
         
         this._panel.webview.onDidReceiveMessage(async message => {
             if (message.command === 'downloadImage') {
@@ -73,20 +73,56 @@ export class DAGPanel {
             }
         }, null, this._disposables);
 
-        // SOLO escribimos archivo al guardar si el panel está abierto para este documento
-        vscode.workspace.onDidSaveTextDocument(e => { 
-            if (e === doc) this._update(doc, true); 
+        // Actualizamos vista al guardar cualquier documento de python relevante
+        vscode.workspace.onDidSaveTextDocument(async e => { 
+            if (e.languageId === 'python') {
+                if (e.uri.fsPath.endsWith('pipelines.py')) {
+                    this.updateDocument(e, true);
+                } else if (e.uri.fsPath.includes('/states/')) {
+                    // Si se guardó un estado, refrescamos el DAG con el pipelines.py del workspace
+                    const wsFolder = vscode.workspace.getWorkspaceFolder(e.uri);
+                    if (wsFolder) {
+                        try {
+                            const pipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, 'app', 'pipelines.py'));
+                            const pipeDoc = await vscode.workspace.openTextDocument(pipeUri);
+                            this.updateDocument(pipeDoc, false);
+                        } catch {}
+                    }
+                } else if (e === doc) {
+                    this.updateDocument(doc, true);
+                }
+            }
         }, null, this._disposables);
+
+        // Filesystem Watcher para detectar cambios externos (ej: desde otro contenedor/puerto code-server)
+        const fsWatcher = vscode.workspace.createFileSystemWatcher("**/{app/pipelines.py,pipelines.py}");
+        const handleExternalPipelineChange = async (changedUri: vscode.Uri) => {
+            try {
+                const rawBytes = await vscode.workspace.fs.readFile(changedUri);
+                const fileText = Buffer.from(rawBytes).toString("utf8");
+                this.updateContent(path.basename(changedUri.fsPath), fileText, false);
+            } catch (err) {
+                console.warn("DAGPanel could not reload externally modified pipeline:", err);
+            }
+        };
+        fsWatcher.onDidChange(handleExternalPipelineChange, null, this._disposables);
+        fsWatcher.onDidCreate(handleExternalPipelineChange, null, this._disposables);
+        this._disposables.push(fsWatcher);
 
         // Al cambiar de editor, solo actualizamos la VISTA, no escribimos archivo (evita duplicidad innecesaria)
         vscode.window.onDidChangeActiveTextEditor(e => { 
-            if (e && e.document.languageId === 'python') this._update(e.document, false); 
+            if (e && e.document.languageId === 'python') this.updateDocument(e.document, false); 
         }, null, this._disposables);
     }
 
-    private async _update(doc: vscode.TextDocument, forceBackup: boolean = false) {
+    public async updateContent(fileName: string, content: string, forceBackup: boolean = false) {
+        const res = this.parseString(content, fileName);
+        this._panel.webview.html = this._getHtml(fileName, res.graph, res.stats, res.bigO, res.suggestions);
+    }
+
+    public async updateDocument(doc: vscode.TextDocument, forceBackup: boolean = false) {
         const fileName = path.basename(doc.uri.fsPath);
-        const res = this.parse(doc, fileName);
+        const res = this.parseString(doc.getText(), fileName);
 
         // SAVE TO FILE (Solo si está habilitado y es una acción "manual" o guardado)
         if (forceBackup && await ConfigManager.isBackupEnabled()) {
@@ -307,8 +343,7 @@ export class DAGPanel {
         </html>`;
     }
 
-    private parse(doc: vscode.TextDocument, fileName: string): any {
-        const content = doc.getText();
+    private parseString(content: string, fileName: string): any {
         let g = "flowchart TD\n  classDef step fill:#1e1e1e,stroke:#007acc,stroke-width:2px,color:#fff,rx:5,ry:5,cursor:pointer\n  classDef logic fill:#1e1e1e,stroke:#ce9178,stroke-width:2px,color:#fff,rx:2,ry:2,cursor:pointer\n  classDef startN fill:#007acc,stroke:#007acc,color:#fff\n";
         
         let totalSteps = 0; let totalLogic = 0; let maxDepth = 0;
@@ -351,7 +386,7 @@ export class DAGPanel {
                 stepsOffset += inst.text.indexOf(m2[1]);
             }
 
-            const res = this.parseRec(doc, stepsContent, stepsOffset, `start_${uid}`, "L" + uid, 0);
+            const res = this.parseRec(content, stepsContent, stepsOffset, `start_${uid}`, "L" + uid, 0);
             g += res.graph.split('\n').map((l: string) => l.trim() ? "    " + l : "").join('\n') + "\n";
             totalSteps += res.steps; totalLogic += res.logic; if (res.depth > maxDepth) maxDepth = res.depth;
             
@@ -363,7 +398,7 @@ export class DAGPanel {
                     const am = addCall.text.match(/\.add_state\s*\(([\s\S]*?)\)/);
                     if (am) {
                         const amOffset = addCall.from + addCall.text.indexOf(am[1]);
-                        const res2 = this.parseRec(doc, am[1], amOffset, lastId, "A" + Math.random().toString(36).substr(2, 3), 0, lastLabel);
+                        const res2 = this.parseRec(content, am[1], amOffset, lastId, "A" + Math.random().toString(36).substr(2, 3), 0, lastLabel);
                         g += res2.graph.split('\n').map((l: string) => l.trim() ? "    " + l : "").join('\n') + "\n";
                         totalSteps += res2.steps; totalLogic += res2.logic; if (res2.depth > maxDepth) maxDepth = res2.depth;
                         lastId = res2.lastId;
@@ -389,7 +424,7 @@ export class DAGPanel {
         };
     }
 
-    private parseRec(doc: vscode.TextDocument, content: string, offset: number, prev: string, prefix: string, depth: number, incomingLabel: string = ""): any {
+    private parseRec(fullText: string, content: string, offset: number, prev: string, prefix: string, depth: number, incomingLabel: string = ""): any {
         let graph = ""; let curr = prev; let sCount = 0; let lCount = 0; let maxSubDepth = depth;
         let currentLabel = incomingLabel;
 
@@ -408,15 +443,16 @@ export class DAGPanel {
 
         splitWithOffsets(content, offset).forEach((item, i) => {
             const tr = item.text; if (!tr) return;
-            const line = doc.positionAt(item.offset).line;
+            const line = fullText.substring(0, item.offset).split("\n").length;
             const id = "n" + prefix + i + "_L" + line;
             const edge = currentLabel ? `-- ${currentLabel} -->` : "-->";
             currentLabel = "";
 
             if (tr.startsWith('Condition(')) {
                 lCount++; 
-                const exprMatch = tr.match(/expression\s*=\s*(["'])(.*?)\1/);
-                const expr = exprMatch ? exprMatch[2] : "Condition";
+                const exprMatch = tr.match(/expression\s*=\s*([`"'])([\s\S]*?)\1/);
+                let expr = exprMatch ? exprMatch[2] : "Condition";
+                expr = expr.replace(/"/g, "'").replace(/[<>{}]/g, " ").trim();
                 graph += `  ${curr} ${edge} ${id}{"${expr}"}:::logic\n`;
                 graph += `  click ${id} call handleNodeClick("${line}")\n`;
                 
@@ -464,11 +500,13 @@ export class DAGPanel {
             } else if (tr.startsWith('Background(')) {
                 lCount++; 
                 const lblMatch = tr.match(/Background\((.*?)\)/);
-                const lbl = lblMatch ? lblMatch[1].split(',')[0].trim() : "BG Task";
+                let lbl = lblMatch ? lblMatch[1].split(',')[0].trim() : "BG Task";
+                lbl = lbl.replace(/"/g, "'").replace(/[()]/g, "").trim();
                 graph += `  ${curr} -. async .-> ${id}((" ⚡ ${lbl} ")):::step\n`;
                 graph += `  click ${id} call handleNodeClick("${line}")\n`;
             } else {
                 let lbl = tr.split('(')[0].replace(/[\[\]]/g, '').trim();
+                lbl = lbl.replace(/"/g, "'").trim();
                 if (lbl) { 
                     sCount++; graph += `  ${curr} ${edge} ${id}[" 🚀 ${lbl} "]:::step\n`; 
                     graph += `  click ${id} call handleNodeClick("${line}")\n`;
@@ -491,6 +529,10 @@ export class DAGPanel {
         if (cur.trim()) r.push({ text: cur.trim(), offset: baseOffset + start + (cur.length - cur.trimStart().length) }); 
         return r;
     }
+    private parse(doc: vscode.TextDocument, fileName: string): any {
+        return this.parseString(doc.getText(), fileName);
+    }
+
     private ext(c: string, a: string): string | null {
         const m = c.match(new RegExp(`${a}\\s*=\\s*\\[`));
         if (m) {

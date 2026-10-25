@@ -18,6 +18,8 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
   private static isInternalSyncing = false;
   private static activePanels = new Map<string, { panel: vscode.WebviewPanel; document?: vscode.TextDocument }>();
   private static decompileDebounceTimer: NodeJS.Timeout | null = null;
+  private static autoCompileDebounceTimer: NodeJS.Timeout | null = null;
+  private static lastOriginatingPanel: vscode.WebviewPanel | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -50,12 +52,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           }
         } catch {}
       } else if (fsPath.endsWith(".wpipe") || fsPath.endsWith(".wpipe.json")) {
-        // External .wpipe update: broadcast to active panels
+        // External .wpipe update: broadcast to active panels EXCEPT the one currently focused/editing
         try {
           const rawBytes = await vscode.workspace.fs.readFile(uri);
           const rawStr = Buffer.from(rawBytes).toString("utf8");
           const updatedJson = JSON.parse(rawStr);
           for (const [key, entry] of WPipeCanvasEditorProvider.activePanels.entries()) {
+            if (entry.panel === WPipeCanvasEditorProvider.lastOriginatingPanel) {
+              continue;
+            }
             if (!entry.document || entry.document.uri.toString() === uri.toString()) {
               entry.panel.webview.postMessage({
                 type: "update",
@@ -155,9 +160,12 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 
       WPipeCanvasEditorProvider.isInternalSyncing = true;
       try {
-        // 1. Update all open visual canvas panels (both custom editors and standalone panels)
+        // 1. Update all open visual canvas panels EXCEPT the panel currently originating the user interaction
         for (const [docUriStr, entry] of WPipeCanvasEditorProvider.activePanels.entries()) {
           const { panel, document } = entry;
+          if (panel === WPipeCanvasEditorProvider.lastOriginatingPanel) {
+            continue;
+          }
           const projectName = document 
             ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
             : "main_pipeline";
@@ -329,6 +337,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         }
 
         case "saveCanvas": {
+          WPipeCanvasEditorProvider.lastOriginatingPanel = webviewPanel;
           const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
           const projectObj = msg.canvasIr?.project || msg.canvasIr;
           const defaultName = document
@@ -363,70 +372,67 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             }
           }
 
-          // 2. Auto-compile microservice to disk ONLY if canvas has actual nodes
+          // 2. Debounce auto-compilation to app/pipelines.py to avoid interrupting active drag & drop
           if (wsFolder) {
-            // Guard against empty canvas overwrite: check if canvasPayload has nodes
             const rawNodes = canvasPayload?.nodes || [];
             const hasRealNodes = rawNodes.length > 0;
             const wsBlocks = canvasPayload?.workspace_state?.blocks?.blocks || [];
             const hasRealBlocks = wsBlocks.length > 0;
 
             if (hasRealNodes || hasRealBlocks) {
-              WPipeCanvasEditorProvider.isInternalSyncing = true;
-              try {
-                // Read existing pipeline code if present to merge safely
-                let existingPyCode = "";
-                const pyTarget = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
-                try {
-                  const existingBytes = await vscode.workspace.fs.readFile(pyTarget);
-                  existingPyCode = Buffer.from(existingBytes).toString("utf8");
-                } catch {}
+              if (WPipeCanvasEditorProvider.autoCompileDebounceTimer) {
+                clearTimeout(WPipeCanvasEditorProvider.autoCompileDebounceTimer);
+              }
 
-                const res = await this.ipcClient.compilePipeline(canvasPayload, projectName, existingPyCode);
-                if (res && res.status === "success" && (res.files_dict || res.files)) {
-                  const filesMap: Record<string, string> = res.files_dict || {};
-                  if (!res.files_dict && Array.isArray(res.files)) {
-                    for (const item of res.files) {
-                      if (item && item.path && item.content) {
-                        filesMap[item.path] = item.content;
+              WPipeCanvasEditorProvider.autoCompileDebounceTimer = setTimeout(async () => {
+                WPipeCanvasEditorProvider.isInternalSyncing = true;
+                try {
+                  let existingPyCode = "";
+                  const pyTarget = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
+                  try {
+                    const existingBytes = await vscode.workspace.fs.readFile(pyTarget);
+                    existingPyCode = Buffer.from(existingBytes).toString("utf8");
+                  } catch {}
+
+                  const res = await this.ipcClient.compilePipeline(canvasPayload, projectName, existingPyCode);
+                  if (res && res.status === "success" && (res.files_dict || res.files)) {
+                    const filesMap: Record<string, string> = res.files_dict || {};
+                    if (!res.files_dict && Array.isArray(res.files)) {
+                      for (const item of res.files) {
+                        if (item && item.path && item.content) {
+                          filesMap[item.path] = item.content;
+                        }
                       }
                     }
-                  }
-                  for (const [relPath, content] of Object.entries(filesMap)) {
-                    // CRITICAL GUARD: Never write an empty string to any file!
-                    if (typeof content !== "string" || !content.trim()) {
-                      console.warn(`[WPipe Guard] Skipped writing empty content to ${relPath}`);
-                      continue;
+                    for (const [relPath, content] of Object.entries(filesMap)) {
+                      if (typeof content !== "string" || !content.trim()) continue;
+
+                      const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
+                      let fileAlreadyExists = false;
+                      try {
+                        await vscode.workspace.fs.stat(targetUri);
+                        fileAlreadyExists = true;
+                      } catch {}
+
+                      if (fileAlreadyExists && relPath.startsWith("app/states/") && !relPath.endsWith("__init__.py")) {
+                        continue;
+                      }
+
+                      await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
+                      await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
                     }
-
-                    const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
-                    // If file already exists on disk and is a state implementation or helper, do NOT overwrite it from scratch!
-                    let fileAlreadyExists = false;
-                    try {
-                      await vscode.workspace.fs.stat(targetUri);
-                      fileAlreadyExists = true;
-                    } catch {}
-
-                    if (fileAlreadyExists && relPath.startsWith("app/states/") && !relPath.endsWith("__init__.py")) {
-                      // Preserve existing custom state implementation
-                      continue;
-                    }
-
-                    await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
-                    await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
+                    await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+                    await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
                   }
-                  await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
-                  await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
+                } catch (err) {
+                  console.warn("Auto-compile on saveCanvas:", err);
+                } finally {
+                  setTimeout(() => {
+                    WPipeCanvasEditorProvider.isInternalSyncing = false;
+                    WPipeCanvasEditorProvider.lastOriginatingPanel = null;
+                  }, 1000);
                 }
-              } catch (err) {
-                console.warn("Auto-compile on saveCanvas:", err);
-              } finally {
-                setTimeout(() => {
-                  WPipeCanvasEditorProvider.isInternalSyncing = false;
-                }, 500);
-              }
-            } else {
-              console.log("Skipping microservice compilation for empty canvas to prevent overwriting user code.");
+              }, 1200);
             }
           }
           break;

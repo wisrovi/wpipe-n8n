@@ -38,8 +38,8 @@ export async function findStepUsage(arg?: any) {
                 // Simple heuristic: word boundary
                 const regex = new RegExp(`\\b${stepName}\\b`);
                 if (regex.test(line)) {
-                    // Exclude the definition itself (approximate)
-                    if (!line.includes(`def ${stepName}`) && !line.includes(`@step`)) {
+                    // Exclude the definition itself (class or function)
+                    if (!line.includes(`def ${stepName}`) && !line.includes(`class ${stepName}`) && !line.includes(`@step`)) {
                         usages.push({ file, line: index, text: line.trim() });
                     }
                 }

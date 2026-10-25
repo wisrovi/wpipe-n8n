@@ -19,11 +19,11 @@ export function showAiAssistant(extensionUri: vscode.Uri) {
             let code = '';
 
             if (prompt.includes('download') && prompt.includes('sqlite')) {
-                code = `from wpipe import Pipeline, step, SQLiteTracking\n\n@step(name="fetch_data")\ndef fetch_data():\n    return {"data": "..."}\n\n@step(name="save_to_db")\ndef save_to_db(context):\n    # logic to save\n    pass\n\npipe = Pipeline(name="AI Generated Pipeline", tracking_db=SQLiteTracking("data.db"))\npipe.set_steps([fetch_data, save_to_db])\npipe.run()`;
+                code = `from wpipe import Pipeline, step\n\n@step(name="fetch_data")\ndef fetch_data():\n    return {"data": "..."}\n\n@step(name="save_to_db")\ndef save_to_db(context):\n    # logic to save\n    pass\n\npipe = Pipeline(pipeline_name="AI Generated Pipeline", tracking_db="output/data.db")\npipe.set_steps([fetch_data, save_to_db])\npipe.run()`;
             } else if (prompt.includes('parallel')) {
-                code = `from wpipe import Pipeline, step, Parallel\n\n@step(name="task_1")\ndef task_1(): pass\n\n@step(name="task_2")\ndef task_2(): pass\n\npipe = Pipeline(name="Parallel Pipeline")\npipe.set_steps([\n    Parallel(steps=[task_1, task_2])\n])\npipe.run()`;
+                code = `from wpipe import Pipeline, step, Parallel\n\n@step(name="task_1")\ndef task_1(): pass\n\n@step(name="task_2")\ndef task_2(): pass\n\npipe = Pipeline(pipeline_name="Parallel Pipeline")\npipe.set_steps([\n    Parallel(steps=[task_1, task_2])\n])\npipe.run()`;
             } else {
-                code = `# AI suggest: Try asking for "download and sqlite" or "parallel pipeline"\n@step(name="my_step")\ndef my_step():\n    pass`;
+                code = `# AI suggest: Try asking for "download and sqlite" or "parallel pipeline"\n@step(name="my_step")\ndef my_step(context):\n    pass`;
             }
 
             panel.webview.postMessage({ command: 'result', code: code });

@@ -180,15 +180,15 @@ def verify_lease_token(
         pub_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_bytes)
         pub_key.verify(signature_bytes, signed_data)
     except Exception as e:
-        return False, payload, f"Invalid or tampered cryptographic signature: {e}"
+        return False, payload, f"Firma criptográfica inválida o adulterada (Invalid signature): {e}"
 
     # 2. Check Machine Fingerprint Binding (mandatory: unbound tokens could be replayed anywhere)
     target_fp = expected_fingerprint or compute_machine_fingerprint()
     token_fp = payload.get("mfp", "")
     if not token_fp:
-        return False, payload, "License token is not bound to any machine (mfp missing)."
+        return False, payload, "El token de licencia no está vinculado a ninguna máquina (mfp missing)."
     if token_fp != target_fp:
-        return False, payload, "License token belongs to another physical machine."
+        return False, payload, "El token de licencia pertenece a otra máquina física (wrong machine fingerprint)."
 
     # 3. Check Expiration & Grace Period
     now_sec = int(time.time())
@@ -199,10 +199,10 @@ def verify_lease_token(
     if now_sec > exp_sec:
         if now_sec <= (exp_sec + grace_sec):
             remaining_grace_days = max(1, (exp_sec + grace_sec - now_sec) // 86400)
-            return True, payload, f"License in grace period ({remaining_grace_days} days remaining to renew)"
-        return False, payload, "License lease duration has expired"
+            return True, payload, f"Licencia en período de gracia ({remaining_grace_days} días restantes para renovar)"
+        return False, payload, "El plazo del lease de la licencia ha expirado (license lease expired)"
 
-    return True, payload, "License active and cryptographically verified"
+    return True, payload, "Licencia activa y verificada criptográficamente (License active)"
 
 
 class LicenseManager:

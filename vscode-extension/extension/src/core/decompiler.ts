@@ -135,7 +135,7 @@ export class PipelineDecompiler {
    * Decompile Python source code of pipelines.py into Blockly workspace_state structure.
    */
   public static decompile(pythonCode: string): any | null {
-    if (!pythonCode || !pythonCode.includes("pipe")) {
+    if (!pythonCode || (!pythonCode.includes("pipe") && !pythonCode.includes("Pipeline") && !pythonCode.includes("set_steps"))) {
       return null;
     }
 
@@ -244,7 +244,11 @@ export class PipelineDecompiler {
             };
           }
           // Custom User Step (Blue block: wpipe_user_file_step)
-          const fileName = wsStep ? path.basename(wsStep.filePath) : `${sName.toLowerCase()}.py`;
+          const fallbackSnake = sName
+            .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+            .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+            .toLowerCase();
+          const fileName = wsStep ? path.basename(wsStep.filePath) : `${fallbackSnake}.py`;
           return {
             type: "wpipe_user_file_step",
             id: makeId(),

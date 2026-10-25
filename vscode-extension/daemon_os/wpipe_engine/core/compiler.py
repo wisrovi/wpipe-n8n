@@ -170,7 +170,7 @@ class ASTCompiler:
             return res
 
         imports: set[str] = {
-            "from wpipe import Pipeline, Condition, For, Parallel, Background  # type: ignore[import-untyped]",
+            "from wpipe import Pipeline, Condition, For, Parallel  # type: ignore[import-untyped]",
             "from config.settings import settings",
             "from dto.context import PipelineContextDTO",
             "from states.base import BaseStep",
@@ -466,11 +466,18 @@ class {class_name}:
 '''
                 return f"{pad}{class_name}()"
 
-        # 3. Filter root execution steps
+        # 3. Filter root execution steps (only steps connected in the execution graph)
+        edges = canvas_ir.get("edges", [])
+        connected_node_ids = set()
+        for e in edges:
+            connected_node_ids.add(e.get("source"))
+            connected_node_ids.add(e.get("target"))
+
         root_nodes = [
             n for n in nodes
             if not n.get("data", {}).get("parent_id")
             and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
+            and (n.get("id") in connected_node_ids or not edges)
         ]
 
         if root_nodes:
@@ -861,16 +868,8 @@ from pydantic import BaseModel, Field
 
 
 class PipelineContextDTO(BaseModel):
-    """Data Transfer Object defining the shared context for the WPipe pipeline.
-
-    Attributes:
-        transaction_id (str): Unique transaction trace identifier.
-        input_data (dict[str, Any]): Raw input data payload.
-        processed_data (dict[str, Any]): Transformed and cleaned data.
-        status (str): Pipeline execution state.
-        metrics (dict[str, Any]): Execution and performance metrics.
-        error (Union[str, dict[str, Any], None]): Error detail if execution fails.
-    """
+    """Data Transfer Object defining the shared context for the WPipe pipeline."""
+    model_config = {"extra": "allow"}
 
     transaction_id: str = Field(..., description="Unique transaction trace identifier")
     input_data: dict[str, Any] = Field(
@@ -1360,7 +1359,7 @@ def test_execute_pipeline_success() -> None:
         "method": "GET",
     }}
     result = execute_pipeline(payload)
-    assert result.get("status") in ("CLEANED", "TRANSFORMED", "SCORED", "success", "PENDING")
+    assert result.get("status") in ("CLEANED", "TRANSFORMED", "SCORED", "success", "SUCCESS", "PENDING")
     assert "transaction_id" in result
 '''
 
@@ -1407,7 +1406,7 @@ __all__ = ["test_build_pipeline", "test_execute_pipeline_success"]
         # 14. Root orchestration files
         requirements_txt = """wpipe>=2.5.13
 wpipe-steps>=1.0.2
-wdecorators>=2.0.0
+wdecorators>=1.1.0
 pydantic>=2.0.0
 fastapi>=0.110.0
 uvicorn>=0.28.0
@@ -1590,7 +1589,7 @@ FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \\
     PYTHONUNBUFFERED=1 \\
-    PYTHONPATH=/app/app:/app \\
+    PYTHONPATH=/app \\
     SERVICE_NAME={project_name} \\
     SERVICE_VERSION=1.0.0 \\
     ROOT_PATH="{default_root_path}" \\
@@ -1604,14 +1603,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl make && rm
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY ./app .
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \\
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "app/main.py"]
+CMD ["python", "main.py"]
 """
 
         docker_compose = f"""version: "3.8"
@@ -1673,10 +1672,10 @@ into:
 \tdocker compose exec -it $(SERVICE_NAME) /bin/bash
 
 test:
-\tdocker compose run --rm $(SERVICE_NAME) pytest app/test/ -v
+\tdocker compose run --rm $(SERVICE_NAME) pytest test/ -v
 
 pytest:
-\tpytest app/test/ --cov=app --cov-report=term-missing
+\tpytest test/ --cov=. --cov-report=term-missing
 
 build:
 \tdocker compose build

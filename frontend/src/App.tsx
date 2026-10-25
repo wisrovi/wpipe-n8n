@@ -1467,6 +1467,9 @@ export default function App() {
                 loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
               }
             }
+            setTimeout(() => {
+              setCanvasBlockCount(getWorkspaceBlockCount());
+            }, 150);
           }
         } catch {}
       } else if (msg.type === "simulateResult") {

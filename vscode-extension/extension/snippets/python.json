@@ -104,7 +104,6 @@
             "",
             "pipeline = Pipeline(",
             "    pipeline_name='${3:professional_pipeline}',",
-            "    pipeline_version='${4:1.0.0}',",
             "",
             "    tracking_db=db_path,  # for to forencically capture errors, track events, alerts and execution history",
             "    config_dir=config_dir,",

@@ -3,7 +3,7 @@ Author: William Rodriguez (wisrovi.dev)
 """
 
 from typing import Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from dto.license_dto import LicenseDTO
 from dto.activation_dto import ActivationDTO
 
@@ -31,3 +31,13 @@ class AdminPipelineContext(BaseModel):
     success: bool = True
     message: str = "Success"
     error: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_wpipe_placeholders(cls, data: Any) -> Any:
+        """Normalizes empty dictionary placeholders inserted by object_to_dict for None fields."""
+        if isinstance(data, dict):
+            for key in ["search_query", "target_id", "target_status", "error", "license_input"]:
+                if key in data and isinstance(data[key], dict) and not data[key]:
+                    data[key] = None
+        return data

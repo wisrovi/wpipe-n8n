@@ -23,7 +23,6 @@ def create_admin_pipeline(client: CloudflareAdminClient | None = None) -> Pipeli
 
     pipeline = Pipeline(
         pipeline_name="admin_cloudfire_pipeline",
-        pipeline_version="1.1.0",
         tracking_db="output/admin_tracking.db",
         collect_system_metrics=False,
         show_progress=False,

@@ -8,13 +8,16 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { EngineIpcClient } from "./ipcClient";
 import { PipelineDecompiler } from "./core/decompiler";
+import { WorkspaceIndex } from "./core/workspaceIndex";
 
 export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "wpipe.canvasEditor";
   private static isInternalSyncing = false;
-  private static activePanels = new Map<string, { panel: vscode.WebviewPanel; document: vscode.TextDocument }>();
+  private static activePanels = new Map<string, { panel: vscode.WebviewPanel; document?: vscode.TextDocument }>();
+  private static decompileDebounceTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -27,38 +30,77 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
   ): vscode.Disposable {
     const provider = new WPipeCanvasEditorProvider(context, ipcClient);
 
-    // Watch for direct user changes in app/pipelines.py and states/*.py to decompile into blocks
     const handleFileChange = async (uri: vscode.Uri) => {
       if (WPipeCanvasEditorProvider.isInternalSyncing) return;
       const fsPath = uri.fsPath;
       if (fsPath.endsWith("pipelines.py")) {
         try {
-          const doc = await vscode.workspace.openTextDocument(uri);
-          await provider.handlePythonCodeChange(doc);
+          await provider.handlePythonCodeChange(uri);
         } catch (e) {
           console.warn("Could not handle pipelines.py change:", e);
         }
       } else if (fsPath.includes("/states/") && fsPath.endsWith(".py")) {
-        // State created or modified: refresh workspace step index and tree
         try {
+          await WorkspaceIndex.indexWorkspace();
           await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
           const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
           if (wsFolder) {
             const pipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
-            const pipeDoc = await vscode.workspace.openTextDocument(pipeUri);
-            await provider.handlePythonCodeChange(pipeDoc);
+            await provider.handlePythonCodeChange(pipeUri);
+          }
+        } catch {}
+      } else if (fsPath.endsWith(".wpipe") || fsPath.endsWith(".wpipe.json")) {
+        // External .wpipe update: broadcast to active panels
+        try {
+          const rawBytes = await vscode.workspace.fs.readFile(uri);
+          const rawStr = Buffer.from(rawBytes).toString("utf8");
+          const updatedJson = JSON.parse(rawStr);
+          for (const [key, entry] of WPipeCanvasEditorProvider.activePanels.entries()) {
+            if (!entry.document || entry.document.uri.toString() === uri.toString()) {
+              entry.panel.webview.postMessage({
+                type: "update",
+                data: updatedJson,
+              });
+            }
           }
         } catch {}
       }
     };
 
+    // 1. Detect when document is saved in THIS VS Code instance
     const pythonWatcher = vscode.workspace.onDidSaveTextDocument(async (doc) => {
       await handleFileChange(doc.uri);
     });
 
-    const fsWatcher = vscode.workspace.createFileSystemWatcher("**/{app/pipelines.py,pipelines.py,states/*.py,app/states/*.py}");
-    fsWatcher.onDidChange((uri) => handleFileChange(uri));
-    fsWatcher.onDidCreate((uri) => handleFileChange(uri));
+    // 2. Detect live edits in THIS VS Code instance as user types or modifies (debounced by 300ms)
+    const pythonDocChangeWatcher = vscode.workspace.onDidChangeTextDocument(async (e) => {
+      if (WPipeCanvasEditorProvider.isInternalSyncing) return;
+      const fsPath = e.document.uri.fsPath;
+      if (fsPath.endsWith("pipelines.py")) {
+        if (WPipeCanvasEditorProvider.decompileDebounceTimer) {
+          clearTimeout(WPipeCanvasEditorProvider.decompileDebounceTimer);
+        }
+        WPipeCanvasEditorProvider.decompileDebounceTimer = setTimeout(async () => {
+          try {
+            await provider.handlePythonCodeChange(e.document);
+          } catch (err) {
+            console.warn("Live typing sync error:", err);
+          }
+        }, 300);
+      }
+    });
+
+    // 3. Detect filesystem modifications from other containers/windows
+    const pipelineFsWatcher = vscode.workspace.createFileSystemWatcher("**/pipelines.py");
+    pipelineFsWatcher.onDidChange((uri) => handleFileChange(uri));
+    pipelineFsWatcher.onDidCreate((uri) => handleFileChange(uri));
+
+    const statesFsWatcher = vscode.workspace.createFileSystemWatcher("**/states/*.py");
+    statesFsWatcher.onDidChange((uri) => handleFileChange(uri));
+    statesFsWatcher.onDidCreate((uri) => handleFileChange(uri));
+
+    const wpipeFsWatcher = vscode.workspace.createFileSystemWatcher("**/*.wpipe");
+    wpipeFsWatcher.onDidChange((uri) => handleFileChange(uri));
 
     const customEditorReg = vscode.window.registerCustomEditorProvider(
       WPipeCanvasEditorProvider.viewType,
@@ -71,29 +113,53 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       }
     );
 
-    return vscode.Disposable.from(customEditorReg, pythonWatcher, fsWatcher);
+    return vscode.Disposable.from(
+      customEditorReg,
+      pythonWatcher,
+      pythonDocChangeWatcher,
+      pipelineFsWatcher,
+      statesFsWatcher,
+      wpipeFsWatcher
+    );
   }
 
-  public async handlePythonCodeChange(pyDoc: vscode.TextDocument): Promise<void> {
+  public async handlePythonCodeChange(pyUriOrDoc: vscode.Uri | vscode.TextDocument): Promise<void> {
     try {
-      const code = pyDoc.getText();
+      const uri = (pyUriOrDoc as vscode.TextDocument).uri || (pyUriOrDoc as vscode.Uri);
+      let code = "";
+      if ("getText" in pyUriOrDoc && typeof pyUriOrDoc.getText === "function") {
+        code = pyUriOrDoc.getText();
+      } else {
+        try {
+          const rawBytes = await vscode.workspace.fs.readFile(uri);
+          code = Buffer.from(rawBytes).toString("utf8");
+        } catch {
+          return;
+        }
+      }
+      if (!code || !code.trim()) return;
+
+      // Always re-index workspace before decompiling to catch freshly created custom states
+      await WorkspaceIndex.indexWorkspace();
+
       const workspaceState = PipelineDecompiler.decompile(code);
       if (!workspaceState) return;
 
-      const wsFolder = vscode.workspace.getWorkspaceFolder(pyDoc.uri);
-      const rootPath = wsFolder ? wsFolder.uri.fsPath : path.dirname(path.dirname(pyDoc.uri.fsPath));
-
       WPipeCanvasEditorProvider.isInternalSyncing = true;
       try {
-        // 1. Update all open visual canvas panels
+        // 1. Update all open visual canvas panels (both custom editors and standalone panels)
         for (const [docUriStr, entry] of WPipeCanvasEditorProvider.activePanels.entries()) {
           const { panel, document } = entry;
+          const projectName = document 
+            ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
+            : "main_pipeline";
+
           panel.webview.postMessage({
             type: "update",
             data: {
               format: "wpipe",
               project: {
-                name: path.basename(document.uri.fsPath, path.extname(document.uri.fsPath)),
+                name: projectName,
                 canvas_ir: {
                   workspace_state: workspaceState,
                 },
@@ -131,7 +197,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       } finally {
         setTimeout(() => {
           WPipeCanvasEditorProvider.isInternalSyncing = false;
-        }, 400);
+        }, 500);
       }
     } catch (err) {
       console.error("Error during Python -> Canvas decompilation:", err);
@@ -143,14 +209,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
-    WPipeCanvasEditorProvider.activePanels.set(document.uri.toString(), {
+    const key = document.uri.toString();
+    WPipeCanvasEditorProvider.activePanels.set(key, {
       panel: webviewPanel,
       document,
     });
 
     await this.setupWebview(webviewPanel, document);
 
-    // Listen to changes in the text document
+    // Listen to in-memory changes in the text document
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (WPipeCanvasEditorProvider.isInternalSyncing) return;
       if (e.document.uri.toString() === document.uri.toString()) {
@@ -165,7 +232,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     });
 
     webviewPanel.onDidDispose(() => {
-      WPipeCanvasEditorProvider.activePanels.delete(document.uri.toString());
+      WPipeCanvasEditorProvider.activePanels.delete(key);
       changeDocumentSubscription.dispose();
     });
   }
@@ -174,6 +241,18 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     webviewPanel: vscode.WebviewPanel,
     document?: vscode.TextDocument
   ): Promise<void> {
+    // Also track panel if opened via wpipe.openCanvas (without a direct document)
+    const panelKey = document ? document.uri.toString() : `standalone_${Date.now()}`;
+    if (!WPipeCanvasEditorProvider.activePanels.has(panelKey)) {
+      WPipeCanvasEditorProvider.activePanels.set(panelKey, {
+        panel: webviewPanel,
+        document,
+      });
+      webviewPanel.onDidDispose(() => {
+        WPipeCanvasEditorProvider.activePanels.delete(panelKey);
+      });
+    }
+
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -190,10 +269,16 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       let docContent: any = {};
       if (document) {
         try {
-          const text = document.getText();
+          const rawBytes = await vscode.workspace.fs.readFile(document.uri);
+          const text = Buffer.from(rawBytes).toString("utf8");
           docContent = text ? JSON.parse(text) : {};
         } catch {
-          docContent = {};
+          try {
+            const text = document.getText();
+            docContent = text ? JSON.parse(text) : {};
+          } catch {
+            docContent = {};
+          }
         }
       }
 
@@ -204,12 +289,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           const pyUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, "app", "pipelines.py"));
           const pyBytes = await vscode.workspace.fs.readFile(pyUri);
           const pyCode = Buffer.from(pyBytes).toString("utf8");
-          const decompiledState = PipelineDecompiler.decompile(pyCode);
-          if (decompiledState) {
-            if (!docContent.project) docContent.project = {};
-            docContent.project.workspace_state = decompiledState;
-            if (!docContent.project.canvas_ir) docContent.project.canvas_ir = {};
-            docContent.project.canvas_ir.workspace_state = decompiledState;
+          if (pyCode && pyCode.trim()) {
+            await WorkspaceIndex.indexWorkspace();
+            const decompiledState = PipelineDecompiler.decompile(pyCode);
+            if (decompiledState) {
+              if (!docContent.project) docContent.project = {};
+              docContent.project.workspace_state = decompiledState;
+              if (!docContent.project.canvas_ir) docContent.project.canvas_ir = {};
+              docContent.project.canvas_ir.workspace_state = decompiledState;
+            }
           }
         }
       } catch {}
@@ -297,6 +385,12 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                     }
                   }
                   for (const [relPath, content] of Object.entries(filesMap)) {
+                    // CRITICAL GUARD: Never write an empty string to any file!
+                    if (typeof content !== "string" || !content.trim()) {
+                      console.warn(`[WPipe Guard] Skipped writing empty content to ${relPath}`);
+                      continue;
+                    }
+
                     const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
                     // If file already exists on disk and is a state implementation or helper, do NOT overwrite it from scratch!
                     let fileAlreadyExists = false;
@@ -321,7 +415,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
               } finally {
                 setTimeout(() => {
                   WPipeCanvasEditorProvider.isInternalSyncing = false;
-                }, 400);
+                }, 500);
               }
             } else {
               console.log("Skipping microservice compilation for empty canvas to prevent overwriting user code.");
@@ -360,6 +454,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                 }
               }
               for (const [relPath, content] of Object.entries(filesMap)) {
+                if (typeof content !== "string" || !content.trim()) continue;
                 const targetUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
                 await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(targetUri.fsPath)));
                 await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
@@ -415,7 +510,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
     );
 
     // Dynamic scan for latest built assets with fallback
-    let scriptName = "index-CNaXF8rg.js";
+    let scriptName = "index-BH3LqxU6.js";
     let cssName = "index-BjFwZUMG.css";
     try {
       const assetsDir = path.join(this.context.extensionPath, "media", "canvas", "assets");
@@ -424,7 +519,6 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         const jsFiles = files.filter((f: string) => f.startsWith("index-") && f.endsWith(".js"));
         const cssFiles = files.filter((f: string) => f.startsWith("index-") && f.endsWith(".css"));
         if (jsFiles.length > 0) {
-          // Pick the latest modified JS file to prevent caching issues
           jsFiles.sort((a, b) => {
             const statA = fs.statSync(path.join(assetsDir, a));
             const statB = fs.statSync(path.join(assetsDir, b));

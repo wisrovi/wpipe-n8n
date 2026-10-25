@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import { DAGPanel } from '../webviews/dagPanel';
 
@@ -64,8 +63,9 @@ export async function replayLogErrors() {
     // Group errors by file
     const fileToDecorations = new Map<string, { uri: vscode.Uri; decs: { range: vscode.Range; hoverMessage: string }[] }>();
 
+    const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
     for (const error of errors) {
-        const files = await vscode.workspace.findFiles(`**/${error.module}.py`);
+        const files = await vscode.workspace.findFiles(`**/${error.module}.py`, defaultExcludes);
         if (files.length > 0) {
             const fileUri = files[0];
             const fsPath = fileUri.fsPath;

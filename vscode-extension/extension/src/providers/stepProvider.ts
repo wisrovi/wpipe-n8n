@@ -151,7 +151,8 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
 
     private async searchPipelines(): Promise<vscode.TreeItem[]> {
         const items: vscode.TreeItem[] = [];
-        const files = await vscode.workspace.findFiles('**/{*.wpipe,*.wpipe.json,pipelines.py}', '**/node_modules/**');
+        const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+        const files = await vscode.workspace.findFiles('**/{*.wpipe,*.wpipe.json,pipelines.py}', defaultExcludes);
         
         for (const file of files) {
             const relPath = vscode.workspace.asRelativePath(file);
@@ -200,7 +201,8 @@ export class StepItem extends vscode.TreeItem {
     constructor(label: string, public filePath: string, public line: number) {
         super(label);
         this.iconPath = new vscode.ThemeIcon('rocket');
-        this.description = label; // Simplified for web compatibility
+        this.description = vscode.workspace.asRelativePath(filePath);
+        this.tooltip = `Workspace Step: ${label}\nFile: ${filePath}:${line + 1}\nClick to open in editor`;
         this.contextValue = 'workspaceStep';
         this.command = { command: 'wpipeSteps.openFile', title: 'Open', arguments: [filePath, line] };
     }

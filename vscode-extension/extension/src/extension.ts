@@ -357,13 +357,16 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("wpipeSteps.insertStep", (step: StepEntry) => {
       const editor = vscode.window.activeTextEditor;
       if (editor) {
+        const docText = editor.document.getText();
         editor.edit((eb) => {
           const importCode = `from ${step.namespace} import ${step.func_name}\n`;
-          eb.insert(new vscode.Position(0, 0), importCode);
+          if (!docText.includes(importCode.trim())) {
+            eb.insert(new vscode.Position(0, 0), importCode);
+          }
           const isClass = /^[A-Z]/.test(step.func_name);
           eb.insert(editor.selection.active, isClass ? `${step.func_name}(),` : `${step.func_name},`);
         });
-        vscode.window.showInformationMessage(`✅ Step '${step.name}' inserted.`);
+        vscode.window.showInformationMessage(`✅ Step '${step.func_name || step.name}' inserted.`);
       }
     }),
     vscode.commands.registerCommand("wpipe-vscode.searchSteps", async () => {

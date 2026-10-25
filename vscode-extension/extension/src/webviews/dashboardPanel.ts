@@ -62,6 +62,7 @@ export class DashboardPanel {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; font-src https: data:; frame-src http://localhost:* http://127.0.0.1:*; connect-src http://localhost:* http://127.0.0.1:* ws: wss:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>WPipe Dashboard</title>
             <style>

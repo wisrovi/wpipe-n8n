@@ -15,15 +15,105 @@ export function showAiAssistant(extensionUri: vscode.Uri) {
 
     panel.webview.onDidReceiveMessage(message => {
         if (message.command === 'generate') {
-            const prompt = message.text.toLowerCase();
+            const prompt = (message.text || '').toLowerCase();
             let code = '';
 
-            if (prompt.includes('download') && prompt.includes('sqlite')) {
-                code = `from wpipe import Pipeline, step\n\n@step(name="fetch_data")\ndef fetch_data():\n    return {"data": "..."}\n\n@step(name="save_to_db")\ndef save_to_db(context):\n    # logic to save\n    pass\n\npipe = Pipeline(pipeline_name="AI Generated Pipeline", tracking_db="output/data.db")\npipe.set_steps([fetch_data, save_to_db])\npipe.run()`;
-            } else if (prompt.includes('parallel')) {
-                code = `from wpipe import Pipeline, step, Parallel\n\n@step(name="task_1")\ndef task_1(): pass\n\n@step(name="task_2")\ndef task_2(): pass\n\npipe = Pipeline(pipeline_name="Parallel Pipeline")\npipe.set_steps([\n    Parallel(steps=[task_1, task_2])\n])\npipe.run()`;
+            if (prompt.includes('download') || prompt.includes('fetch') || prompt.includes('sqlite') || prompt.includes('database')) {
+                code = `from wpipe import Pipeline, step, to_obj
+from wpipe.timeout import timeout_sync
+from pydantic import BaseModel
+from typing import Any
+
+class IngestionContext(BaseModel):
+    data: dict[str, Any] = {}
+    status: str = "PENDING"
+
+@step(name="FetchDataStep", version="1.0.0")
+class FetchDataStep:
+    @timeout_sync(30)
+    @to_obj(IngestionContext)
+    def __call__(self, context: Any) -> Any:
+        context.data = {"status": "ok", "items": [1, 2, 3]}
+        context.status = "FETCHED"
+        return context
+
+@step(name="SaveToDbStep", version="1.0.0")
+class SaveToDbStep:
+    @timeout_sync(30)
+    @to_obj(IngestionContext)
+    def __call__(self, context: Any) -> Any:
+        context.status = "SAVED"
+        return context
+
+pipe = Pipeline(
+    pipeline_name="IngestionPipeline",
+    tracking_db="output/data.db",
+    collect_system_metrics=False,
+    show_progress=False
+)
+pipe.set_steps([
+    FetchDataStep(),
+    SaveToDbStep(),
+])
+
+if __name__ == "__main__":
+    result = pipe.run({"data": {}})
+    print("Pipeline completed:", result)
+`;
+            } else if (prompt.includes('parallel') || prompt.includes('concurrent') || prompt.includes('multi')) {
+                code = `from wpipe import Pipeline, Parallel, step, to_obj
+from wpipe.timeout import timeout_sync
+from pydantic import BaseModel
+from typing import Any
+
+class ParallelTaskContext(BaseModel):
+    metrics: dict[str, Any] = {}
+
+@step(name="TaskAlphaStep", version="1.0.0")
+class TaskAlphaStep:
+    @timeout_sync(15)
+    @to_obj(ParallelTaskContext)
+    def __call__(self, context: Any) -> Any:
+        context.metrics["alpha"] = True
+        return context
+
+@step(name="TaskBetaStep", version="1.0.0")
+class TaskBetaStep:
+    @timeout_sync(15)
+    @to_obj(ParallelTaskContext)
+    def __call__(self, context: Any) -> Any:
+        context.metrics["beta"] = True
+        return context
+
+pipe = Pipeline(
+    pipeline_name="ParallelExecutionPipeline",
+    tracking_db="output/parallel.db"
+)
+pipe.set_steps([
+    Parallel(steps=[TaskAlphaStep(), TaskBetaStep()], max_workers=2)
+])
+
+if __name__ == "__main__":
+    pipe.run({"metrics": {}})
+`;
             } else {
-                code = `# AI suggest: Try asking for "download and sqlite" or "parallel pipeline"\n@step(name="my_step")\ndef my_step(context):\n    pass`;
+                code = `from wpipe import Pipeline, step, to_obj
+from pydantic import BaseModel
+from typing import Any
+
+class CustomStepContext(BaseModel):
+    data: dict[str, Any] = {}
+
+@step(name="CustomStep", version="1.0.0", description="User defined WPipe step")
+class CustomStep:
+    @to_obj(CustomStepContext)
+    def __call__(self, context: Any) -> Any:
+        # Implement your step logic here
+        return context
+
+pipe = Pipeline(pipeline_name="CustomPipeline", tracking_db="output/data.db")
+pipe.set_steps([CustomStep()])
+`;
             }
 
             panel.webview.postMessage({ command: 'result', code: code });
@@ -33,6 +123,8 @@ export function showAiAssistant(extensionUri: vscode.Uri) {
                 editor.edit(eb => {
                     eb.insert(editor.selection.active, message.code);
                 });
+            } else {
+                vscode.window.showWarningMessage("Open a Python file first to insert the generated code.");
             }
         }
     });

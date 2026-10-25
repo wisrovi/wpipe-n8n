@@ -41,8 +41,8 @@ export function showCheatSheet() {
         <body>
             <div class="container">
                 <header>
-                    <h1>🚀 WPipe Tools <span style="font-size:14px; color:#8b949e; font-weight:normal;">v0.8.2 Professional Edition</span></h1>
-                    <div style="font-size: 12px; color: var(--accent);">By William Rodriguez (wisrovi)</div>
+                    <h1>🚀 WPipe Tools <span style="font-size:14px; color:#8b949e; font-weight:normal;">v2.0.0 Professional Edition</span></h1>
+                    <div style="font-size: 12px; color: var(--accent);">By William Steve Rodriguez Villamizar (wisrovi.dev)</div>
                 </header>
 
                 <div class="warning-box">
@@ -61,7 +61,7 @@ export function showCheatSheet() {
                     <div class="card">
                         <h3>Step Management</h3>
                         <table class="command-table">
-                            <tr><td class="cmd">Cloud Catalog</td><td>Search & import 130+ community steps instantly.</td></tr>
+                            <tr><td class="cmd">Cloud Catalog</td><td>Search & import 196+ official library steps instantly.</td></tr>
                             <tr><td class="cmd">Run Step</td><td>Test individual <code>@step</code> functions without running the whole pipe.</td></tr>
                         </table>
                     </div>

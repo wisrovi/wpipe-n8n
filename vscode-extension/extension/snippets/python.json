@@ -242,7 +242,7 @@
     "WPipe Background": {
         "prefix": "wpbackground",
         "body": [
-            "from wpipe.pipe.components.logic_blocks import Background",
+            "from wpipe import Background",
             "",
             "Background(${1:slow_step})"
         ],

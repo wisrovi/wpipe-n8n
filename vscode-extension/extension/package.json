@@ -26,20 +26,29 @@
     "Other"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onCustomEditor:wpipe.canvasEditor",
-    "onCommand:wpipe.openCanvas",
-    "onCommand:wpipe.newPipeline",
-    "onCommand:wpipe.activateLicense",
-    "onView:wpipe.sidebarView",
-    "onView:wpipeSteps",
-    "onCommand:wpipe-vscode.previewDAG",
-    "onCommand:wpipe-vscode.openDashboard",
-    "onCommand:wpipe-vscode.showCheatSheet",
-    "onCommand:wpipe-vscode.refreshCatalog",
-    "onLanguage:python",
-    "onLanguage:yaml"
-  ],
+    "activationEvents": [
+        "onCustomEditor:wpipe.canvasEditor",
+        "onCommand:wpipe.openCanvas",
+        "onCommand:wpipe.newPipeline",
+        "onCommand:wpipe.compileCurrentPipeline",
+        "onCommand:wpipe.activateLicense",
+        "onCommand:wpipe.checkLicenseStatus",
+        "onCommand:wpipe.startDaemon",
+        "onCommand:wpipe.stopDaemon",
+        "onView:wpipe.sidebarView",
+        "onView:wpipeSteps",
+        "onCommand:wpipe-vscode.previewDAG",
+        "onCommand:wpipe-vscode.openDashboard",
+        "onCommand:wpipe-vscode.replayLogs",
+        "onCommand:wpipe-vscode.findStepUsage",
+        "onCommand:wpipe-vscode.showCheatSheet",
+        "onCommand:wpipe-vscode.openAiAssistant",
+        "onCommand:wpipe-vscode.createNewStep",
+        "onCommand:wpipe-vscode.refreshCatalog",
+        "onCommand:wpipe-vscode.searchSteps",
+        "onLanguage:python",
+        "onLanguage:yaml"
+    ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [

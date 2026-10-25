@@ -284,6 +284,7 @@ export class DAGPanel {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https:; font-src https: data:; connect-src http://localhost:* http://127.0.0.1:* https://cdn.jsdelivr.net ws: wss:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WPipe DAG - ${fileName}</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>

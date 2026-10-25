@@ -134,6 +134,10 @@ function getHtml(webview: vscode.Webview) {
     return `<!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; font-src https: data:; connect-src http://localhost:* http://127.0.0.1:* ws: wss:;">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>WPipe AI Assistant</title>
         <style>
             body { font-family: sans-serif; padding: 20px; background: #1e1e1e; color: #ccc; }
             input { width: 100%; padding: 10px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; margin-bottom: 10px; }

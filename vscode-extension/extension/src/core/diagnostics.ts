@@ -31,6 +31,10 @@ function updateDiagnostics(document: vscode.TextDocument, collection: vscode.Dia
     CatalogManager.getSteps().forEach(s => {
         if (s.name) catalogSteps.add(s.name);
         if (s.func_name) catalogSteps.add(s.func_name);
+        if (s.namespace) {
+            const lastPart = s.namespace.split('.').pop();
+            if (lastPart) catalogSteps.add(lastPart);
+        }
     });
     const knownSteps = new Set([...workspaceSteps, ...catalogSteps]);
 
@@ -53,7 +57,8 @@ function updateDiagnostics(document: vscode.TextDocument, collection: vscode.Dia
                             const name = part.text.split('(')[0].trim();
                             // Ignore common WPipe logic blocks
                             const logicBlocks = ['Condition', 'Parallel', 'For', 'Background'];
-                            if (name && !logicBlocks.includes(name) && !knownSteps.has(name)) {
+                            const isWorkspaceOrCatalog = knownSteps.has(name) || knownSteps.has(`${name}Step`) || (name.endsWith('Step') && knownSteps.has(name.slice(0, -4)));
+                            if (name && !logicBlocks.includes(name) && !isWorkspaceOrCatalog) {
                                 // Extra check: maybe it's imported but not indexed yet? 
                                 // For now, if it's not in knownSteps, we warn.
                                 const range = new vscode.Range(

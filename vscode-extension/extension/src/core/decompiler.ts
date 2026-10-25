@@ -228,7 +228,7 @@ export class PipelineDecompiler {
         const wsStep = WorkspaceIndex.getStep(sName);
         const catSteps = CatalogManager.getSteps();
         const isOfficialOrPlugin = catSteps.some(
-          (cs) => cs.name === sName || cs.func_name === sName
+          (cs) => cs.name === sName || cs.func_name === sName || cs.name === `${sName}Step` || (sName.endsWith('Step') && cs.name === sName.slice(0, -4))
         );
 
         if (wsStep || !isOfficialOrPlugin) {
@@ -260,7 +260,10 @@ export class PipelineDecompiler {
           };
         } else {
           // Catalog Step (Green block: wpipe_step)
-          const catEntry = catSteps.find((cs) => cs.name === sName || cs.func_name === sName);
+          const catEntry = catSteps.find(
+            (cs) => cs.name === sName || cs.func_name === sName || cs.name === `${sName}Step` || (sName.endsWith('Step') && cs.name === sName.slice(0, -4))
+          );
+          const effectiveStepName = catEntry ? catEntry.name : sName;
           const ns = catEntry ? catEntry.namespace : "wpipe_steps";
           return {
             type: "wpipe_step",
@@ -269,7 +272,7 @@ export class PipelineDecompiler {
               REPO_FILTER: "ALL",
               CAT_FILTER: "ALL",
               SEARCH_FILTER: "",
-              STEP_NAME: sName,
+              STEP_NAME: effectiveStepName,
               NAMESPACE: ns,
             },
           };

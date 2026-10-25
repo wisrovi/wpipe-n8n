@@ -2,9 +2,13 @@ import * as vscode from 'vscode';
 
 export function showCheatSheet() {
     const panel = vscode.window.createWebviewPanel('wpipeCheatSheet', '🚀 WPipe Professional Cheat Sheet', vscode.ViewColumn.Beside, { enableScripts: true });
-    panel.webview.html = `
+    panel.webview.html = `<!DOCTYPE html>
         <html>
         <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; font-src https: data:; connect-src http://localhost:* http://127.0.0.1:* ws: wss:;">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>WPipe Cheat Sheet</title>
             <style>
                 :root {
                     --bg: #0d1117;

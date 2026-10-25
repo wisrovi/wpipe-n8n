@@ -171,7 +171,7 @@ class ASTCompiler:
             return res
 
         imports: set[str] = {
-            "from wpipe import Pipeline, Condition, For, Parallel  # type: ignore[import-untyped]",
+            "from wpipe import Pipeline, Condition, For, Parallel, Background  # type: ignore[import-untyped]",
             "from config.settings import settings",
             "from dto.context import PipelineContextDTO",
             "from states.base import BaseStep",

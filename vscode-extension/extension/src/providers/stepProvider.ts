@@ -111,6 +111,18 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 title: 'Create New Step',
             };
 
+            const pipelinesCategory = new vscode.TreeItem('🚀 Workspace Pipelines', vscode.TreeItemCollapsibleState.Expanded);
+            pipelinesCategory.iconPath = new vscode.ThemeIcon('git-branch');
+
+            const workspaceStepsCategory = new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded);
+            workspaceStepsCategory.iconPath = new vscode.ThemeIcon('tools');
+
+            const officialLibCategory = new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed);
+            officialLibCategory.iconPath = new vscode.ThemeIcon('package');
+
+            const communityPluginsCategory = new vscode.TreeItem('🤝 Community Plugins', vscode.TreeItemCollapsibleState.Collapsed);
+            communityPluginsCategory.iconPath = new vscode.ThemeIcon('organization');
+
             return [
                 engineItem,
                 activateItem,
@@ -119,10 +131,10 @@ export class WPipeStepProvider implements vscode.TreeDataProvider<vscode.TreeIte
                 dagPreviewItem,
                 newPipeItem,
                 newStepItem,
-                new vscode.TreeItem('🚀 Workspace Pipelines', vscode.TreeItemCollapsibleState.Expanded),
-                new vscode.TreeItem('🛠️ Workspace Steps', vscode.TreeItemCollapsibleState.Expanded),
-                new vscode.TreeItem('📦 Official Library', vscode.TreeItemCollapsibleState.Collapsed),
-                new vscode.TreeItem('🤝 Community Plugins', vscode.TreeItemCollapsibleState.Collapsed)
+                pipelinesCategory,
+                workspaceStepsCategory,
+                officialLibCategory,
+                communityPluginsCategory
             ];
         }
 

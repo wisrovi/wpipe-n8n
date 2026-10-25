@@ -25,6 +25,7 @@ export class WPipeCodeActionProvider implements vscode.CodeActionProvider {
                             // Check if it already has a @step decorator
                             let hasStepDecorator = false;
                             let parent = node.node.parent;
+                            let targetOffset = node.from;
                             if (parent) {
                                 parent.getChildren('Decorator').forEach(dec => {
                                     const decText = content.substring(dec.from, dec.to);
@@ -32,6 +33,10 @@ export class WPipeCodeActionProvider implements vscode.CodeActionProvider {
                                         hasStepDecorator = true;
                                     }
                                 });
+                                // If the statement is already decorated by another decorator, place @step above the whole decorated statement
+                                if (parent.name === 'DecoratedStatement') {
+                                    targetOffset = parent.from;
+                                }
                             }
 
                             if (!hasStepDecorator) {
@@ -43,7 +48,7 @@ export class WPipeCodeActionProvider implements vscode.CodeActionProvider {
                                 const stepName = rawName.endsWith('Step') ? rawName : `${rawName.charAt(0).toUpperCase()}${rawName.slice(1)}Step`;
                                 
                                 const decorator = `@step(name="${stepName}", version="1.0.0")\n`;
-                                action.edit.insert(document.uri, document.positionAt(node.from), decorator);
+                                action.edit.insert(document.uri, document.positionAt(targetOffset), decorator);
                                 
                                 // Check if wpipe is imported
                                 if (!content.includes('from wpipe import step') && !content.includes('from wpipe import')) {

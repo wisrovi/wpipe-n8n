@@ -119,7 +119,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       pythonDocChangeWatcher,
       pipelineFsWatcher,
       statesFsWatcher,
-      wpipeFsWatcher
+      wpipeFsWatcher,
+      {
+        dispose: () => {
+          if (WPipeCanvasEditorProvider.decompileDebounceTimer) {
+            clearTimeout(WPipeCanvasEditorProvider.decompileDebounceTimer);
+            WPipeCanvasEditorProvider.decompileDebounceTimer = null;
+          }
+        }
+      }
     );
   }
 

@@ -23,15 +23,16 @@ export async function findStepUsage(arg?: any) {
 
     if (!stepName) return;
 
+    const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+    let usages: { file: vscode.Uri, line: number, text: string }[] = [];
+
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
         title: `Analyzing impact for step: ${stepName}`,
         cancellable: false
     }, async (progress) => {
         // Search for the step name in all .py files excluding cache and virtualenvs
-        const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
         const files = await vscode.workspace.findFiles('**/*.py', defaultExcludes);
-        const usages: { file: vscode.Uri, line: number, text: string }[] = [];
 
         for (const file of files) {
             const doc = await vscode.workspace.openTextDocument(file);
@@ -41,7 +42,7 @@ export async function findStepUsage(arg?: any) {
             lines.forEach((line, index) => {
                 // Look for the step name being used in a list of steps or as a function call
                 // Escape any regex special characters in stepName
-                const escapedName = stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const escapedName = stepName!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const regex = new RegExp(`\\b${escapedName}\\b`);
                 if (regex.test(line)) {
                     // Exclude the definition itself (class or function) and comments
@@ -52,30 +53,30 @@ export async function findStepUsage(arg?: any) {
                 }
             });
         }
-
-        if (usages.length === 0) {
-            vscode.window.showInformationMessage(`✅ Step '${stepName}' is not used in any other pipeline.`);
-            return;
-        }
-
-        // Show results in a QuickPick or Output Channel
-        const items = usages.map(u => ({
-            label: `${path.basename(u.file.fsPath)}:L${u.line + 1}`,
-            description: u.text,
-            uri: u.file,
-            line: u.line
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-            placeHolder: `Found ${usages.length} usages of '${stepName}'. Select to open.`
-        });
-
-        if (selected) {
-            const doc = await vscode.workspace.openTextDocument(selected.uri);
-            const editor = await vscode.window.showTextDocument(doc);
-            const pos = new vscode.Position(selected.line, 0);
-            editor.selection = new vscode.Selection(pos, pos);
-            editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-        }
     });
+
+    if (usages.length === 0) {
+        vscode.window.showInformationMessage(`✅ Step '${stepName}' is not used in any other pipeline.`);
+        return;
+    }
+
+    // Show results in a QuickPick or Output Channel
+    const items = usages.map(u => ({
+        label: `${path.basename(u.file.fsPath)}:L${u.line + 1}`,
+        description: u.text,
+        uri: u.file,
+        line: u.line
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: `Found ${usages.length} usages of '${stepName}'. Select to open.`
+    });
+
+    if (selected) {
+        const doc = await vscode.workspace.openTextDocument(selected.uri);
+        const editor = await vscode.window.showTextDocument(doc);
+        const pos = new vscode.Position(selected.line, 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
 }

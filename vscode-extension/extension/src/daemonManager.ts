@@ -47,9 +47,9 @@ export class DaemonManager {
       return configuredPath;
     }
 
-    // 1. Check Development Monorepo sibling path
-    const devPath = path.resolve(__dirname, "../../daemon_os/wpipe_engine/main.py");
-    if (fs.existsSync(devPath)) {
+    // 1. Check Development Monorepo sibling path or workspace mount
+    const devPath = this.resolveDevPath();
+    if (devPath) {
       return devPath;
     }
 
@@ -68,6 +68,20 @@ export class DaemonManager {
 
     // 4. Auto-Download binary from Cloudflare R2
     return this.downloadBinaryFromR2(localBinary);
+  }
+
+  private resolveDevPath(): string | null {
+    const devPathCandidates = [
+      path.resolve(__dirname, "../../daemon_os/wpipe_engine/main.py"),
+      path.resolve(this.context.extensionPath, "../daemon_os/wpipe_engine/main.py"),
+      "/opt/daemon_os/wpipe_engine/main.py",
+    ];
+    for (const cand of devPathCandidates) {
+      if (fs.existsSync(cand)) {
+        return cand;
+      }
+    }
+    return null;
   }
 
   private findInPath(binaryName: string): string | null {
@@ -173,8 +187,8 @@ export class DaemonManager {
           return targetPath;
         } catch (err: any) {
           // In offline development fallback or mock, create executable shell/python wrapper
-          const devPath = path.resolve(__dirname, "../../daemon_os/wpipe_engine/main.py");
-          if (fs.existsSync(devPath)) {
+          const devPath = this.resolveDevPath();
+          if (devPath && fs.existsSync(devPath)) {
             const launcher = `#!/bin/sh\nexec python3 "${devPath}" "$@"\n`;
             fs.writeFileSync(targetPath, launcher, { mode: 0o755 });
             vscode.window.showWarningMessage(

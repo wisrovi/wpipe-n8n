@@ -38,17 +38,32 @@ export async function replayLogErrors() {
     const lines = content.split('\n');
 
     const errors: LogError[] = [];
-    const logPattern = /^.*? \| (ERROR|CRITICAL) \| (.*?):(.*?):(\d+) \| (.*)$/;
+    // Support standard wpipe new_logger and standard python logging formats:
+    // 1) 2026-10-25 at 12:00:00 | ERROR | module:func:123 | message
+    // 2) 2026-10-25 12:00:00,123 - logger - ERROR - message (with file.py:123)
+    const logPattern1 = /^.*?\|\s*(ERROR|CRITICAL)\s*\|\s*(.*?):(.*?):(\d+)\s*\|\s*(.*)$/;
+    const logPattern2 = /^.*?\b(ERROR|CRITICAL)\b.*?[/:]([A-Za-z0-9_-]+)\.py:(\d+)\b.*?[-|:]\s*(.*)$/;
 
     for (const line of lines) {
-        const match = line.match(logPattern);
-        if (match) {
+        const match1 = line.match(logPattern1);
+        if (match1) {
             errors.push({
-                level: match[1],
-                module: match[2],
-                function: match[3],
-                line: parseInt(match[4]) - 1, // 0-indexed for VS Code
-                message: match[5]
+                level: match1[1],
+                module: match1[2].trim(),
+                function: match1[3].trim(),
+                line: Math.max(0, parseInt(match1[4], 10) - 1), // 0-indexed for VS Code
+                message: match1[5].trim()
+            });
+            continue;
+        }
+        const match2 = line.match(logPattern2);
+        if (match2) {
+            errors.push({
+                level: match2[1],
+                module: match2[2].trim(),
+                function: match2[2].trim(),
+                line: Math.max(0, parseInt(match2[3], 10) - 1),
+                message: match2[4].trim()
             });
         }
     }

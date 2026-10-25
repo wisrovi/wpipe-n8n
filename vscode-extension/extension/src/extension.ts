@@ -487,7 +487,10 @@ export async function activate(context: vscode.ExtensionContext) {
       terminal.show();
 
       try {
-        const response = await fetch(reqUrl);
+        const headers: Record<string, string> = {
+          "User-Agent": "WPipe-Studio-VSCode-Extension"
+        };
+        const response = await fetch(reqUrl, { headers });
         if (!response.ok) throw new Error(`Failed to download requirements file: ${response.statusText}`);
         const content = await response.text();
 
@@ -545,7 +548,10 @@ export async function activate(context: vscode.ExtensionContext) {
           const pathInRepo = parts.slice(6).join("/");
 
           const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${pathInRepo}?ref=${branch}`;
-          const apiResponse = await fetch(apiUrl);
+          const headers: Record<string, string> = {
+            "User-Agent": "WPipe-Studio-VSCode-Extension"
+          };
+          const apiResponse = await fetch(apiUrl, { headers });
           if (!apiResponse.ok) throw new Error(`Failed to list directory contents: ${apiResponse.statusText}`);
 
           const files = await apiResponse.json();
@@ -579,7 +585,10 @@ export async function activate(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async () => {
-            const response = await fetch(rawUrl);
+            const headers: Record<string, string> = {
+              "User-Agent": "WPipe-Studio-VSCode-Extension"
+            };
+            const response = await fetch(rawUrl, { headers });
             if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
             const content = await response.text();

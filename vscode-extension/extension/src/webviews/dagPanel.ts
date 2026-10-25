@@ -448,6 +448,32 @@ ${mermaidGraph}
 
         const vscode = acquireVsCodeApi();
 
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message && message.command === 'highlightNodes') {
+                const nodeNames = (message.nodes || []).map(n => String(n).toLowerCase());
+                const status = message.status || 'error';
+                const colorMap = {
+                    error: { fill: '#450a0a', stroke: '#ef4444', text: '#fca5a5' },
+                    running: { fill: '#78350f', stroke: '#f59e0b', text: '#fde68a' },
+                    success: { fill: '#064e3b', stroke: '#10b981', text: '#a7f3d0' }
+                };
+                const colors = colorMap[status] || colorMap.error;
+
+                document.querySelectorAll('.mermaid svg .node').forEach(nodeEl => {
+                    const text = nodeEl.textContent || '';
+                    if (nodeNames.some(name => text.toLowerCase().includes(name))) {
+                        const rectOrPolygon = nodeEl.querySelector('rect, polygon, circle, path');
+                        if (rectOrPolygon) {
+                            rectOrPolygon.style.fill = colors.fill;
+                            rectOrPolygon.style.stroke = colors.stroke;
+                            rectOrPolygon.style.strokeWidth = '3px';
+                        }
+                    }
+                });
+            }
+        });
+
         function downloadSvg() {
             const svgElement = document.querySelector('.mermaid svg');
             if (svgElement) {

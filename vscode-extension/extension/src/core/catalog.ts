@@ -49,7 +49,10 @@ export class CatalogManager {
             
             const fetchJson = async (url: string, defaultRepo: string): Promise<any[]> => {
                 try {
-                    const response = await fetch(url);
+                    const headers: Record<string, string> = {
+                        "User-Agent": "WPipe-Studio-VSCode-Extension"
+                    };
+                    const response = await fetch(url, { headers });
                     if (!response.ok) return [];
                     const p = await response.json();
                     const items = Array.isArray(p) ? p : [];

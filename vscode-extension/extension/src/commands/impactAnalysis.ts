@@ -6,8 +6,12 @@ export async function findStepUsage(arg?: any) {
 
     if (typeof arg === 'string') {
         stepName = arg;
-    } else if (arg instanceof vscode.TreeItem) {
-        stepName = arg.label as string;
+    } else if (arg && typeof arg === 'object') {
+        if ('label' in arg) {
+            stepName = typeof arg.label === 'string' ? arg.label : (arg.label?.label || '');
+        } else if ('name' in arg) {
+            stepName = arg.name;
+        }
     }
 
     if (!stepName) {
@@ -40,9 +44,10 @@ export async function findStepUsage(arg?: any) {
                 const escapedName = stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const regex = new RegExp(`\\b${escapedName}\\b`);
                 if (regex.test(line)) {
-                    // Exclude the definition itself (class or function)
-                    if (!line.includes(`def ${stepName}`) && !line.includes(`class ${stepName}`) && !line.includes(`@step`)) {
-                        usages.push({ file, line: index, text: line.trim() });
+                    // Exclude the definition itself (class or function) and comments
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('#') && !line.includes(`def ${stepName}`) && !line.includes(`class ${stepName}`) && !line.includes(`@step`)) {
+                        usages.push({ file, line: index, text: trimmed });
                     }
                 }
             });

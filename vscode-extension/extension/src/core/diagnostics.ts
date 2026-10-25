@@ -27,7 +27,11 @@ function updateDiagnostics(document: vscode.TextDocument, collection: vscode.Dia
     const tree = parser.parse(content);
 
     const workspaceSteps = new Set(WorkspaceIndex.getAllSteps().map(s => s.name));
-    const catalogSteps = new Set(CatalogManager.getSteps().map(s => s.name));
+    const catalogSteps = new Set<string>();
+    CatalogManager.getSteps().forEach(s => {
+        if (s.name) catalogSteps.add(s.name);
+        if (s.func_name) catalogSteps.add(s.func_name);
+    });
     const knownSteps = new Set([...workspaceSteps, ...catalogSteps]);
 
     tree.iterate({

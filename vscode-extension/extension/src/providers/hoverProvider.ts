@@ -24,11 +24,15 @@ export class WPipeHoverProvider implements vscode.HoverProvider {
         const catStep = CatalogManager.getSteps().find(s => s.name === word || s.func_name === word);
         if (catStep) {
             const md = new vscode.MarkdownString();
-            md.appendMarkdown(`### 📦 WPipe Library: ${catStep.name}\n`);
+            md.appendMarkdown(`### 📦 WPipe Library: ${catStep.func_name || catStep.name}\n`);
             md.appendMarkdown(`**Module:** \`${catStep.namespace}\`\n\n`);
-            md.appendMarkdown(`**Author:** ${catStep.author || "Official"}\n`);
+            if (catStep.description) md.appendMarkdown(`**Description:** ${catStep.description}\n\n`);
+            md.appendMarkdown(`**Author:** ${catStep.author || "William Steve Rodriguez Villamizar"}\n`);
             md.appendMarkdown(`**Repo:** ${catStep.repo}\n\n`);
-            md.appendMarkdown(`---\nClick to insert import and usage.`);
+            if (catStep.how_to_use) {
+                md.appendMarkdown(`**Import:** \`${catStep.how_to_use}\`\n\n`);
+            }
+            md.appendMarkdown(`---\n*WPipe Official Steps Catalog*`);
             return new vscode.Hover(md);
         }
 

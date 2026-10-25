@@ -400,7 +400,8 @@ export async function activate(context: vscode.ExtensionContext) {
       }
       const terminal = vscode.window.createTerminal(`Pipeline: ${path.basename(filePath)}`);
       terminal.show();
-      terminal.sendText(`python "${filePath}"`);
+      const pythonCmd = process.platform === "win32" ? "python" : "python3";
+      terminal.sendText(`${pythonCmd} "${filePath}"`);
     }),
     vscode.commands.registerCommand("wpipe-vscode.addLogicBlock", async (range: vscode.Range) => {
       const editor = vscode.window.activeTextEditor;
@@ -454,7 +455,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const terminal = vscode.window.createTerminal(`Run Step: ${item.label}`);
       terminal.show();
-      terminal.sendText(`python "${item.filePath}"`);
+      const pythonCmd = process.platform === "win32" ? "python" : "python3";
+      terminal.sendText(`${pythonCmd} "${item.filePath}"`);
     }),
     vscode.commands.registerCommand("wpipeSteps.runStepFromCode", async (filePath: string, line: number) => {
       if (vscode.env.uiKind === vscode.UIKind.Web) {
@@ -464,7 +466,8 @@ export async function activate(context: vscode.ExtensionContext) {
       const fileName = path.basename(filePath);
       const terminal = vscode.window.createTerminal(`Run Step: ${fileName}`);
       terminal.show();
-      terminal.sendText(`python "${filePath}"`);
+      const pythonCmd = process.platform === "win32" ? "python" : "python3";
+      terminal.sendText(`${pythonCmd} "${filePath}"`);
     }),
     vscode.commands.registerCommand("wpipeSteps.installRequirements", async (item: LibraryItem) => {
       if (vscode.env.uiKind === vscode.UIKind.Web) {
@@ -496,7 +499,8 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         await vscode.workspace.fs.writeFile(tempReqUri, new TextEncoder().encode(content));
-        terminal.sendText(`pip install -r "${tempReqUri.fsPath}"`);
+        const pipCmd = process.platform === "win32" ? "pip" : "pip3";
+        terminal.sendText(`${pipCmd} install -r "${tempReqUri.fsPath}"`);
         vscode.window.showInformationMessage(`⏳ Installing dependencies for '${item.step.name}'...`);
       } catch (error) {
         vscode.window.showErrorMessage(`❌ Error preparing requirements: ${error}`);

@@ -14,20 +14,18 @@ export class WPipeCodeActionProvider implements vscode.CodeActionProvider {
             const tree = parser.parse(content);
             tree.iterate({
                 enter: (node) => {
-                    if (node.name === 'FunctionDefinition') {
-                        const funcRange = new vscode.Range(
+                    if (node.name === 'FunctionDefinition' || node.name === 'ClassDefinition') {
+                        const targetRange = new vscode.Range(
                             document.positionAt(node.from),
                             document.positionAt(node.to)
                         );
                         
-                        // Check if the current range (cursor) is within this function definition
-                        if (range.intersection(funcRange)) {
+                        // Check if the current range (cursor) is within this definition
+                        if (range.intersection(targetRange)) {
                             // Check if it already has a @step decorator
                             let hasStepDecorator = false;
                             let parent = node.node.parent;
                             if (parent) {
-                                // In some parsers, decorators are siblings or children of a parent wrapper
-                                // For lezer-python, we might need to check the parent's children
                                 parent.getChildren('Decorator').forEach(dec => {
                                     const decText = content.substring(dec.from, dec.to);
                                     if (decText.startsWith('@step')) {
@@ -40,14 +38,15 @@ export class WPipeCodeActionProvider implements vscode.CodeActionProvider {
                                 const action = new vscode.CodeAction('Convert to WPipe Step', vscode.CodeActionKind.QuickFix);
                                 action.edit = new vscode.WorkspaceEdit();
                                 
-                                const nameNode = node.node.getChild('VariableName');
-                                const funcName = nameNode ? content.substring(nameNode.from, nameNode.to) : 'my_step';
+                                const nameNode = node.node.getChild('VariableName') || node.node.getChild('ClassName');
+                                const rawName = nameNode ? content.substring(nameNode.from, nameNode.to) : 'my_step';
+                                const stepName = rawName.endsWith('Step') ? rawName : `${rawName.charAt(0).toUpperCase()}${rawName.slice(1)}Step`;
                                 
-                                const decorator = `@step(name="${funcName}", version="1.0.0")\n`;
+                                const decorator = `@step(name="${stepName}", version="1.0.0")\n`;
                                 action.edit.insert(document.uri, document.positionAt(node.from), decorator);
                                 
                                 // Check if wpipe is imported
-                                if (!content.includes('from wpipe import step')) {
+                                if (!content.includes('from wpipe import step') && !content.includes('from wpipe import')) {
                                     action.edit.insert(document.uri, new vscode.Position(0, 0), 'from wpipe import step\n');
                                 }
                                 

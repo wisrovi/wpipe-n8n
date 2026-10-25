@@ -35,8 +35,9 @@ export async function findStepUsage(arg?: any) {
 
             lines.forEach((line, index) => {
                 // Look for the step name being used in a list of steps or as a function call
-                // Simple heuristic: word boundary
-                const regex = new RegExp(`\\b${stepName}\\b`);
+                // Escape any regex special characters in stepName
+                const escapedName = stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`\\b${escapedName}\\b`);
                 if (regex.test(line)) {
                     // Exclude the definition itself (class or function)
                     if (!line.includes(`def ${stepName}`) && !line.includes(`class ${stepName}`) && !line.includes(`@step`)) {

@@ -62,24 +62,31 @@ export async function replayLogErrors() {
     vscode.window.showWarningMessage(`🔍 Found ${errors.length} errors in log. Highlighting in editor...`);
 
     // Group errors by file
-    // Note: Log module usually doesn't have the full path. We'll try to match it in the workspace.
+    const fileToDecorations = new Map<string, { uri: vscode.Uri; decs: { range: vscode.Range; hoverMessage: string }[] }>();
+
     for (const error of errors) {
         const files = await vscode.workspace.findFiles(`**/${error.module}.py`);
         if (files.length > 0) {
-            const doc = await vscode.workspace.openTextDocument(files[0]);
-            const editor = await vscode.window.showTextDocument(doc, { preview: false });
-            
-            const decoration = {
+            const fileUri = files[0];
+            const fsPath = fileUri.fsPath;
+            if (!fileToDecorations.has(fsPath)) {
+                fileToDecorations.set(fsPath, { uri: fileUri, decs: [] });
+            }
+            fileToDecorations.get(fsPath)!.decs.push({
                 range: new vscode.Range(error.line, 0, error.line, 0),
                 hoverMessage: `**[WPipe ${error.level}]** ${error.message}`
-            };
-            
-            editor.setDecorations(errorDecorationType, [decoration]);
-            
-            // Also reveal the first error
-            if (error === errors[0]) {
-                editor.revealRange(decoration.range, vscode.TextEditorRevealType.InCenter);
-            }
+            });
+        }
+    }
+
+    let isFirst = true;
+    for (const [_, item] of fileToDecorations) {
+        const doc = await vscode.workspace.openTextDocument(item.uri);
+        const editor = await vscode.window.showTextDocument(doc, { preview: false });
+        editor.setDecorations(errorDecorationType, item.decs);
+        if (isFirst && item.decs.length > 0) {
+            editor.revealRange(item.decs[0].range, vscode.TextEditorRevealType.InCenter);
+            isFirst = false;
         }
     }
     

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WPipe Engine - Local IPC Server
 Exposes Unix Domain Socket and HTTP REST endpoints for the VS Code extension.
 Author: William Rodriguez (wisrovi.dev)

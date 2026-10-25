@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WPipe Engine - Local Workspace & Project Manager
 Manages local microservice directories, canvas persistence, .env variables and terminal commands.
 Author: William Rodriguez (wisrovi.dev)

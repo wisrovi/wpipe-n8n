@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WPipe Engine - Cryptographic Licensing & Machine Fingerprinting
 Verifies Ed25519 lease tokens issued by api.wisrovi.dev (Cloudflare Edge).
 Author: William Rodriguez (wisrovi.dev)
@@ -80,14 +81,30 @@ def compute_machine_fingerprint() -> str:
     """Generate a reproducible, hardware-anchored SHA-256 fingerprint for this machine."""
     components: list[str] = [platform.system(), platform.machine()]
 
+    # 0. Check persistent container / machine ID in ~/.wpipe/machine-id
+    wpipe_dir = Path.home() / ".wpipe"
+    mid_file = wpipe_dir / "machine-id"
+    if mid_file.exists():
+        try:
+            persisted_id = mid_file.read_text(encoding="utf-8").strip()
+            if persisted_id:
+                # Use persisted unique hardware/container anchor directly
+                components.append(persisted_id)
+                raw = "||".join(components)
+                return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        except Exception:
+            pass
+
     # 1. OS-specific unique ID
     os_id = ""
     if sys.platform.startswith("linux"):
         for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
             if os.path.exists(p):
                 try:
-                    os_id = Path(p).read_text().strip()
-                    break
+                    val = Path(p).read_text().strip()
+                    if val:
+                        os_id = val
+                        break
                 except Exception:
                     pass
     elif sys.platform == "darwin":
@@ -112,18 +129,21 @@ def compute_machine_fingerprint() -> str:
         except Exception:
             pass
 
-    components.append(os_id or socket.gethostname())
+    final_id = os_id or socket.gethostname()
 
-    # 2. Network MAC Address fallback
-    try:
+    # In containers where hostname changes across recreation, generate a random stable UUID
+    if not os_id:
         import uuid
-        mac = ":".join(
-            ["{:02x}".format((uuid.getnode() >> ele) & 0xFF) for ele in range(0, 8 * 6, 8)][::-1]
-        )
-        components.append(mac)
+        final_id = f"wpipe_host_{uuid.uuid4().hex[:16]}"
+
+    # Persist fingerprint anchor so restarts/recreations never change the identity
+    try:
+        wpipe_dir.mkdir(parents=True, exist_ok=True)
+        mid_file.write_text(final_id, encoding="utf-8")
     except Exception:
         pass
 
+    components.append(final_id)
     raw = "||".join(components)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

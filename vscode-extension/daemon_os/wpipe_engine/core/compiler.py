@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WPipe Engine - AST Pipeline Compiler & Microservice Generator
 Transforms visual Canvas IR into production Python microservices conforming to wpipe-mcp standards.
 Author: William Rodriguez (wisrovi.dev)
@@ -338,6 +339,7 @@ class {class_name}:
                 state_file_path = f"app/states/{safe_stem}.py"
                 if state_file_path not in user_custom_states:
                     prompt_display = ai_prompt if ai_prompt else "Implementar lógica inteligente de inferencia / procesamiento IA para este estado."
+                    clean_prompt_desc = prompt_display.replace('"', '')[:100]
                     user_custom_states[state_file_path] = f'''"""AI-Generated Step: {class_name}.
 
 ==============================================================================
@@ -388,7 +390,7 @@ from wpipe.util import object_to_dict
 @step(
     name="{class_name}",
     version="1.0.0",
-    description="{prompt_display.replace('\"', '')[:100]}",
+    description="{clean_prompt_desc}",
     tags=["ai", "intelligent_step", "{safe_stem}"]
 )
 class {class_name}:

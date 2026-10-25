@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WPipe Engine - Pipeline Simulation & Test Runner
 Executes microservices, breakpoint inspections and unit test suites locally.
 Author: William Rodriguez (wisrovi.dev)

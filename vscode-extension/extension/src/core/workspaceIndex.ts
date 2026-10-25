@@ -8,6 +8,8 @@ export interface WorkspaceStep {
     line: number;
     description?: string;
     tags?: string[];
+    isAiStep?: boolean;
+    aiPrompt?: string;
 }
 
 export class WorkspaceIndex {
@@ -68,7 +70,13 @@ export class WorkspaceIndex {
                                 
                                 if (name) {
                                     const line = content.substring(0, node.from).split('\n').length - 1;
-                                    newSteps.set(name, { name, version, filePath: f.fsPath, line, description });
+                                    const isAi = content.includes("AI AGENT PROMPT") || content.includes("intelligent_step") || decText.includes('"ai"');
+                                    let aiPrompt: string | undefined;
+                                    const promptMatch = content.match(/DIRECTIVA \/ PROMPT DEL USUARIO:\s*[\r\n]+["']([\s\S]*?)["']/);
+                                    if (promptMatch) {
+                                        aiPrompt = promptMatch[1].trim();
+                                    }
+                                    newSteps.set(name, { name, version, filePath: f.fsPath, line, description, isAiStep: isAi, aiPrompt });
                                 }
                             }
                         }

@@ -69,3 +69,37 @@ def build_pipeline() -> Pipeline:
     assert "import cv2" in new_pipe_code
     assert "def custom_matrix_filter(data):" in new_pipe_code
     assert "Pipeline(pipeline_name=\"merged_pipeline\")" in new_pipe_code
+
+
+def test_ai_step_generates_state_file_with_prompt_docstring():
+    compiler = ASTCompiler()
+    canvas = {
+        "nodes": [
+            {
+                "id": "n1",
+                "data": {
+                    "node_type": "step",
+                    "block_type": "wpipe_ai_step",
+                    "func_name": "EntityExtractorStep",
+                    "label": "EntityExtractorStep",
+                    "notes": "Extraer entidades nombradas (personas, lugares, fechas) del texto recibido en el payload y agregarlas a context.data['entities']",
+                },
+            }
+        ]
+    }
+    files = compiler.compile_canvas(canvas, project_name="ai_pipeline")
+
+    assert "app/pipelines.py" in files
+    assert "from states.entity_extractor_step import EntityExtractorStep" in files["app/pipelines.py"]
+    assert "EntityExtractorStep()" in files["app/pipelines.py"]
+
+    state_path = "app/states/entity_extractor_step.py"
+    assert state_path in files, f"Expected {state_path} to be generated in files"
+    state_code = files[state_path]
+
+    assert "AI AGENT PROMPT & IMPLEMENTATION SPECIFICATION" in state_code
+    assert "Extraer entidades nombradas" in state_code
+    assert "@step" in state_code
+    assert "@to_obj(PipelineContextDTO)" in state_code
+    assert "class EntityExtractorStep:" in state_code
+

@@ -118,7 +118,10 @@ CATALOG_CONTEXT_TO_STEP: dict[str, str] = {
 
 
 def sanitize_ident(name: str) -> str:
-    s = re.sub(r"[^0-9a-zA-Z_]", "_", name)
+    # Convert CamelCase to snake_case if applicable
+    s = re.sub(r"(?<!^)(?=[A-Z])", "_", name)
+    s = re.sub(r"[^0-9a-zA-Z_]", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
     if not s or s[0].isdigit():
         s = f"step_{s}"
     return s.lower()
@@ -306,10 +309,115 @@ class {class_name}:
                 mode = data.get("params", {}).get("mode", "standard")
                 return f'{pad}TransformPayloadStep(mode="{mode}")'
             elif is_ai_step(node):
-                imports.add("from states.ai_sentiment_step import AISentimentStep")
-                step_names_for_readme.append("AISentimentStep")
-                th = data.get("params", {}).get("threshold", 0.5)
-                return f'{pad}AISentimentStep(threshold={th})'
+                # AI Step: generate a dedicated state file with comprehensive AI prompt docstring
+                ai_prompt = (
+                    data.get("notes")
+                    or data.get("AI_PROMPT")
+                    or data.get("ai_prompt")
+                    or data.get("prompt")
+                    or ""
+                ).strip()
+
+                # If it is strictly the default placeholder with no custom prompt and fn is AISentimentStep
+                if fn == "AISentimentStep" and not ai_prompt:
+                    imports.add("from states.ai_sentiment_step import AISentimentStep")
+                    step_names_for_readme.append("AISentimentStep")
+                    th = data.get("params", {}).get("threshold", 0.5)
+                    return f'{pad}AISentimentStep(threshold={th})'
+
+                safe_stem = sanitize_ident(fn if fn not in ("custom_ai_state", "wpipe_ai_step", "") else "custom_ai_state")
+                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
+                if class_name in ("Step", "WpipeAiStep"):
+                    class_name = "CustomAIStep"
+                    safe_stem = "custom_ai_step"
+
+                module_name = f"states.{safe_stem}"
+                imports.add(f"from {module_name} import {class_name}")
+                step_names_for_readme.append(class_name)
+
+                state_file_path = f"app/states/{safe_stem}.py"
+                if state_file_path not in user_custom_states:
+                    prompt_display = ai_prompt if ai_prompt else "Implementar lógica inteligente de inferencia / procesamiento IA para este estado."
+                    user_custom_states[state_file_path] = f'''"""AI-Generated Step: {class_name}.
+
+==============================================================================
+🤖 AI AGENT PROMPT & IMPLEMENTATION SPECIFICATION
+==============================================================================
+INSTRUCCIONES PARA EL AGENTE DE CÓDIGO (LLM / ASISTENTE IA):
+Copia y pega este bloque en tu conversación con Claude, ChatGPT, Antigravity o Cursor:
+
+--- COPIAR DESDE AQUÍ ---
+Actúa como un Ingeniero Principal de Inteligencia Artificial y Arquitecto de Software
+experto en la librería WPipe (Dialecto A: @step + @to_obj + Pydantic DTOs).
+
+Tu objetivo es editar e implementar COMPLETAMENTE la lógica interna de este estado:
+Archivo: app/states/{safe_stem}.py
+Clase: {class_name}
+
+>>> DIRECTIVA / PROMPT DEL USUARIO:
+"{prompt_display}"
+
+REGLAS DE IMPLEMENTACIÓN OBLIGATORIAS:
+1. Mantén la estructura de Dialecto A oficial de WPipe:
+   - Decorador de clase: @step(name="{class_name}", version="1.0.0", description="...")
+   - Decorador de método __call__: @timeout_sync(seconds=...) y @to_obj(PipelineContextDTO)
+2. Trabaja sobre el contexto Pydantic `PipelineContextDTO`:
+   - Lee los datos necesarios de `ctx.data`, `ctx.payload` o atributos de `ctx`.
+   - Modifica el contexto in-place o actualiza `ctx.metrics["{safe_stem}"] = ...` y `ctx.data[...]`.
+   - Asigna `ctx.status = "SUCCESS"` si todo va bien.
+3. Manejo de Errores:
+   - Si la inferencia o validación falla, registra con `logger.error(...)` y establece:
+     `ctx.status = "FAILED"`
+     `ctx.error = {{"code": "{class_name.upper()}_ERROR", "message": str(exc)}}`
+4. Dependencias:
+   - Usa bibliotecas estándar o agrega las dependencias requeridas en requirements.txt.
+5. Retorno:
+   - Retorna siempre `ctx.model_dump()` al finalizar `__call__`.
+--- FIN DEL PROMPT PARA EL AGENTE ---
+==============================================================================
+"""
+
+from typing import Any
+from loguru import logger
+from dto.context import PipelineContextDTO
+from wpipe import step, to_obj
+from wpipe.timeout import timeout_sync
+from wpipe.util import object_to_dict
+
+
+@step(
+    name="{class_name}",
+    version="1.0.0",
+    description="{prompt_display.replace('\"', '')[:100]}",
+    tags=["ai", "intelligent_step", "{safe_stem}"]
+)
+class {class_name}:
+    """AI intelligent pipeline step generated by WPipe Studio."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize step with configurable hyperparameters or model settings."""
+        self.config = kwargs
+        # TODO (AI Agent): Configura modelos, clientes de API o pesos aquí
+
+    @timeout_sync(30)
+    @to_obj(PipelineContextDTO)
+    def __call__(self, context: Any) -> dict[str, Any]:
+        """Execute intelligent transformation / inference on context."""
+        raw_dict = object_to_dict(context)
+        if raw_dict.get("error") == {{}}:
+            raw_dict["error"] = None
+        ctx = PipelineContextDTO(**raw_dict)
+        logger.info(f"{class_name} executing for tx: {{ctx.transaction_id}}")
+
+        # ----------------------------------------------------------------------
+        # 🧠 IMPLEMENTACIÓN GENERADA / POR IMPLEMENTAR POR EL AGENTE DE IA
+        # ----------------------------------------------------------------------
+        ctx.status = "SUCCESS"
+        ctx.metrics["{safe_stem}"] = True
+        # Asignar resultados en ctx.data o ctx.metrics según la directiva
+        return ctx.model_dump()
+'''
+                return f"{pad}{class_name}()"
             elif fn == "CleanDataStep" or "clean" in fn_lower:
                 imports.add("from states.clean_data_step import CleanDataStep")
                 step_names_for_readme.append("CleanDataStep")

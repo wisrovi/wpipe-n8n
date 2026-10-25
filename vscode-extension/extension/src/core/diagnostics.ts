@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { parser } from '@lezer/python';
 import { WorkspaceIndex } from './workspaceIndex';
 import { CatalogManager } from './catalog';
+import { PipelineDecompiler } from './decompiler';
 
 export function registerDiagnostics(context: vscode.ExtensionContext) {
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('wpipe');
@@ -43,13 +44,14 @@ function updateDiagnostics(document: vscode.TextDocument, collection: vscode.Dia
             if (node.name === 'CallExpression') {
                 const callText = content.substring(node.from, node.to);
                 if (callText.includes('.set_steps(') || (callText.includes('Pipeline(') && callText.includes('steps='))) {
-                    // Extract step names from set_steps([ ... ])
-                    const match = callText.match(/(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)/) || 
-                                  callText.match(/steps\s*=\s*\[([\s\S]*?)\]/);
+                    // Extract step names from set_steps([ ... ]) with balanced bracket extraction
+                    let stepsContent = PipelineDecompiler.extractBalanced(callText, /(?:set_steps|steps)\s*\(\s*\[/);
+                    if (stepsContent === null) {
+                        stepsContent = PipelineDecompiler.extractBalanced(callText, /steps\s*=\s*\[/);
+                    }
                     
-                    if (match) {
-                        const stepsContent = match[1];
-                        const baseOffset = node.from + callText.indexOf(match[1]);
+                    if (stepsContent !== null) {
+                        const baseOffset = node.from + callText.indexOf(stepsContent);
                         
                         // Simple split by comma, ignoring nested brackets
                         const parts = splitWithOffsets(stepsContent, baseOffset);

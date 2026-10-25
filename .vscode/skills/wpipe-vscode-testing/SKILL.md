@@ -124,27 +124,72 @@ El valor diferencial de WPipe Studio es que la edición de código sincroniza el
 
 ---
 
-## 5. Batería de Pruebas Automatizadas de Calidad (Obligatorias)
+## 6. Procedimiento Canónico E2E Multi-VSCode (Flujo Transparente Tri-Instancia)
+
+Este escenario valida la colaboración distribuida, descompilación balanceada AST y sincronización transparente entre 3 instancias de VS Code Web conectadas al mismo workspace:
+
+```mermaid
+flowchart TD
+  subgraph VS1["VS Code 1 (:8080) - Visual Canvas"]
+    A1["1. Limpieza total del workspace"] --> A2["2. Inicializa nuevo pipeline visual"]
+    A2 --> A3["Cierra editor visual"]
+    A3 -.->|Hereda cambios transparentemente| A4["7. Reabre editor visual (pipeline.wpipe)"]
+    A4 --> A5["Renderiza automáticamente todos los estados anidados"]
+  end
+
+  subgraph VS2["VS Code 2 (:8081) - Steps Wizard & DAG"]
+    B1["3. Crea 2 estados con el Wizard (ForLoopState & BgTaskState)"] --> B2["4. Inserta en pipeline dentro de For(...) y Background(...)"]
+    B2 --> B3["5. Abre DAG Mermaid y verifica estructura"]
+    B3 -.->|Re-renderiza con cambios externos| B4["6. Re-renderiza DAG con branching Condition"]
+  end
+
+  subgraph VS3["VS Code 3 (:8082) - Manual Code Editing"]
+    C1["5a. Crea manualmente TrueBranchState y FalseBranchState"] --> C2["5b. Actualiza __init__.py"]
+    C2 --> C3["5c. Añade Condition(...) con branch_true y branch_false en pipelines.py"]
+  end
+
+  B3 --> C1
+  C3 --> B4
+  B4 --> A4
+```
+
+### Pasos Operativos del Escenario E2E
+
+1. **VS Code 1 (`:8080`)**:
+   - Inicia desde un workspace completamente limpio (archivos eliminados).
+   - Genera/abre el canvas visual de bloques (`pipeline.wpipe`) iniciando un nuevo pipeline vacío (`MainPipeline`).
+   - Cierra el canvas antes de pasar a la siguiente instancia.
+
+2. **VS Code 2 (`:8081`)**:
+   - Ejecuta el Wizard de creación de estados (`wpipe-vscode.createNewStep`) creando 2 estados: `ForLoopState` y `BgTaskState`.
+   - Incluye ambos estados en `app/pipelines.py`: uno dentro de un bucle `For(iterations=3, steps=[ForLoopState()])` y el otro en una tarea asíncrona en segundo plano `Background(step=BgTaskState())`.
+   - Abre la vista previa del DAG (`wpipe-vscode.previewDAG`) y confirma que captura el pipeline completo con el bucle y la tarea asíncrona.
+
+3. **VS Code 3 (`:8082`)**:
+   - De forma manual (creando los archivos en `app/states/` y editando `app/states/__init__.py`), crea 2 estados adicionales: `TrueBranchState` y `FalseBranchState`.
+   - Modifica `app/pipelines.py` agregando una estructura condicional `Condition(expression="status_code == 200", branch_true=[TrueBranchState()], branch_false=[FalseBranchState()])`.
+
+4. **VS Code 2 (`:8081`)**:
+   - Vuelve a renderizar el DAG interactivo (`previewDAG`).
+   - Confirma visualmente que el grafo Mermaid se actualiza mostrando las ramas condicionales `True` y `False` con los nuevos estados creados en VS Code 3.
+
+5. **VS Code 1 (`:8080`)**:
+   - Reabre el diagrama de bloques visual (`pipeline.wpipe`).
+   - El descompilador de AST balanceado procesa directamente el código modificado por las otras instancias, renderizando de forma directa y transparente todos los bloques: el bucle `For`, la tarea `Background`, y la bifurcación `Condition` con sus ramas sin pérdida de información.
+
+
+---
+
+## 7. Batería de Pruebas Automatizadas de Calidad (Obligatorias)
 
 Ningún cambio se considera terminado si no pasan todas las siguientes suites:
 
-### 5.1 Daemon OS Suite (51 Pruebas)
+### 7.1 Daemon OS Suite (51 Pruebas)
 ```bash
 pytest vscode-extension/daemon_os/tests/ -v
 ```
-*(Verifica compilador AST, fusión inteligente de código, límites de plan Free/Pro y criptografía Ed25519)*
 
-### 5.2 Admin Cloudfire Suite (12 Pruebas)
+### 7.2 Admin Cloudfire Suite (12 Pruebas)
 ```bash
 PYTHONPATH=/home/wisrovi/Documents/w_libraries/wpipe_os/wpipe/editors/extension_example/.venv/lib/python3.12/site-packages:vscode-extension/admin-cloudfire pytest vscode-extension/admin-cloudfire/tests/ -v
 ```
-
-### 5.3 Microservicio Generado (11 Pruebas)
-```bash
-PYTHONPATH=/home/wisrovi/Documents/w_libraries/wpipe_os/wpipe/editors/extension_example/.venv/lib/python3.12/site-packages:/home/wisrovi/Downloads/ksñldfg/app/app pytest /home/wisrovi/Downloads/ksñldfg/app/app/test/ /home/wisrovi/Downloads/ksñldfg/app/tests/ -v
-```
-**Garantiza:**
-- `app/test/test_api.py` (Endpoints FastAPI /run y /health)
-- `app/test/test_pipeline.py` (`build_pipeline` y `execute_pipeline`)
-- `app/test/test_dto.py` (Pydantic ContextDTO)
-- `app/test/test_states.py` (Mutaciones reales de contexto)

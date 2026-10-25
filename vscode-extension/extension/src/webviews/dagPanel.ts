@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { parser } from '@lezer/python';
+import { PipelineDecompiler, ParsedStepNode } from '../core/decompiler';
 import { ConfigManager } from '../core/config';
 
 export class DAGPanel {
@@ -146,81 +146,18 @@ export class DAGPanel {
     }
 
     public parseString(text: string, fileName: string) {
-        const tree = parser.parse(text);
-        let steps: { name: string, isControl: boolean, line: number, type?: string, condition?: string }[] = [];
-        let edges: { from: string, to: string, label?: string }[] = [];
-        
-        let inSetSteps = false;
-        let isCollectingSteps = false;
-        let currentPipeline = 'main';
+        let parsedSteps: ParsedStepNode[] = [];
+        let stepsRaw = PipelineDecompiler.extractBalanced(text, /(?:set_steps|steps)\s*\(\s*\[/);
+        if (stepsRaw === null) {
+            stepsRaw = PipelineDecompiler.extractBalanced(text, /steps\s*=\s*\[/);
+        }
 
-        const lines = text.split('\n');
+        if (stepsRaw !== null) {
+            const tokens = PipelineDecompiler.tokenize(stepsRaw);
+            parsedSteps = tokens.map(t => PipelineDecompiler.parseItem(t));
+        }
 
-        tree.iterate({
-            enter: (node) => {
-                if (node.name === 'CallExpression') {
-                    const callText = text.substring(node.from, node.to);
-                    if (callText.includes('set_steps') || callText.includes('Pipeline(')) {
-                        inSetSteps = true;
-                    }
-                }
-                
-                if (inSetSteps && node.name === 'ArrayExpression') {
-                    isCollectingSteps = true;
-                }
-
-                if (isCollectingSteps && (node.name === 'CallExpression' || node.name === 'VariableName')) {
-                    const nodeText = text.substring(node.from, node.to);
-                    const line = text.substring(0, node.from).split('\n').length - 1;
-                    
-                    // Match Step, Condition, For, Parallel
-                    if (nodeText.startsWith('Condition(')) {
-                        const condMatch = nodeText.match(/expression\s*=\s*['"](.*?)['"]/);
-                        steps.push({
-                            name: `Cond_${steps.length}`,
-                            isControl: true,
-                            type: 'Condition',
-                            condition: condMatch ? condMatch[1] : 'exp',
-                            line
-                        });
-                    } else if (nodeText.startsWith('For(')) {
-                        steps.push({
-                            name: `Loop_${steps.length}`,
-                            isControl: true,
-                            type: 'For',
-                            line
-                        });
-                    } else if (nodeText.startsWith('Parallel(')) {
-                        steps.push({
-                            name: `Parallel_${steps.length}`,
-                            isControl: true,
-                            type: 'Parallel',
-                            line
-                        });
-                    } else if (!nodeText.includes('(') || nodeText.endsWith('()')) {
-                        const name = nodeText.replace('()', '').trim();
-                        if (name && !['Condition', 'For', 'Parallel', 'set_steps'].includes(name)) {
-                            // Check not already added
-                            if (!steps.find(s => s.name === name && s.line === line)) {
-                                steps.push({
-                                    name,
-                                    isControl: false,
-                                    line
-                                });
-                            }
-                        }
-                    }
-                }
-            },
-            leave: (node) => {
-                if (node.name === 'ArrayExpression' && isCollectingSteps) {
-                    isCollectingSteps = false;
-                    inSetSteps = false;
-                }
-            }
-        });
-
-        // Generar grafo Mermaid
+        // Generate Mermaid DAG
         let graph = 'graph TD\n';
         graph += '  classDef default fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc,rx:6px,ry:6px;\n';
         graph += '  classDef startEnd fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#60a5fa,rx:10px,ry:10px;\n';
@@ -229,40 +166,127 @@ export class DAGPanel {
         graph += '  classDef errorState fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fca5a5,rx:6px,ry:6px;\n';
         graph += '  classDef runningState fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fde68a,rx:6px,ry:6px;\n';
         
-        graph += '  Start([🚀 Iniciar Pipeline]):::startEnd --> ';
+        graph += '  Start([🚀 Iniciar Pipeline]):::startEnd\n';
 
-        if (steps.length === 0) {
-            graph += 'End([🏁 Fin]):::startEnd\n';
-        } else {
-            let prevNode = 'Start';
-            steps.forEach((s, idx) => {
-                const nodeId = `Step_${idx}`;
-                const label = s.isControl ? `${s.type}: ${s.condition || ''}` : s.name;
-                const cssClass = s.isControl ? 'control' : 'customStep';
-                
-                graph += `${nodeId}["${label}"]:::${cssClass}\n`;
-                if (idx > 0) {
-                    graph += `  ${prevNode} --> ${nodeId}\n`;
+        let idCounter = 1;
+        const makeId = (prefix: string) => `${prefix}_${idCounter++}`;
+
+        let totalNodesCount = 0;
+        let loopsCount = 0;
+        let condCount = 0;
+        let parallelCount = 0;
+
+        const buildSubgraph = (nodes: ParsedStepNode[], entryNodeId: string): string => {
+            let current = entryNodeId;
+            for (const n of nodes) {
+                totalNodesCount++;
+                if (n.type === 'wpipe_if' || n.type === 'wpipe_if_else') {
+                    condCount++;
+                    const condId = makeId('Cond');
+                    const joinId = makeId('Join');
+                    const label = (n.condition || 'Condición').replace(/"/g, "'");
+                    graph += `  ${condId}{"🔀 ${label}"}:::control\n`;
+                    graph += `  ${current} --> ${condId}\n`;
+                    graph += `  ${joinId}((•)):::control\n`;
+
+                    if (n.branchTrue && n.branchTrue.length > 0) {
+                        const trueStart = makeId('BranchT');
+                        const firstTrue = n.branchTrue[0];
+                        const trueLabel = (firstTrue.stepName || firstTrue.type).replace(/"/g, "'");
+                        graph += `  ${trueStart}["${trueLabel}"]:::customStep\n`;
+                        graph += `  ${condId} -->|True| ${trueStart}\n`;
+                        const trueEnd = buildSubgraph(n.branchTrue.slice(1), trueStart);
+                        graph += `  ${trueEnd} --> ${joinId}\n`;
+                    } else {
+                        graph += `  ${condId} -->|True| ${joinId}\n`;
+                    }
+
+                    if (n.branchFalse && n.branchFalse.length > 0) {
+                        const falseStart = makeId('BranchF');
+                        const firstFalse = n.branchFalse[0];
+                        const falseLabel = (firstFalse.stepName || firstFalse.type).replace(/"/g, "'");
+                        graph += `  ${falseStart}["${falseLabel}"]:::customStep\n`;
+                        graph += `  ${condId} -->|False| ${falseStart}\n`;
+                        const falseEnd = buildSubgraph(n.branchFalse.slice(1), falseStart);
+                        graph += `  ${falseEnd} --> ${joinId}\n`;
+                    } else {
+                        graph += `  ${condId} -->|False| ${joinId}\n`;
+                    }
+                    current = joinId;
+                } else if (n.type === 'wpipe_for') {
+                    loopsCount++;
+                    const loopId = makeId('Loop');
+                    graph += `  ${loopId}["🔁 For (${n.iterations || 3} iter)"]:::control\n`;
+                    graph += `  ${current} --> ${loopId}\n`;
+
+                    if (n.branchTrue && n.branchTrue.length > 0) {
+                        const bodyStart = makeId('LoopBody');
+                        const firstBody = n.branchTrue[0];
+                        const bodyLabel = (firstBody.stepName || firstBody.type).replace(/"/g, "'");
+                        graph += `  ${bodyStart}["${bodyLabel}"]:::customStep\n`;
+                        graph += `  ${loopId} -->|do| ${bodyStart}\n`;
+                        const bodyEnd = buildSubgraph(n.branchTrue.slice(1), bodyStart);
+                        const loopEndId = makeId('EndLoop');
+                        graph += `  ${loopEndId}((•)):::control\n`;
+                        graph += `  ${bodyEnd} --> ${loopEndId}\n`;
+                        graph += `  ${loopId} -->|done| ${loopEndId}\n`;
+                        current = loopEndId;
+                    } else {
+                        current = loopId;
+                    }
+                } else if (n.type === 'wpipe_parallel') {
+                    parallelCount++;
+                    const parId = makeId('Parallel');
+                    graph += `  ${parId}["⚡ Parallel (${n.mergePolicy || 'accumulate'})"]:::control\n`;
+                    graph += `  ${current} --> ${parId}\n`;
+
+                    if (n.branchTrue && n.branchTrue.length > 0) {
+                        const joinPar = makeId('JoinPar');
+                        graph += `  ${joinPar}((•)):::control\n`;
+                        for (const child of n.branchTrue) {
+                            const childId = makeId('ParStep');
+                            const childLabel = (child.stepName || child.type).replace(/"/g, "'");
+                            graph += `  ${childId}["${childLabel}"]:::customStep\n`;
+                            graph += `  ${parId} --> ${childId}\n`;
+                            const childEnd = buildSubgraph(child.branchTrue || [], childId);
+                            graph += `  ${childEnd} --> ${joinPar}\n`;
+                        }
+                        current = joinPar;
+                    } else {
+                        current = parId;
+                    }
+                } else if (n.type === 'wpipe_background') {
+                    const bgId = makeId('Bg');
+                    const taskName = n.stepName || 'AsyncTask';
+                    graph += `  ${bgId}["⏳ Background: ${taskName}"]:::control\n`;
+                    graph += `  ${current} -.->|async spawn| ${bgId}\n`;
+                    // Background doesn't block the main flow, continue with current
                 } else {
-                    graph += `  Start --> ${nodeId}\n`;
+                    const stepId = makeId('Step');
+                    const label = (n.stepName || 'Step').replace(/"/g, "'");
+                    graph += `  ${stepId}["${label}"]:::customStep\n`;
+                    graph += `  ${current} --> ${stepId}\n`;
+                    current = stepId;
                 }
-                prevNode = nodeId;
-            });
-            graph += `  ${prevNode} --> End([🏁 Fin]):::startEnd\n`;
+            }
+            return current;
+        };
+
+        if (parsedSteps.length === 0) {
+            graph += '  Start --> End([🏁 Fin]):::startEnd\n';
+        } else {
+            const finalNode = buildSubgraph(parsedSteps, 'Start');
+            graph += `  ${finalNode} --> End([🏁 Fin]):::startEnd\n`;
         }
 
         // Estadísticas y Complejidad Big-O
-        let loopsCount = steps.filter(s => s.type === 'For').length;
-        let condCount = steps.filter(s => s.type === 'Condition').length;
-        let parallelCount = steps.filter(s => s.type === 'Parallel').length;
-        
         let bigO = 'O(N)';
         if (loopsCount > 1) bigO = 'O(N²+)';
         else if (loopsCount === 1) bigO = 'O(N)';
         else if (parallelCount > 0) bigO = 'O(N/k)';
         
         const stats = {
-            totalSteps: steps.length,
+            totalSteps: totalNodesCount,
             loops: loopsCount,
             conditions: condCount,
             parallels: parallelCount
@@ -272,7 +296,7 @@ export class DAGPanel {
         if (loopsCount > 0 && parallelCount === 0) {
             suggestions.push('Considera paralelizar los bucles usando Parallel(...) si las iteraciones son independientes.');
         }
-        if (steps.length > 8) {
+        if (totalNodesCount > 8) {
             suggestions.push('El pipeline tiene más de 8 estados. Considera dividirlo en subpipelines acoplados.');
         }
 

@@ -25,6 +25,36 @@ export interface ParsedStepNode {
 
 export class PipelineDecompiler {
   /**
+   * Extract balanced bracket content starting from a matched prefix pattern in text.
+   * E.g. prefix: /(?:set_steps|steps)\s*\(\s*\[/ -> extracts everything up to the matching closing ']'
+   */
+  public static extractBalanced(text: string, prefixRegex: RegExp, openChar: string = "[", closeChar: string = "]"): string | null {
+    const match = prefixRegex.exec(text);
+    if (!match) return null;
+
+    const startIdx = match.index + match[0].length;
+    let depth = 1;
+    let inQuote: string | null = null;
+
+    for (let i = startIdx; i < text.length; i++) {
+      const ch = text[i];
+      if ((ch === '"' || ch === "'") && (i === 0 || text[i - 1] !== "\\")) {
+        if (!inQuote) inQuote = ch;
+        else if (inQuote === ch) inQuote = null;
+      } else if (!inQuote) {
+        if (ch === openChar) depth++;
+        else if (ch === closeChar) {
+          depth--;
+          if (depth === 0) {
+            return text.substring(startIdx, i);
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Tokenize balanced argument lists ignoring commas inside brackets/parens/quotes.
    */
   public static tokenize(s: string): string[] {
@@ -72,11 +102,11 @@ export class PipelineDecompiler {
       const exprMatch = tr.match(/expression\s*=\s*(["'])([\s\S]*?)\1/);
       const expr = exprMatch ? exprMatch[2] : "status_code == 200";
 
-      const btMatch = tr.match(/branch_true\s*=\s*\[([\s\S]*?)\]/);
-      const btTokens = btMatch ? this.tokenize(btMatch[1]) : [];
+      const btRaw = this.extractBalanced(tr, /branch_true\s*=\s*\[/);
+      const btTokens = btRaw !== null ? this.tokenize(btRaw) : [];
 
-      const bfMatch = tr.match(/branch_false\s*=\s*\[([\s\S]*?)\]/);
-      const bfTokens = bfMatch ? this.tokenize(bfMatch[1]) : [];
+      const bfRaw = this.extractBalanced(tr, /branch_false\s*=\s*\[/);
+      const bfTokens = bfRaw !== null ? this.tokenize(bfRaw) : [];
 
       return {
         type: bfTokens.length > 0 ? "wpipe_if_else" : "wpipe_if",
@@ -89,8 +119,8 @@ export class PipelineDecompiler {
       const itersMatch = tr.match(/iterations\s*=\s*(\d+)/);
       const iters = itersMatch ? parseInt(itersMatch[1], 10) : 3;
 
-      const stepsMatch = tr.match(/steps\s*=\s*\[([\s\S]*?)\]/);
-      const stepTokens = stepsMatch ? this.tokenize(stepsMatch[1]) : [];
+      const stepsRaw = this.extractBalanced(tr, /steps\s*=\s*\[/);
+      const stepTokens = stepsRaw !== null ? this.tokenize(stepsRaw) : [];
 
       return {
         type: "wpipe_for",
@@ -102,8 +132,8 @@ export class PipelineDecompiler {
       const mergeMatch = tr.match(/merge_policy\s*=\s*(["'])([\s\S]*?)\1/);
       const merge = mergeMatch ? mergeMatch[2] : "accumulate";
 
-      const stepsMatch = tr.match(/steps\s*=\s*\[([\s\S]*?)\]/);
-      const stepTokens = stepsMatch ? this.tokenize(stepsMatch[1]) : [];
+      const stepsRaw = this.extractBalanced(tr, /steps\s*=\s*\[/);
+      const stepTokens = stepsRaw !== null ? this.tokenize(stepsRaw) : [];
 
       return {
         type: "wpipe_parallel",
@@ -117,6 +147,7 @@ export class PipelineDecompiler {
       return {
         type: "wpipe_background",
         stepName: innerName,
+        branchTrue: [this.parseItem(stepMatch ? stepMatch[1] : innerName)],
         raw: tr,
       };
     } else {
@@ -139,15 +170,16 @@ export class PipelineDecompiler {
       return null;
     }
 
-    // 1. Find set_steps list
-    const m = pythonCode.match(/(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)/) ||
-              pythonCode.match(/steps\s*=\s*\[([\s\S]*?)\]/);
+    // 1. Find set_steps list with balanced bracket extraction
+    let stepsRaw = this.extractBalanced(pythonCode, /(?:set_steps|steps)\s*\(\s*\[/);
+    if (stepsRaw === null) {
+      stepsRaw = this.extractBalanced(pythonCode, /steps\s*=\s*\[/);
+    }
 
-    if (!m) {
+    if (stepsRaw === null) {
       return null;
     }
 
-    const stepsRaw = m[1];
     const tokens = this.tokenize(stepsRaw);
     const parsedSteps = tokens.map((t) => this.parseItem(t));
 
@@ -215,13 +247,19 @@ export class PipelineDecompiler {
         }
         return block;
       } else if (itype === "wpipe_background") {
-        return {
+        const block: any = {
           type: "wpipe_background",
           id: makeId(),
-          fields: {
-            STEP_NAME: item.stepName || "AsyncTask",
-          },
+          fields: {},
         };
+        if (item.branchTrue && item.branchTrue.length > 0) {
+          block.inputs = {
+            DO: {
+              block: chainNodes(item.branchTrue),
+            },
+          };
+        }
+        return block;
       } else {
         // Step node: check whether it's a catalog step or a user-created custom Python step
         const sName = item.stepName || "Step";

@@ -119,8 +119,9 @@ CATALOG_CONTEXT_TO_STEP: dict[str, str] = {
 
 
 def sanitize_ident(name: str) -> str:
-    # Convert CamelCase to snake_case if applicable
-    s = re.sub(r"(?<!^)(?=[A-Z])", "_", name)
+    # Convert PascalCase / CamelCase to standard snake_case handling acronyms (e.g. AISentimentStep -> ai_sentiment_step)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
     s = re.sub(r"[^0-9a-zA-Z_]", "_", s)
     s = re.sub(r"_+", "_", s).strip("_")
     if not s or s[0].isdigit():
@@ -257,6 +258,18 @@ class ASTCompiler:
             code_snippet = data.get("code_snippet") or data.get("custom_code")
             origin = data.get("origin")
             block_type = data.get("block_type")
+
+            # Check if this is one of our standard built-in template steps before treating as generic custom
+            if fn == "CleanDataStep":
+                imports.add("from states.clean_data_step import CleanDataStep")
+                step_names_for_readme.append("CleanDataStep")
+                pfx = data.get("params", {}).get("prefix", "clean_")
+                return f'{pad}CleanDataStep(prefix="{pfx}")'
+            elif fn == "TransformPayloadStep":
+                imports.add("from states.transform_payload_step import TransformPayloadStep")
+                step_names_for_readme.append("TransformPayloadStep")
+                mode = data.get("params", {}).get("mode", "standard")
+                return f'{pad}TransformPayloadStep(mode="{mode}")'
 
             if code_snippet or origin == "user_imported" or block_type == "wpipe_user_file_step":
                 safe_stem = sanitize_ident(fn)

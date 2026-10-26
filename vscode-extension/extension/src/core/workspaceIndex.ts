@@ -88,7 +88,28 @@ export class WorkspaceIndex {
     }
 
     public static getStep(name: string): WorkspaceStep | undefined {
-        return this.steps.get(name);
+        if (!name) return undefined;
+        if (this.steps.has(name)) return this.steps.get(name);
+
+        const clean = name.replace(/(?:[_\s-]*step)+$/i, "");
+        if (this.steps.has(clean)) return this.steps.get(clean);
+        if (this.steps.has(`${clean}Step`)) return this.steps.get(`${clean}Step`);
+
+        const lowerName = name.toLowerCase();
+        const lowerClean = clean.toLowerCase();
+        for (const step of this.steps.values()) {
+            const fileName = step.filePath.split(/[/\\]/).pop() || "";
+            const fileStem = fileName.replace(/\.py$/, "").toLowerCase();
+            if (
+                fileStem === lowerName ||
+                fileStem === lowerClean ||
+                fileStem === `${lowerClean}_step` ||
+                fileStem.replace(/(?:[_\s-]*step)+$/i, "") === lowerClean
+            ) {
+                return step;
+            }
+        }
+        return undefined;
     }
 
     public static getAllSteps(): WorkspaceStep[] {

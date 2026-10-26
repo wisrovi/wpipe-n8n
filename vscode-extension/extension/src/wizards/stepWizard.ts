@@ -33,11 +33,13 @@ export async function createNewStepWizard() {
 
     if (!stepName) return;
 
-    // Convert to PascalCase for Class naming convention
-    const formattedStepName = stepName
+    // Convert to PascalCase with standard Step suffix (e.g. Pan -> PanStep, PanStep -> PanStep)
+    const cleanStepName = stepName.replace(/[_\s-]*step$/i, '');
+    const formattedWords = (cleanStepName || 'Custom')
         .split(/[_-]/)
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join('');
+    const formattedStepName = `${formattedWords}Step`;
 
     // 2. Prepare file names (normalize to snake_case)
     const fileName = formattedStepName

@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  main_pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wisrovi/main_pipeline:latest
+    container_name: main_pipeline_microservice
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./output:/app/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

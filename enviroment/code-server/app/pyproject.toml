@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+pythonpath = ["app", "."]
+testpaths = ["app/test", "tests"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["config", "dto", "services", "states", "utils", "pipelines", "main", "app"]
+
+[tool.mypy]
+mypy_path = ["app"]
+explicit_package_bases = true

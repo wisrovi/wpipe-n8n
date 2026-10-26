@@ -1,0 +1,12 @@
+# Configuration for main_pipeline (WPipe Microservice)
+microservice_name: "main_pipeline"
+version: "1.0.0"
+environment: "production"
+debug: false
+server:
+  host: "0.0.0.0"
+  port: 8000
+  root_path: ""
+tracking:
+  db_path: "output/tracking.db"
+  collect_system_metrics: true

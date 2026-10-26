@@ -1408,7 +1408,17 @@ export default function App() {
               setProjectName(project.name);
             }
             if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
-              loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+              const wsToLoad = (project.canvas_ir as any).workspace_state;
+              const loaded = loadWorkspaceStateJson(wsToLoad);
+              if (!loaded) {
+                // If activeWorkspaceRef was not yet mounted, retry with backoff
+                const retryTimer = setInterval(() => {
+                  if (loadWorkspaceStateJson(wsToLoad)) {
+                    clearInterval(retryTimer);
+                  }
+                }, 100);
+                setTimeout(() => clearInterval(retryTimer), 4000);
+              }
             }
             if (project.generated_files && project.generated_files.length > 0) {
               setGeneratedFiles(project.generated_files);
@@ -1460,11 +1470,28 @@ export default function App() {
               parsedObj?.canvas_ir?.workspace_state;
 
             if (wsState) {
-              loadWorkspaceStateJson(wsState);
+              const loaded = loadWorkspaceStateJson(wsState);
+              if (!loaded) {
+                const retryTimer = setInterval(() => {
+                  if (loadWorkspaceStateJson(wsState)) {
+                    clearInterval(retryTimer);
+                  }
+                }, 100);
+                setTimeout(() => clearInterval(retryTimer), 4000);
+              }
             } else {
               const project = parseWpipeFileContent(raw);
               if (project.canvas_ir && (project.canvas_ir as any).workspace_state) {
-                loadWorkspaceStateJson((project.canvas_ir as any).workspace_state);
+                const wsToLoad = (project.canvas_ir as any).workspace_state;
+                const loaded = loadWorkspaceStateJson(wsToLoad);
+                if (!loaded) {
+                  const retryTimer = setInterval(() => {
+                    if (loadWorkspaceStateJson(wsToLoad)) {
+                      clearInterval(retryTimer);
+                    }
+                  }, 100);
+                  setTimeout(() => clearInterval(retryTimer), 4000);
+                }
               }
             }
             setTimeout(() => {

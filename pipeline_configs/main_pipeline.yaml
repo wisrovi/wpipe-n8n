@@ -1,0 +1,24 @@
+name: main_pipeline
+registered_at: '2026-10-25T17:43:30.580504'
+step_count: 5
+steps:
+- func: <states.clean_data_step.CleanDataStep object at 0x79b5437d77d0>
+  name: CleanDataStep
+  type: task
+  version: 1.0.0
+- func: <states.transform_payload_step.TransformPayloadStep object at 0x79b543c47fe0>
+  name: TransformPayloadStep
+  type: task
+  version: 1.0.0
+- func: <states.ai_sentiment_step.AISentimentStep object at 0x79b543c47e30>
+  name: AISentimentStep
+  type: task
+  version: 1.0.0
+- func: <states.enrichment_step.EnrichmentStep object at 0x79b5438d4f50>
+  name: EnrichmentStep
+  type: task
+  version: 1.0.0
+- func: <states.quality_check_step.QualityCheckStep object at 0x79b547bec560>
+  name: QualityCheckStep
+  type: task
+  version: 1.0.0

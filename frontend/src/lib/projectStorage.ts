@@ -237,24 +237,25 @@ export function parseWpipeFileContent(rawContent: string): BrowserProject {
 
   // Case 5: Workspace state only or arbitrary pipeline object fallback
   if (parsed && typeof parsed === "object") {
-    const nodes = (parsed.canvas_ir && parsed.canvas_ir.nodes) || parsed.nodes || [];
+    const rawProject = parsed.project || parsed;
+    const nodes = (rawProject.canvas_ir && rawProject.canvas_ir.nodes) || rawProject.nodes || [];
     const wsState =
-      parsed.workspace_state ||
-      (parsed.canvas_ir && parsed.canvas_ir.workspace_state) ||
-      buildWorkspaceStateFromStepsOrNodes(Array.isArray(nodes) ? nodes : parsed.steps);
+      rawProject.workspace_state ||
+      (rawProject.canvas_ir && rawProject.canvas_ir.workspace_state) ||
+      buildWorkspaceStateFromStepsOrNodes(Array.isArray(nodes) ? nodes : rawProject.steps);
     return {
-      id: parsed.id || `proj_imported_${Date.now()}`,
-      name: parsed.name || "pipeline",
-      description: parsed.description || "Imported WPipe Pipeline",
+      id: rawProject.id || parsed.id || `proj_imported_${Date.now()}`,
+      name: rawProject.name || parsed.name || "pipeline",
+      description: rawProject.description || parsed.description || "Imported WPipe Pipeline",
       owner_id: "browser_local_user",
-      docker_image: parsed.docker_image || "python:3.11-slim",
-      protocol: parsed.protocol || "fastapi",
+      docker_image: rawProject.docker_image || parsed.docker_image || "python:3.11-slim",
+      protocol: rawProject.protocol || parsed.protocol || "fastapi",
       canvas_ir: {
         nodes: Array.isArray(nodes) ? nodes : [],
         workspace_state: wsState,
       },
-      generated_files: parsed.generated_files || parsed.files || [],
-      files: parsed.generated_files || parsed.files || [],
+      generated_files: rawProject.generated_files || rawProject.files || parsed.generated_files || parsed.files || [],
+      files: rawProject.generated_files || rawProject.files || parsed.generated_files || parsed.files || [],
       node_count: Array.isArray(nodes) ? nodes.length : 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

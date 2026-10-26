@@ -197,10 +197,14 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             } catch {
               curObj = {};
             }
+            if (!curObj.format) curObj.format = "wpipe";
             if (!curObj.project) curObj.project = {};
+            curObj.project.name = curObj.project.name || path.basename(wFileUri.fsPath, path.extname(wFileUri.fsPath));
             curObj.project.workspace_state = workspaceState;
             if (!curObj.project.canvas_ir) curObj.project.canvas_ir = {};
             curObj.project.canvas_ir.workspace_state = workspaceState;
+            curObj.workspace_state = workspaceState;
+            curObj.canvas_ir = { workspace_state: workspaceState };
 
             await vscode.workspace.fs.writeFile(
               wFileUri,
@@ -299,6 +303,10 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       }
 
       // Always ensure workspace_state reflects current app/pipelines.py if present
+      const defaultName = document
+        ? path.basename(document.uri.fsPath, path.extname(document.uri.fsPath))
+        : "main_pipeline";
+
       try {
         const wsFolder = (document && vscode.workspace.getWorkspaceFolder(document.uri)) || vscode.workspace.workspaceFolders?.[0];
         if (wsFolder) {
@@ -309,14 +317,36 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             await WorkspaceIndex.indexWorkspace();
             const decompiledState = PipelineDecompiler.decompile(pyCode);
             if (decompiledState) {
+              if (!docContent.format) docContent.format = "wpipe";
               if (!docContent.project) docContent.project = {};
+              docContent.project.name = docContent.project.name || defaultName;
               docContent.project.workspace_state = decompiledState;
               if (!docContent.project.canvas_ir) docContent.project.canvas_ir = {};
               docContent.project.canvas_ir.workspace_state = decompiledState;
+              docContent.workspace_state = decompiledState;
+              docContent.canvas_ir = { workspace_state: decompiledState };
             }
           }
         }
       } catch {}
+
+      // Normalize docContent in all cases so both legacy and standard .wpipe formats are recognized
+      if (!docContent.format) docContent.format = "wpipe";
+      const actualWsState =
+        docContent.project?.workspace_state ||
+        docContent.workspace_state ||
+        docContent.project?.canvas_ir?.workspace_state ||
+        docContent.canvas_ir?.workspace_state;
+
+      if (actualWsState) {
+        if (!docContent.project) docContent.project = {};
+        docContent.project.name = docContent.project.name || defaultName;
+        docContent.project.workspace_state = actualWsState;
+        if (!docContent.project.canvas_ir) docContent.project.canvas_ir = {};
+        docContent.project.canvas_ir.workspace_state = actualWsState;
+        docContent.workspace_state = actualWsState;
+        docContent.canvas_ir = { workspace_state: actualWsState };
+      }
 
       webviewPanel.webview.postMessage({
         type: "init",
@@ -351,6 +381,24 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
             ? document.uri 
             : (wsFolder ? vscode.Uri.file(path.join(wsFolder.uri.fsPath, `${projectName}.wpipe`)) : undefined);
 
+          // Guarantee standard format in saved .wpipe file
+          const payloadToSave = msg.canvasIr || {};
+          if (!payloadToSave.format) payloadToSave.format = "wpipe";
+          if (!payloadToSave.project) payloadToSave.project = {};
+          payloadToSave.project.name = projectName;
+          const saveWsState =
+            payloadToSave.project.workspace_state ||
+            payloadToSave.workspace_state ||
+            payloadToSave.project.canvas_ir?.workspace_state ||
+            payloadToSave.canvas_ir?.workspace_state;
+          if (saveWsState) {
+            payloadToSave.project.workspace_state = saveWsState;
+            payloadToSave.workspace_state = saveWsState;
+            if (!payloadToSave.project.canvas_ir) payloadToSave.project.canvas_ir = {};
+            payloadToSave.project.canvas_ir.workspace_state = saveWsState;
+            payloadToSave.canvas_ir = { workspace_state: saveWsState };
+          }
+
           if (wpipeFileUri) {
             try {
               if (document) {
@@ -359,13 +407,13 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                   document.positionAt(0),
                   document.positionAt(document.getText().length)
                 );
-                edit.replace(document.uri, fullRange, JSON.stringify(msg.canvasIr, null, 2));
+                edit.replace(document.uri, fullRange, JSON.stringify(payloadToSave, null, 2));
                 await vscode.workspace.applyEdit(edit);
                 await document.save();
               }
               await vscode.workspace.fs.writeFile(
                 wpipeFileUri,
-                Buffer.from(JSON.stringify(msg.canvasIr, null, 2), "utf8")
+                Buffer.from(JSON.stringify(payloadToSave, null, 2), "utf8")
               );
             } catch (fsErr) {
               console.warn("Direct file save error:", fsErr);

@@ -1,0 +1,24 @@
+name: admin_cloudfire_pipeline
+registered_at: '2026-10-25T15:07:36.397711'
+step_count: 5
+steps:
+- func: <states.fetch_stats_step.FetchStatsStep object at 0x7cc742d86ed0>
+  name: unknown
+  type: task
+  version: v1.0
+- func: <states.manage_licenses_step.ManageLicensesStep object at 0x7cc742d87380>
+  name: unknown
+  type: task
+  version: v1.0
+- func: <states.manage_activations_step.ManageActivationsStep object at 0x7cc742d870b0>
+  name: unknown
+  type: task
+  version: v1.0
+- func: <states.manage_leases_step.ManageLeasesStep object at 0x7cc742d87170>
+  name: unknown
+  type: task
+  version: v1.0
+- func: <states.manage_audit_step.ManageAuditStep object at 0x7cc742d86ff0>
+  name: unknown
+  type: task
+  version: v1.0

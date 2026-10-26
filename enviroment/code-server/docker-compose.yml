@@ -1,19 +1,42 @@
-version: "3.8"
-
 services:
-  main_pipeline:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: wisrovi/main_pipeline:latest
-    container_name: main_pipeline_microservice
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
+  code-server-1:
+    image: codercom/code-server:4.16.1-ubuntu
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - DOCKER_USER=$USER
     volumes:
-      - ./output:/app/output
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      - ./app:/home/coder/workspace
+    ports:
+      - 18001:8080
+    entrypoint: ["/usr/bin/entrypoint.sh", "--bind-addr", "0.0.0.0:8080", "--auth", "none", "--disable-telemetry", "--disable-workspace-trust", "/home/coder/workspace"]
+    restart: unless-stopped
+
+  code-server-2:
+    image: codercom/code-server:4.16.1-ubuntu
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - DOCKER_USER=$USER
+    volumes:
+      - ./app:/home/coder/workspace
+    ports:
+      - 18002:8080
+    entrypoint: ["/usr/bin/entrypoint.sh", "--bind-addr", "0.0.0.0:8080", "--auth", "none", "--disable-telemetry", "--disable-workspace-trust", "/home/coder/workspace"]
+    restart: unless-stopped
+
+  code-server-3:
+    image: codercom/code-server:4.16.1-ubuntu
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - DOCKER_USER=$USER
+    volumes:
+      - ./app:/home/coder/workspace
+    ports:
+      - 18003:8080
+    entrypoint: ["/usr/bin/entrypoint.sh", "--bind-addr", "0.0.0.0:8080", "--auth", "none", "--disable-telemetry", "--disable-workspace-trust", "/home/coder/workspace"]
+    restart: unless-stopped

@@ -352,7 +352,6 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node && cp src/steps_catalog.json dist/",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch"
   },

@@ -15,9 +15,9 @@ El entorno de pruebas de la extensión de VS Code se apoya en 3 instancias simul
 
 | Instancia | Puerto Local | Contenedor Docker | Rol en Pruebas |
 |---|---|---|---|
-| **Página 1 (Instancia 1)** | `http://localhost:8080/?folder=/home/coder/workspace` | `ksldfg-code-server-1` | **Canvas Visual Blockly (`pipeline.wpipe`)**: Comprobación del layout de bloques, conexiones en serie/paralelo, badges de licencia (`Blocks X / ∞ · PRO`), paleta de herramientas y consola sin errores de CSP. |
-| **Página 2 (Instancia 2)** | `http://localhost:8081/?folder=/home/coder/workspace` | `ksldfg-code-server2-1` | **Explorador y Árbol de Estados (`app/states/`)**: Inspección del registro de estados, archivos `.py` sincronizados, creación vía Wizard y árbol lateral de pasos. |
-| **Página 3 (Instancia 3)** | `http://localhost:8082/?folder=/home/coder/workspace` | `ksldfg-code-server3-1` | **Editor de Código Python (`app/pipelines.py`)**: Validación del código descompilado/compilado, ejecución con `execute_pipeline(payload)`, decoradores `@step` y `@to_obj`. |
+| **Página 1 (Instancia 1)** | `http://localhost:18081/?folder=/home/coder/workspace` | `ksldfg-code-server-1` | **Canvas Visual Blockly (`pipeline.wpipe`)**: Comprobación del layout de bloques, conexiones en serie/paralelo, badges de licencia (`Blocks X / ∞ · PRO`), paleta de herramientas y consola sin errores de CSP. |
+| **Página 2 (Instancia 2)** | `http://localhost:18082/?folder=/home/coder/workspace` | `ksldfg-code-server2-1` | **Explorador y Árbol de Estados (`app/states/`)**: Inspección del registro de estados, archivos `.py` sincronizados, creación vía Wizard y árbol lateral de pasos. |
+| **Página 3 (Instancia 3)** | `http://localhost:18083/?folder=/home/coder/workspace` | `ksldfg-code-server3-1` | **Editor de Código Python (`app/pipelines.py`)**: Validación del código descompilado/compilado, ejecución con `execute_pipeline(payload)`, decoradores `@step` y `@to_obj`. |
 
 ---
 
@@ -59,7 +59,7 @@ call_mcp_tool:
   ToolName: "list_pages"
   Arguments: {}
 ```
-Verifica que las páginas 1, 2 y 3 corresponden a los puertos 8080, 8081 y 8082.
+Verifica que las páginas 1, 2 y 3 corresponden a los puertos 18081, 18082 y 18083.
 
 ### 3.2 Seleccionar y Recargar Páginas
 Para forzar que el cliente Webview cargue el nuevo VSIX:
@@ -110,7 +110,7 @@ El valor diferencial de WPipe Studio es que la edición de código sincroniza el
    ```bash
    touch /home/wisrovi/Downloads/ksñldfg/app/app/pipelines.py
    ```
-3. Toma una captura con `take_screenshot` en la Página 1 (`:8080`).
+3. Toma una captura con `take_screenshot` en la Página 1 (`:18081`).
 4. **Verificación:** El nuevo bloque debe aparecer automáticamente en el Canvas visual sin requerir recargar la página.
 
 ### 4.2 Prueba Wizard $\rightarrow$ Workspace $\rightarrow$ Editor
@@ -119,8 +119,8 @@ El valor diferencial de WPipe Studio es que la edición de código sincroniza el
    - Decorador `@step(name="...", version="1.0.0")`
    - `@to_obj(ContextDTO)` y `@timeout_sync(seconds=...)`
    - Método `__call__(self, context: Any) -> Any`
-3. En la Página 2 (`:8081`), comprueba que aparezca en el árbol de pasos.
-4. En la Página 3 (`:8082`), comprueba que el editor refleje el código Python sin advertencias de diagnóstico.
+3. En la Página 2 (`:18082`), comprueba que aparezca en el árbol de pasos.
+4. En la Página 3 (`:18083`), comprueba que el editor refleje el código Python sin advertencias de diagnóstico.
 
 ---
 
@@ -130,20 +130,20 @@ Este escenario valida la colaboración distribuida, descompilación balanceada A
 
 ```mermaid
 flowchart TD
-  subgraph VS1["VS Code 1 (:8080) - Visual Canvas"]
+  subgraph VS1["VS Code 1 (:18081) - Visual Canvas"]
     A1["1. Limpieza total del workspace"] --> A2["2. Inicializa nuevo pipeline visual"]
     A2 --> A3["Cierra editor visual"]
     A3 -.->|Hereda cambios transparentemente| A4["7. Reabre editor visual (pipeline.wpipe)"]
     A4 --> A5["Renderiza automáticamente todos los estados anidados"]
   end
 
-  subgraph VS2["VS Code 2 (:8081) - Steps Wizard & DAG"]
+  subgraph VS2["VS Code 2 (:18082) - Steps Wizard & DAG"]
     B1["3. Crea 2 estados con el Wizard (ForLoopState & BgTaskState)"] --> B2["4. Inserta en pipeline dentro de For(...) y Background(...)"]
     B2 --> B3["5. Abre DAG Mermaid y verifica estructura"]
     B3 -.->|Re-renderiza con cambios externos| B4["6. Re-renderiza DAG con branching Condition"]
   end
 
-  subgraph VS3["VS Code 3 (:8082) - Manual Code Editing"]
+  subgraph VS3["VS Code 3 (:18083) - Manual Code Editing"]
     C1["5a. Crea manualmente TrueBranchState y FalseBranchState"] --> C2["5b. Actualiza __init__.py"]
     C2 --> C3["5c. Añade Condition(...) con branch_true y branch_false en pipelines.py"]
   end
@@ -155,25 +155,25 @@ flowchart TD
 
 ### Pasos Operativos del Escenario E2E
 
-1. **VS Code 1 (`:8080`)**:
+1. **VS Code 1 (`:18081`)**:
    - Inicia desde un workspace completamente limpio (archivos eliminados).
    - Genera/abre el canvas visual de bloques (`pipeline.wpipe`) iniciando un nuevo pipeline vacío (`MainPipeline`).
    - Cierra el canvas antes de pasar a la siguiente instancia.
 
-2. **VS Code 2 (`:8081`)**:
+2. **VS Code 2 (`:18082`)**:
    - Ejecuta el Wizard de creación de estados (`wpipe-vscode.createNewStep`) creando 2 estados: `ForLoopState` y `BgTaskState`.
    - Incluye ambos estados en `app/pipelines.py`: uno dentro de un bucle `For(iterations=3, steps=[ForLoopState()])` y el otro en una tarea asíncrona en segundo plano `Background(step=BgTaskState())`.
    - Abre la vista previa del DAG (`wpipe-vscode.previewDAG`) y confirma que captura el pipeline completo con el bucle y la tarea asíncrona.
 
-3. **VS Code 3 (`:8082`)**:
+3. **VS Code 3 (`:18083`)**:
    - De forma manual (creando los archivos en `app/states/` y editando `app/states/__init__.py`), crea 2 estados adicionales: `TrueBranchState` y `FalseBranchState`.
    - Modifica `app/pipelines.py` agregando una estructura condicional `Condition(expression="status_code == 200", branch_true=[TrueBranchState()], branch_false=[FalseBranchState()])`.
 
-4. **VS Code 2 (`:8081`)**:
+4. **VS Code 2 (`:18082`)**:
    - Vuelve a renderizar el DAG interactivo (`previewDAG`).
    - Confirma visualmente que el grafo Mermaid se actualiza mostrando las ramas condicionales `True` y `False` con los nuevos estados creados en VS Code 3.
 
-5. **VS Code 1 (`:8080`)**:
+5. **VS Code 1 (`:18081`)**:
    - Reabre el diagrama de bloques visual (`pipeline.wpipe`).
    - El descompilador de AST balanceado procesa directamente el código modificado por las otras instancias, renderizando de forma directa y transparente todos los bloques: el bucle `For`, la tarea `Background`, y la bifurcación `Condition` con sus ramas sin pérdida de información.
 

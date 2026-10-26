@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import * as Blockly from "blockly";
 import { CanvasIR, CanvasNode, CanvasEdge, StepOrigin } from "../lib/ir/schemas";
+import { isVSCodeEnvironment } from "../lib/engineBridge";
 
 export interface AttachedUserFile {
   fileName: string;
@@ -1658,7 +1659,7 @@ export const BlocklyComponent: React.FC<BlocklyWorkspaceProps> = ({ onWorkspaceC
       workspaceRef.current = ws;
       activeWorkspaceRef = ws;
 
-      const isVSCodeEnv = window.location.search.includes("mode=vscode") || window.self !== window.top || typeof (window as any).acquireVsCodeApi === "function";
+      const isVSCodeEnv = isVSCodeEnvironment();
 
       // Starter template: 4 blocks (Trigger -> HttpRequest -> Condition -> Response).
       // Only created in standalone browser mode; in VS Code we wait for document/pipeline init state

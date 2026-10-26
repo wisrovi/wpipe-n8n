@@ -10,13 +10,10 @@ from loguru import logger
 from config.settings import settings
 from dto.context import PipelineContextDTO
 from states.agua_step import AguaStep
-from states.ai_process_step_step import AiProcessStepStep
-from states.ai_sentiment_step import AISentimentStep
+from states.ai_process_step import AiProcessStep
 from states.base import BaseStep
-from states.clean_data_step import CleanDataStep
 from states.pan_step import PanStep
 from states.queso_step import QuesoStep
-from states.transform_payload_step import TransformPayloadStep
 from wpipe import Pipeline, Condition, For, Parallel, Background  # type: ignore[import-untyped]
 from wpipe_steps.connectivity.http import httpStep as http
 
@@ -45,7 +42,7 @@ pipe.set_steps([
         Condition(
             expression="http_response.get('status_code') == 200",
             branch_true=[
-            AiProcessStepStep(),
+            AiProcessStep(),
             ],
         ),
         Condition(
@@ -54,7 +51,6 @@ pipe.set_steps([
             AguaStep(),
             ],
         ),
-        Background(step=TransformPayloadStep),
 ])
 
 

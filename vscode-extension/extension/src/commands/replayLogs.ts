@@ -78,6 +78,8 @@ export async function replayLogErrors() {
     // Group errors by file
     const fileToDecorations = new Map<string, { uri: vscode.Uri; decs: { range: vscode.Range; hoverMessage: string }[] }>();
 
+    const defaultExcludes = '{**/node_modules/**,**/.venv/**,**/venv/**,**/__pycache__/**,**/.pytest_cache/**,**/build/**,**/dist/**}';
+
     // Also look for workspace files by exact name to handle subfolder module paths (e.g. app/states/test_state)
     const allWorkspacePy = await vscode.workspace.findFiles('**/*.py', defaultExcludes);
     const pyMap = new Map<string, vscode.Uri>();

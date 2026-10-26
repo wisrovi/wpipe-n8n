@@ -631,11 +631,16 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 <body class="bg-[#07090e] text-gray-100 antialiased font-sans w-full h-full m-0 p-0 overflow-hidden">
   <div id="root" class="w-full h-full min-h-screen"></div>
 
-  <script type="module">
-    // Expose acquireVsCodeApi directly to the native React canvas app
-    const vscode = acquireVsCodeApi();
-    window.vscode = vscode;
-    window.__postToVsCode = (msg) => vscode.postMessage(msg);
+  <script>
+    // Explicitly flag embedded VS Code environment before React bundle executes
+    window.__WPIPE_VSCODE_EMBEDDED__ = true;
+    try {
+      const vscode = acquireVsCodeApi();
+      window.vscode = vscode;
+      window.__postToVsCode = (msg) => vscode.postMessage(msg);
+    } catch (e) {
+      console.warn("VS Code API init:", e);
+    }
   </script>
   <script type="module" crossorigin src="${scriptUri}"></script>
 </body>

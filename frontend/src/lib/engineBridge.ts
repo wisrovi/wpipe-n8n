@@ -180,12 +180,26 @@ export function disconnectedEngineStatus(port: number = DEFAULT_ENGINE_PORT): En
 }
 
 /**
+ * Detect if WPipe Studio is running embedded inside VS Code / code-server
+ */
+export function isVSCodeEnvironment(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    (window as any).__WPIPE_VSCODE_EMBEDDED__ ||
+    (window as any).vscode ||
+    typeof (window as any).acquireVsCodeApi === "function" ||
+    window.location.search.includes("mode=vscode") ||
+    window.self !== window.top
+  );
+}
+
+/**
  * Probe local wpipe-engine health and cryptographic license status
  */
 export async function probeEngineStatus(
   preferredPort: number = DEFAULT_ENGINE_PORT
 ): Promise<EngineStatus> {
-  const isVscodeMode = typeof window !== "undefined" && (window.location.search.includes("mode=vscode") || window.self !== window.top);
+  const isVscodeMode = isVSCodeEnvironment();
   const portsToTry = isVscodeMode
     ? [preferredPort]
     : [preferredPort, ...FALLBACK_ENGINE_PORTS.filter((p) => p !== preferredPort)];

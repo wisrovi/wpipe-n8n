@@ -4,6 +4,7 @@ Transforms visual Canvas IR into production Python microservices conforming to w
 Author: William Rodriguez (wisrovi.dev)
 """
 
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -212,9 +213,6 @@ class ASTCompiler:
             "from config.settings import settings",
             "from dto.context import PipelineContextDTO",
             "from states.base import BaseStep",
-            "from states.clean_data_step import CleanDataStep",
-            "from states.transform_payload_step import TransformPayloadStep",
-            "from states.ai_sentiment_step import AISentimentStep",
         }
 
         user_custom_states: dict[str, str] = {}
@@ -546,12 +544,7 @@ class {class_name}:
                 else:
                     steps_code = "        # No steps configured"
         else:
-            steps_code = "\n".join([
-                "        CleanDataStep(prefix='clean_'),",
-                "        TransformPayloadStep(mode='standard'),",
-                "        AISentimentStep(threshold=0.5),",
-            ])
-            step_names_for_readme.extend(["CleanDataStep", "TransformPayloadStep", "AISentimentStep"])
+            steps_code = "        # No steps configured"
 
         imports_code = "\n".join(sorted(imports))
 
@@ -1087,20 +1080,27 @@ def sanitize_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
 '''
 
         # 12. Class-based States
-        states_init_py = '''"""States package dynamically exporting all registered step classes."""
+        states_init_lines = ['"""States package dynamically exporting all registered step classes."""\n']
+        states_init_lines.append("from states.base import BaseStep")
+        all_exported_steps = ["BaseStep"]
+        if "CleanDataStep" in step_names_for_readme:
+            states_init_lines.append("from states.clean_data_step import CleanDataStep")
+            all_exported_steps.append("CleanDataStep")
+        if "TransformPayloadStep" in step_names_for_readme:
+            states_init_lines.append("from states.transform_payload_step import TransformPayloadStep")
+            all_exported_steps.append("TransformPayloadStep")
+        if "AISentimentStep" in step_names_for_readme:
+            states_init_lines.append("from states.ai_sentiment_step import AISentimentStep")
+            all_exported_steps.append("AISentimentStep")
+        for custom_path in user_custom_states:
+            mod = os.path.splitext(os.path.basename(custom_path))[0]
+            cls = normalize_step_class_name(mod)
+            states_init_lines.append(f"from states.{mod} import {cls}")
+            all_exported_steps.append(cls)
 
-from states.ai_sentiment_step import AISentimentStep
-from states.base import BaseStep
-from states.clean_data_step import CleanDataStep
-from states.transform_payload_step import TransformPayloadStep
-
-__all__ = [
-    "AISentimentStep",
-    "BaseStep",
-    "CleanDataStep",
-    "TransformPayloadStep",
-]
-'''
+        all_exported_steps = sorted(list(set(all_exported_steps)))
+        states_init_lines.append(f"\n__all__ = {all_exported_steps!r}\n")
+        states_init_py = "\n".join(states_init_lines)
 
         states_base_py = '''"""Abstract base step for WPipe microservices."""
 
@@ -1349,28 +1349,43 @@ def test_request_response_dtos() -> None:
     assert resp.transaction_id == "tx_999"
 '''
 
-        test_states_py = '''"""Unit tests for WPipe Step classes."""
+        test_states_lines = ['"""Unit tests for WPipe Step classes."""\n', "from states.base import BaseStep"]
+        if "CleanDataStep" in step_names_for_readme:
+            test_states_lines.append("from states.clean_data_step import CleanDataStep")
+        if "TransformPayloadStep" in step_names_for_readme:
+            test_states_lines.append("from states.transform_payload_step import TransformPayloadStep")
+        if "AISentimentStep" in step_names_for_readme:
+            test_states_lines.append("from states.ai_sentiment_step import AISentimentStep")
 
-from dto.context import PipelineContextDTO
-from states.ai_sentiment_step import AISentimentStep
-from states.clean_data_step import CleanDataStep
-from states.transform_payload_step import TransformPayloadStep
+        test_states_lines.append('''
+def test_base_step_interface() -> None:
+    """Verify BaseStep requires __call__ implementation."""
+    class DummyStep(BaseStep):
+        pass
 
-
+    import pytest
+    with pytest.raises(TypeError):
+        DummyStep()  # type: ignore[abstract]
+''')
+        if "CleanDataStep" in step_names_for_readme:
+            test_states_lines.append('''
 def test_clean_data_step_mutation() -> None:
     """Verify CleanDataStep mutates context fields with configured prefix."""
     step = CleanDataStep(prefix="test_clean_")
+    from dto.context import PipelineContextDTO
     ctx = PipelineContextDTO(transaction_id="tx_1", input_data={"raw_id": "123"})
     result = step(ctx.model_dump())
 
     assert result["status"] == "CLEANED"
     assert result["processed_data"]["test_clean_raw_id"] == "123"
     assert result["metrics"]["cleaned_items"] == 1
-
-
+''')
+        if "TransformPayloadStep" in step_names_for_readme:
+            test_states_lines.append('''
 def test_transform_payload_step_execution() -> None:
     """Verify TransformPayloadStep integrates with processing service."""
     step = TransformPayloadStep(mode="standard")
+    from dto.context import PipelineContextDTO
     ctx = PipelineContextDTO(
         transaction_id="tx_2", input_data={}, processed_data={"field": "data"}
     )
@@ -1379,11 +1394,13 @@ def test_transform_payload_step_execution() -> None:
     assert result["status"] == "TRANSFORMED"
     assert "proc_field" in result["processed_data"]
     assert result["processed_data"]["processed_by"] == "ProcessingService"
-
-
+''')
+        if "AISentimentStep" in step_names_for_readme:
+            test_states_lines.append('''
 def test_ai_sentiment_step_execution() -> None:
     """Verify AISentimentStep scores sentiment correctly."""
     step = AISentimentStep(threshold=0.5)
+    from dto.context import PipelineContextDTO
     ctx = PipelineContextDTO(
         transaction_id="tx_3",
         input_data={"text": "This is a great product with awesome quality"},
@@ -1392,7 +1409,8 @@ def test_ai_sentiment_step_execution() -> None:
 
     assert result["processed_data"]["sentiment_label"] == "POSITIVE"
     assert result["metrics"]["ai_confidence"] > 0.5
-'''
+''')
+        test_states_py = "\n".join(test_states_lines)
 
         test_pipeline_py = f'''"""Integration test for declarative pipeline execution."""
 
@@ -1795,9 +1813,6 @@ explicit_package_bases = true
             "app/services/business_service.py": business_service_py,
             "app/states/__init__.py": states_init_py,
             "app/states/base.py": states_base_py,
-            "app/states/clean_data_step.py": clean_data_step_py,
-            "app/states/transform_payload_step.py": transform_payload_step_py,
-            "app/states/ai_sentiment_step.py": ai_sentiment_step_py,
             "app/test/__init__.py": f'"""Test suite package for {project_name}."""\n',
             "app/test/test_dto.py": test_dto_py,
             "app/test/test_states.py": test_states_py,
@@ -1819,6 +1834,14 @@ explicit_package_bases = true
             "run_tests_docker.sh": run_tests_docker,
             "wpipe.config.json": wpipe_config_json,
         }
+
+        # Include standard built-in states only when actually referenced in pipeline
+        if "CleanDataStep" in step_names_for_readme:
+            raw_files["app/states/clean_data_step.py"] = clean_data_step_py
+        if "TransformPayloadStep" in step_names_for_readme:
+            raw_files["app/states/transform_payload_step.py"] = transform_payload_step_py
+        if "AISentimentStep" in step_names_for_readme:
+            raw_files["app/states/ai_sentiment_step.py"] = ai_sentiment_step_py
 
         # Include dynamically generated custom state files
         raw_files.update(user_custom_states)

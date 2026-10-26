@@ -291,7 +291,10 @@ export class PipelineDecompiler {
         return block;
       } else {
         // Step node: check whether it's a catalog step or a user-created custom Python step
-        const sName = item.stepName || "Step";
+        const rawName = item.stepName || "Step";
+        const sName = rawName.includes("Step")
+          ? rawName.replace(/(?:[_\s-]*step)+$/i, "Step")
+          : rawName;
         const wsStep = WorkspaceIndex.getStep(sName);
         const catSteps = CatalogManager.getSteps();
         const isOfficialOrPlugin = catSteps.some(
@@ -305,13 +308,14 @@ export class PipelineDecompiler {
               type: "wpipe_ai_step",
               id: makeId(),
               fields: {
-                STEP_NAME: sName,
+                STEP_NAME: wsStep.name || sName,
                 AI_PROMPT: wsStep.aiPrompt || wsStep.description || "Paso generado con IA",
               },
             };
           }
           // Custom User Step (Blue block: wpipe_user_file_step)
-          const fallbackSnake = sName
+          const effectiveName = wsStep ? wsStep.name : sName;
+          const fallbackSnake = effectiveName
             .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
             .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
             .toLowerCase();
@@ -320,7 +324,7 @@ export class PipelineDecompiler {
             type: "wpipe_user_file_step",
             id: makeId(),
             fields: {
-              STEP_NAME: sName,
+              STEP_NAME: effectiveName,
               FILE_NAME: fileName,
               FILE_STATUS: `📁 states/${fileName}`,
             },

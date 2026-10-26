@@ -129,6 +129,18 @@ def sanitize_ident(name: str) -> str:
     return s.lower()
 
 
+def normalize_step_class_name(fn: str) -> str:
+    """Normalize a step name to PascalCase with a single Step suffix, avoiding duplications like StepStep."""
+    if not fn:
+        return "CustomStep"
+    clean = re.sub(r"[_\s-]*step$", "", fn, flags=re.IGNORECASE)
+    clean = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", clean)
+    clean = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", clean)
+    words = [w.capitalize() for w in re.split(r"[_\s-]+", clean) if w]
+    base = "".join(words) or "Custom"
+    return f"{base}Step"
+
+
 class ASTCompiler:
     """Compiles Canvas IR to Python source files while preserving user custom code blocks."""
 
@@ -266,7 +278,7 @@ class ASTCompiler:
             if ns and ns.startswith("wpipe_steps"):
                 step_class = CATALOG_CONTEXT_TO_STEP.get(f"{ns}:{fn}")
                 if not step_class:
-                    step_class = fn if fn.endswith("Step") else f"{fn}Step"
+                    step_class = normalize_step_class_name(fn)
                 if step_class != fn:
                     imports.add(f"from {ns} import {step_class} as {fn}")
                 else:
@@ -297,8 +309,8 @@ class ASTCompiler:
                 return f'{pad}TransformPayloadStep(mode="{mode}")'
 
             if code_snippet or origin == "user_imported" or block_type == "wpipe_user_file_step":
-                safe_stem = sanitize_ident(fn)
-                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
+                class_name = normalize_step_class_name(fn)
+                safe_stem = sanitize_ident(class_name)
                 module_name = f"states.{safe_stem}"
                 imports.add(f"from {module_name} import {class_name}")
                 step_names_for_readme.append(class_name)
@@ -364,11 +376,13 @@ class {class_name}:
                     th = data.get("params", {}).get("threshold", 0.5)
                     return f'{pad}AISentimentStep(threshold={th})'
 
-                safe_stem = sanitize_ident(fn if fn not in ("custom_ai_state", "wpipe_ai_step", "") else "custom_ai_state")
-                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
-                if class_name in ("Step", "WpipeAiStep"):
+                raw_ai_name = fn if fn not in ("custom_ai_state", "wpipe_ai_step", "") else "custom_ai_state"
+                class_name = normalize_step_class_name(raw_ai_name)
+                if class_name in ("Step", "WpipeAiStep", "CustomAiStateStep"):
                     class_name = "CustomAIStep"
                     safe_stem = "custom_ai_step"
+                else:
+                    safe_stem = sanitize_ident(class_name)
 
                 module_name = f"states.{safe_stem}"
                 imports.add(f"from {module_name} import {class_name}")
@@ -465,8 +479,8 @@ class {class_name}:
                 return f'{pad}CleanDataStep(prefix="{pfx}")'
             else:
                 # Custom or unknown step: produce dedicated state so errors or custom logic run faithfully
-                safe_stem = sanitize_ident(fn)
-                class_name = fn if fn.endswith("Step") else f"{fn.title().replace('_', '')}Step"
+                class_name = normalize_step_class_name(fn)
+                safe_stem = sanitize_ident(class_name)
                 module_name = f"states.{safe_stem}"
                 imports.add(f"from {module_name} import {class_name}")
                 step_names_for_readme.append(class_name)

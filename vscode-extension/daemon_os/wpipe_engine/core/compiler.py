@@ -134,7 +134,7 @@ def normalize_step_class_name(fn: str) -> str:
     """Normalize a step name to PascalCase with a single Step suffix, avoiding duplications like StepStep."""
     if not fn:
         return "CustomStep"
-    clean = re.sub(r"[_\s-]*step$", "", fn, flags=re.IGNORECASE)
+    clean = re.sub(r"(?:[_\s-]*step)+$", "", fn, flags=re.IGNORECASE)
     clean = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", clean)
     clean = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", clean)
     words = [w.capitalize() for w in re.split(r"[_\s-]+", clean) if w]
@@ -236,41 +236,48 @@ class ASTCompiler:
                 true_kids = get_children(node.get("id", ""), "if_body")
                 false_kids = get_children(node.get("id", ""), "else_body")
 
-                t_code = ",\n".join(render_step(c, indent + 4) for c in true_kids) if true_kids else f'{pad}    CleanDataStep(prefix="branch_true_")'
-                f_code = ",\n".join(render_step(c, indent + 4) for c in false_kids) if false_kids else ""
+                t_code = ",\n".join(render_step(c, indent + 4) for c in true_kids)
+                f_code = ",\n".join(render_step(c, indent + 4) for c in false_kids)
 
                 step_names_for_readme.append(f"Condition({raw_expr})")
+                t_block = f"[\n{t_code},\n{pad}    ]" if t_code else "[]"
                 if f_code:
-                    return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad}    branch_false=[\n{f_code},\n{pad}    ],\n{pad})'
-                return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true=[\n{t_code},\n{pad}    ],\n{pad})'
+                    f_block = f"[\n{f_code},\n{pad}    ]"
+                    return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true={t_block},\n{pad}    branch_false={f_block},\n{pad})'
+                return f'{pad}Condition(\n{pad}    expression="{expr}",\n{pad}    branch_true={t_block},\n{pad})'
 
             if kind == "for":
                 iters = data.get("for_iterations") or data.get("iterations") or 3
                 loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
-                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids) if loop_kids else f'{pad}    TransformPayloadStep(mode="loop")'
+                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids)
                 step_names_for_readme.append(f"For({iters} iterations)")
-                return f'{pad}For(\n{pad}    iterations={iters},\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
+                l_block = f"[\n{l_code},\n{pad}    ]" if l_code else "[]"
+                return f'{pad}For(\n{pad}    iterations={iters},\n{pad}    steps={l_block},\n{pad})'
 
             if kind == "while":
                 raw_expr = data.get("condition_expression") or data.get("expression") or "retry_count < 3"
                 expr = raw_expr.replace('"', '\\"')
                 loop_kids = get_children(node.get("id", ""), "loop_body") or get_children(node.get("id", ""), "if_body")
-                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids) if loop_kids else f'{pad}    TransformPayloadStep(mode="retry")'
+                l_code = ",\n".join(render_step(c, indent + 4) for c in loop_kids)
                 step_names_for_readme.append(f"While({raw_expr})")
-                return f'{pad}For(\n{pad}    validation_expression="{expr}",\n{pad}    steps=[\n{l_code},\n{pad}    ],\n{pad})'
+                l_block = f"[\n{l_code},\n{pad}    ]" if l_code else "[]"
+                return f'{pad}For(\n{pad}    validation_expression="{expr}",\n{pad}    steps={l_block},\n{pad})'
 
             if kind == "parallel":
                 merge = data.get("merge_policy", "accumulate")
                 par_kids = get_children(node.get("id", ""), "parallel_body") or get_children(node.get("id", ""), "if_body")
-                p_code = ",\n".join(render_step(c, indent + 4) for c in par_kids) if par_kids else f'{pad}    CleanDataStep(),\n{pad}    TransformPayloadStep()'
+                p_code = ",\n".join(render_step(c, indent + 4) for c in par_kids)
                 step_names_for_readme.append(f"Parallel({merge})")
-                return f'{pad}Parallel(\n{pad}    steps=[\n{p_code},\n{pad}    ],\n{pad}    merge_policy="{merge}",\n{pad})'
+                p_block = f"[\n{p_code},\n{pad}    ]" if p_code else "[]"
+                return f'{pad}Parallel(\n{pad}    steps={p_block},\n{pad}    merge_policy="{merge}",\n{pad})'
 
             if kind == "background":
                 bg_kids = get_children(node.get("id", ""), "background_body") or get_children(node.get("id", ""), "loop_body")
-                b_code = render_step(bg_kids[0], indent + 4).strip() if bg_kids else "TransformPayloadStep()"
                 step_names_for_readme.append("Background")
-                return f'{pad}Background(\n{pad}    step={b_code},\n{pad})'
+                if bg_kids:
+                    b_code = render_step(bg_kids[0], indent + 4).strip()
+                    return f'{pad}Background(\n{pad}    step={b_code},\n{pad})'
+                return f'{pad}# Background (no task configured)'
 
             # Standard and catalog step handling
             if ns and ns.startswith("wpipe_steps"):
@@ -307,8 +314,21 @@ class ASTCompiler:
                 return f'{pad}TransformPayloadStep(mode="{mode}")'
 
             if code_snippet or origin == "user_imported" or block_type == "wpipe_user_file_step":
+                explicit_file = data.get("file_name") or data.get("fileName")
+                if explicit_file and explicit_file.endswith(".py"):
+                    safe_stem = os.path.splitext(os.path.basename(explicit_file))[0]
+                elif ns and (ns.startswith("app.states.") or ns.startswith("states.")):
+                    safe_stem = ns.replace("app.states.", "").replace("states.", "")
+                else:
+                    class_name_temp = normalize_step_class_name(fn)
+                    safe_stem = sanitize_ident(class_name_temp)
+
                 class_name = normalize_step_class_name(fn)
-                safe_stem = sanitize_ident(class_name)
+                if code_snippet and code_snippet.strip():
+                    m_cls = re.search(r"class\s+([A-Za-z0-9_]+)", code_snippet)
+                    if m_cls:
+                        class_name = m_cls.group(1)
+
                 module_name = f"states.{safe_stem}"
                 imports.add(f"from {module_name} import {class_name}")
                 step_names_for_readme.append(class_name)
@@ -351,13 +371,7 @@ class {class_name}:
 '''
                 return f"{pad}{class_name}()"
 
-            fn_lower = fn.lower()
-            if "transform" in fn_lower or fn == "TransformPayloadStep":
-                imports.add("from states.transform_payload_step import TransformPayloadStep")
-                step_names_for_readme.append("TransformPayloadStep")
-                mode = data.get("params", {}).get("mode", "standard")
-                return f'{pad}TransformPayloadStep(mode="{mode}")'
-            elif is_ai_step(node):
+            if is_ai_step(node):
                 # AI Step: generate a dedicated state file with comprehensive AI prompt docstring
                 ai_prompt = (
                     data.get("notes")
@@ -470,7 +484,7 @@ class {class_name}:
         return ctx.model_dump()
 '''
                 return f"{pad}{class_name}()"
-            elif fn == "CleanDataStep" or "clean" in fn_lower:
+            elif fn == "CleanDataStep":
                 imports.add("from states.clean_data_step import CleanDataStep")
                 step_names_for_readme.append("CleanDataStep")
                 pfx = data.get("params", {}).get("prefix", "clean_")

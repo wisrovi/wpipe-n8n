@@ -41,7 +41,7 @@
                           "fields": {
                             "STEP_NAME": "QuesoStep",
                             "FILE_NAME": "queso_step.py",
-                            "FILE_STATUS": "📁 states/queso_step.py"
+                            "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
                           }
                         }
                       },
@@ -52,7 +52,7 @@
                           "fields": {
                             "STEP_NAME": "PanStep",
                             "FILE_NAME": "pan_step.py",
-                            "FILE_STATUS": "📁 states/pan_step.py"
+                            "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
                           }
                         }
                       }
@@ -70,7 +70,7 @@
                               "type": "wpipe_ai_step",
                               "id": "decompile_1793019804987_6",
                               "fields": {
-                                "STEP_NAME": "AiProcessStepStep",
+                                "STEP_NAME": "AiProcessStep",
                                 "AI_PROMPT": "Process data with an AI model"
                               }
                             }
@@ -91,7 +91,7 @@
                                   "fields": {
                                     "STEP_NAME": "AguaStep",
                                     "FILE_NAME": "agua_step.py",
-                                    "FILE_STATUS": "📁 states/agua_step.py"
+                                    "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
                                   }
                                 }
                               }
@@ -109,7 +109,7 @@
                                       "fields": {
                                         "STEP_NAME": "TransformPayloadStep",
                                         "FILE_NAME": "transform_payload_step.py",
-                                        "FILE_STATUS": "📁 states/transform_payload_step.py"
+                                        "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
                                       }
                                     }
                                   }
@@ -178,7 +178,7 @@
                             "fields": {
                               "STEP_NAME": "QuesoStep",
                               "FILE_NAME": "queso_step.py",
-                              "FILE_STATUS": "📁 states/queso_step.py"
+                              "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
                             }
                           }
                         },
@@ -189,7 +189,7 @@
                             "fields": {
                               "STEP_NAME": "PanStep",
                               "FILE_NAME": "pan_step.py",
-                              "FILE_STATUS": "📁 states/pan_step.py"
+                              "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
                             }
                           }
                         }
@@ -207,7 +207,7 @@
                                 "type": "wpipe_ai_step",
                                 "id": "decompile_1793019804987_6",
                                 "fields": {
-                                  "STEP_NAME": "AiProcessStepStep",
+                                  "STEP_NAME": "AiProcessStep",
                                   "AI_PROMPT": "Process data with an AI model"
                                 }
                               }
@@ -228,7 +228,7 @@
                                     "fields": {
                                       "STEP_NAME": "AguaStep",
                                       "FILE_NAME": "agua_step.py",
-                                      "FILE_STATUS": "📁 states/agua_step.py"
+                                      "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
                                     }
                                   }
                                 }
@@ -246,7 +246,7 @@
                                         "fields": {
                                           "STEP_NAME": "TransformPayloadStep",
                                           "FILE_NAME": "transform_payload_step.py",
-                                          "FILE_STATUS": "📁 states/transform_payload_step.py"
+                                          "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
                                         }
                                       }
                                     }
@@ -316,7 +316,7 @@
                         "fields": {
                           "STEP_NAME": "QuesoStep",
                           "FILE_NAME": "queso_step.py",
-                          "FILE_STATUS": "📁 states/queso_step.py"
+                          "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
                         }
                       }
                     },
@@ -327,7 +327,7 @@
                         "fields": {
                           "STEP_NAME": "PanStep",
                           "FILE_NAME": "pan_step.py",
-                          "FILE_STATUS": "📁 states/pan_step.py"
+                          "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
                         }
                       }
                     }
@@ -345,7 +345,7 @@
                             "type": "wpipe_ai_step",
                             "id": "decompile_1793019804987_6",
                             "fields": {
-                              "STEP_NAME": "AiProcessStepStep",
+                              "STEP_NAME": "AiProcessStep",
                               "AI_PROMPT": "Process data with an AI model"
                             }
                           }
@@ -366,7 +366,7 @@
                                 "fields": {
                                   "STEP_NAME": "AguaStep",
                                   "FILE_NAME": "agua_step.py",
-                                  "FILE_STATUS": "📁 states/agua_step.py"
+                                  "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
                                 }
                               }
                             }
@@ -384,7 +384,7 @@
                                     "fields": {
                                       "STEP_NAME": "TransformPayloadStep",
                                       "FILE_NAME": "transform_payload_step.py",
-                                      "FILE_STATUS": "📁 states/transform_payload_step.py"
+                                      "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
                                     }
                                   }
                                 }
@@ -453,7 +453,7 @@
                           "fields": {
                             "STEP_NAME": "QuesoStep",
                             "FILE_NAME": "queso_step.py",
-                            "FILE_STATUS": "📁 states/queso_step.py"
+                            "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
                           }
                         }
                       },
@@ -464,7 +464,7 @@
                           "fields": {
                             "STEP_NAME": "PanStep",
                             "FILE_NAME": "pan_step.py",
-                            "FILE_STATUS": "📁 states/pan_step.py"
+                            "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
                           }
                         }
                       }
@@ -482,7 +482,7 @@
                               "type": "wpipe_ai_step",
                               "id": "decompile_1793019804987_6",
                               "fields": {
-                                "STEP_NAME": "AiProcessStepStep",
+                                "STEP_NAME": "AiProcessStep",
                                 "AI_PROMPT": "Process data with an AI model"
                               }
                             }
@@ -503,7 +503,7 @@
                                   "fields": {
                                     "STEP_NAME": "AguaStep",
                                     "FILE_NAME": "agua_step.py",
-                                    "FILE_STATUS": "📁 states/agua_step.py"
+                                    "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
                                   }
                                 }
                               }
@@ -521,7 +521,7 @@
                                       "fields": {
                                         "STEP_NAME": "TransformPayloadStep",
                                         "FILE_NAME": "transform_payload_step.py",
-                                        "FILE_STATUS": "📁 states/transform_payload_step.py"
+                                        "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
                                       }
                                     }
                                   }

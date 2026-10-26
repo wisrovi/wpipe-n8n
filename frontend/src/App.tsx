@@ -126,6 +126,7 @@ import {
   deleteProjectHybrid,
   exportProjectToWpipeFile,
   parseWpipeFileContent,
+  isVSCodeEnvironment,
 } from "./lib/engineBridge";
 import JSZip from "jszip";
 
@@ -490,7 +491,7 @@ function getGitHubDirectoryItems(files: { path: string; content: string }[], cur
 }
 
 export default function App() {
-  const isEmbeddedInVSCode = typeof window !== "undefined" && (window.location.search.includes("mode=vscode") || window.self !== window.top);
+  const isEmbeddedInVSCode = isVSCodeEnvironment();
 
   // Splash Screen (Skipped immediately when embedded inside VS Code editor)
   const [showSplash, setShowSplash] = useState<boolean>(!isEmbeddedInVSCode);
@@ -581,7 +582,7 @@ export default function App() {
 
   // 8. Web-to-Local Engine Bridge & Licensing Status
   const [engineStatus, setEngineStatus] = useState<EngineStatus>(() => {
-    if (typeof window !== "undefined" && (window.location.search.includes("mode=vscode") || window.self !== window.top)) {
+    if (isVSCodeEnvironment()) {
       return {
         ...disconnectedEngineStatus(DEFAULT_ENGINE_PORT),
         connected: true,
@@ -1352,13 +1353,12 @@ export default function App() {
 
   // VS Code Webview Bridge Event Listener
   useEffect(() => {
-    const hasVsCodeApi = typeof (window as any).acquireVsCodeApi === "function";
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top || hasVsCodeApi;
+    const isVSCode = isVSCodeEnvironment();
     if (!isVSCode) return;
 
     let vscodeNativeApi: any = null;
     try {
-      if (hasVsCodeApi) {
+      if (typeof (window as any).acquireVsCodeApi === "function") {
         vscodeNativeApi = (window as any).acquireVsCodeApi();
       }
     } catch {
@@ -1575,7 +1575,7 @@ export default function App() {
   // Restore previously active project on engine connection
   useEffect(() => {
     if (!engineStatus.connected) return;
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    const isVSCode = isVSCodeEnvironment();
     if (isVSCode) return; // In VS Code mode, the webview message init handles document state
 
     const lastProjId = localStorage.getItem("studio_active_project_id");
@@ -1758,7 +1758,7 @@ export default function App() {
     }
 
     // Auto-sync canvas changes to VS Code document in VS Code mode (ONLY on real user events)
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    const isVSCode = isVSCodeEnvironment();
     if (isVSCode && isUserEvent) {
       if (vsCodeSyncTimerRef.current) {
         clearTimeout(vsCodeSyncTimerRef.current);
@@ -1964,7 +1964,7 @@ export default function App() {
     if (workspaceState) {
       (canvasIr as any).workspace_state = workspaceState;
     }
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    const isVSCode = isVSCodeEnvironment();
     if (isVSCode) {
       try {
         window.parent.postMessage(
@@ -2449,7 +2449,7 @@ export default function App() {
     setStatusMessage("Generando paquete ZIP del microservicio...");
 
     // Also compile directly to VS Code workspace if running inside VS Code
-    const isVSCode = window.location.search.includes("mode=vscode") || window.self !== window.top;
+    const isVSCode = isVSCodeEnvironment();
     if (isVSCode) {
       try {
         const canvasIr = getCanvasIRFromBlocklyWorkspace(catalog);

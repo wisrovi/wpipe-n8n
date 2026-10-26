@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { EngineStatus, DEFAULT_ENGINE_PORT } from "../lib/engineBridge";
+import { EngineStatus, DEFAULT_ENGINE_PORT, isVSCodeEnvironment } from "../lib/engineBridge";
 
 interface ConnectEngineModalProps {
   isOpen: boolean;
@@ -19,10 +19,7 @@ export const ConnectEngineModal: React.FC<ConnectEngineModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  const isVsCode =
-    typeof (window as any).acquireVsCodeApi === "function" ||
-    window.location.search.includes("mode=vscode") ||
-    window.self !== window.top;
+  const isVsCode = isVSCodeEnvironment();
 
   // Close on Escape key
   useEffect(() => {

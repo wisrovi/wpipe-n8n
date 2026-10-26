@@ -27,6 +27,7 @@
   ],
   "main": "./dist/extension.js",
     "activationEvents": [
+        "onStartupFinished",
         "onCustomEditor:wpipe.canvasEditor",
         "onCommand:wpipe.openCanvas",
         "onCommand:wpipe.newPipeline",
@@ -63,7 +64,7 @@
         {
           "id": "wpipe-explorer",
           "title": "WPipe",
-          "icon": "media/lateral_icon.png"
+          "icon": "media/icon.svg"
         }
       ]
     },
@@ -72,7 +73,7 @@
         {
           "id": "wpipeSteps",
           "name": "Step Registry",
-          "icon": "media/icon.png"
+          "icon": "media/icon.svg"
         }
       ]
     },

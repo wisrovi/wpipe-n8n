@@ -1226,6 +1226,7 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
     let triggerParam: string | undefined = undefined;
     let namespace: string | undefined = undefined;
     let funcName: string | undefined = undefined;
+    let fileName: string | undefined = undefined;
     let origin: StepOrigin = "catalog";
     let conditionExpression: string | undefined = undefined;
     let forIterations: number | undefined = undefined;
@@ -1271,8 +1272,9 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
       label = block.getFieldValue("STEP_NAME") || "custom_user_step";
       funcName = label;
       origin = "user_imported";
-      const fileName = block.getFieldValue("FILE_NAME") || "custom_user_step.py";
-      namespace = `app.states.${fileName.replace(/\.py$/, "")}`;
+      const curFileName = block.getFieldValue("FILE_NAME") || "custom_user_step.py";
+      fileName = curFileName;
+      namespace = `app.states.${curFileName.replace(/\.py$/, "")}`;
       const attached = attachedFilesRegistry[block.id];
       if (attached && attached.code) {
         codeSnippet = attached.code;
@@ -1324,6 +1326,7 @@ export function getCanvasIRFromBlocklyWorkspace(catalog: any[] = []): CanvasIR {
         merge_policy: mergePolicy,
         notes,
         code_snippet: codeSnippet,
+        file_name: fileName,
         parent_id: parentId || undefined,
         slot_type: slotType || undefined,
         block_type: type,

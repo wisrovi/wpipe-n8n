@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { DashboardPanel } from '../webviews/dashboardPanel';
 
 export async function openDashboard(context: vscode.ExtensionContext, dbPath?: any) {

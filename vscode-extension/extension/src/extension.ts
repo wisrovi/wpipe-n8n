@@ -191,9 +191,39 @@ export async function activate(context: vscode.ExtensionContext) {
           docker_image: "python:3.11-slim",
           canvas_ir: {
             nodes: [
-              { id: "node_1", data: { node_type: "trigger", label: "Trigger REST (/run)" } },
-              { id: "node_2", data: { node_type: "step", label: "HttpRequest" } },
+              { id: "node_1", data: { node_type: "trigger", label: "Trigger REST (/run)", trigger_type: "api", trigger_param: "/run" } },
+              { id: "node_2", data: { node_type: "response", label: "Response (HTTP_JSON)", response_type: "http_json" } },
             ],
+            edges: [
+              { id: "e_node_1_node_2", source: "node_1", target: "node_2" }
+            ],
+            workspace_state: {
+              blocks: {
+                languageVersion: 0,
+                blocks: [
+                  {
+                    type: "wpipe_trigger",
+                    id: "root_trigger",
+                    x: 80,
+                    y: 50,
+                    fields: {
+                      TRIGGER_TYPE: "api",
+                      TRIGGER_PARAM: "/run",
+                    },
+                    next: {
+                      block: {
+                        type: "wpipe_response",
+                        id: "root_response",
+                        fields: {
+                          RESPONSE_TYPE: "http_json",
+                          RESPONSE_PARAM: '{"status": "success", "data": context}',
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
           },
         },
       };

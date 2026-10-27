@@ -77,6 +77,8 @@ class EngineRequestHandler(BaseHTTPRequestHandler):
             return True
         if origin.startswith("vscode-webview://"):
             return True
+        if ".vscode-cdn.net" in origin or origin.endswith(".vscode-cdn.net") or "vscode-resource" in origin:
+            return True
         # Localhost / loopback on any port
         if origin.startswith("http://localhost:") or origin == "http://localhost":
             return True

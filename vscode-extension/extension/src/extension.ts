@@ -264,7 +264,6 @@ export async function activate(context: vscode.ExtensionContext) {
               await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content as string, "utf8"));
             }
           }
-          await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
           await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
         }
       } catch (compileErr) {

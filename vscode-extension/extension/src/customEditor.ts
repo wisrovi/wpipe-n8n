@@ -467,9 +467,15 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
           if (saveWsState) {
             payloadToSave.project.workspace_state = saveWsState;
             payloadToSave.workspace_state = saveWsState;
-            if (!payloadToSave.project.canvas_ir) payloadToSave.project.canvas_ir = {};
+            if (!payloadToSave.project.canvas_ir) {
+              payloadToSave.project.canvas_ir = {};
+            }
             payloadToSave.project.canvas_ir.workspace_state = saveWsState;
-            payloadToSave.canvas_ir = { workspace_state: saveWsState };
+            if (payloadToSave.canvas_ir && typeof payloadToSave.canvas_ir === "object") {
+              payloadToSave.canvas_ir.workspace_state = saveWsState;
+            } else {
+              payloadToSave.canvas_ir = { workspace_state: saveWsState };
+            }
           }
 
           if (wpipeFileUri) {
@@ -495,9 +501,13 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
 
           // 2. Debounce auto-compilation to app/pipelines.py to avoid interrupting active drag & drop
           if (wsFolder) {
-            const rawNodes = canvasPayload?.nodes || [];
+            const rawNodes = canvasPayload?.nodes || canvasPayload?.project?.canvas_ir?.nodes || [];
             const hasRealNodes = rawNodes.length > 0;
-            const wsBlocks = canvasPayload?.workspace_state?.blocks?.blocks || [];
+            const wsBlocks =
+              canvasPayload?.workspace_state?.blocks?.blocks ||
+              canvasPayload?.project?.workspace_state?.blocks?.blocks ||
+              saveWsState?.blocks?.blocks ||
+              [];
             const hasRealBlocks = wsBlocks.length > 0;
 
             if (hasRealNodes || hasRealBlocks) {

@@ -1,144 +1,80 @@
 {
   "format": "wpipe",
   "project": {
+    "id": "pipeline",
     "name": "main_pipeline",
-    "workspace_state": {
-      "blocks": {
-        "languageVersion": 0,
-        "blocks": [
-          {
-            "type": "wpipe_trigger",
-            "id": "root_trigger",
-            "x": 80,
-            "y": 50,
-            "fields": {
-              "TRIGGER_TYPE": "api",
-              "TRIGGER_PARAM": "/run"
-            },
-            "next": {
-              "block": {
-                "type": "wpipe_step",
-                "id": "decompile_1793019804987_1",
-                "fields": {
-                  "REPO_FILTER": "ALL",
-                  "CAT_FILTER": "ALL",
-                  "SEARCH_FILTER": "",
-                  "STEP_NAME": "http",
-                  "NAMESPACE": "wpipe_steps.connectivity.http"
-                },
-                "next": {
-                  "block": {
-                    "type": "wpipe_if_else",
-                    "id": "decompile_1793019804987_2",
-                    "fields": {
-                      "CONDITION": "http_response.get('status_code') == 200"
-                    },
-                    "inputs": {
-                      "DO": {
-                        "block": {
-                          "type": "wpipe_user_file_step",
-                          "id": "decompile_1793019804987_3",
-                          "fields": {
-                            "STEP_NAME": "QuesoStep",
-                            "FILE_NAME": "queso_step.py",
-                            "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
-                          }
-                        }
-                      },
-                      "ELSE": {
-                        "block": {
-                          "type": "wpipe_user_file_step",
-                          "id": "decompile_1793019804987_4",
-                          "fields": {
-                            "STEP_NAME": "PanStep",
-                            "FILE_NAME": "pan_step.py",
-                            "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
-                          }
-                        }
-                      }
-                    },
-                    "next": {
-                      "block": {
-                        "type": "wpipe_if",
-                        "id": "decompile_1793019804987_5",
-                        "fields": {
-                          "CONDITION": "http_response.get('status_code') == 200"
-                        },
-                        "inputs": {
-                          "DO": {
-                            "block": {
-                              "type": "wpipe_ai_step",
-                              "id": "decompile_1793019804987_6",
-                              "fields": {
-                                "STEP_NAME": "AiProcessStep",
-                                "AI_PROMPT": "Process data with an AI model"
-                              }
-                            }
-                          }
-                        },
-                        "next": {
-                          "block": {
-                            "type": "wpipe_if",
-                            "id": "decompile_1793019804987_7",
-                            "fields": {
-                              "CONDITION": "http_response.get('status_code') == 200"
-                            },
-                            "inputs": {
-                              "DO": {
-                                "block": {
-                                  "type": "wpipe_user_file_step",
-                                  "id": "decompile_1793019804987_8",
-                                  "fields": {
-                                    "STEP_NAME": "AguaStep",
-                                    "FILE_NAME": "agua_step.py",
-                                    "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
-                                  }
-                                }
-                              }
-                            },
-                            "next": {
-                              "block": {
-                                "type": "wpipe_background",
-                                "id": "decompile_1793019804987_9",
-                                "fields": {},
-                                "inputs": {
-                                  "DO": {
-                                    "block": {
-                                      "type": "wpipe_user_file_step",
-                                      "id": "decompile_1793019804987_10",
-                                      "fields": {
-                                        "STEP_NAME": "TransformPayloadStep",
-                                        "FILE_NAME": "transform_payload_step.py",
-                                        "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
-                                      }
-                                    }
-                                  }
-                                },
-                                "next": {
-                                  "block": {
-                                    "type": "wpipe_response",
-                                    "id": "root_response",
-                                    "fields": {
-                                      "RESPONSE_TYPE": "http_json",
-                                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        ]
-      }
-    },
+    "protocol": "fastapi",
+    "docker_image": "",
     "canvas_ir": {
+      "nodes": [
+        {
+          "id": "node_1",
+          "type": "default",
+          "position": {
+            "x": 80,
+            "y": 50
+          },
+          "data": {
+            "label": "Trigger (API: /run)",
+            "node_type": "trigger",
+            "trigger_type": "api",
+            "trigger_param": "/run",
+            "origin": "described",
+            "params": {
+              "trigger_type": "api",
+              "trigger_param": "/run"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_trigger"
+          }
+        },
+        {
+          "id": "node_2",
+          "type": "default",
+          "position": {
+            "x": 80,
+            "y": 150
+          },
+          "data": {
+            "label": "Response (HTTP_JSON: {\"status\": \"success\", \"data\": context})",
+            "node_type": "response",
+            "response_type": "http_json",
+            "response_param": "{\"status\": \"success\", \"data\": context}",
+            "origin": "described",
+            "params": {
+              "response_type": "http_json",
+              "response_param": "{\"status\": \"success\", \"data\": context}"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_response"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e_seq_node_1_node_2",
+          "source": "node_1",
+          "target": "node_2"
+        }
+      ],
       "workspace_state": {
         "blocks": {
           "languageVersion": 0,
@@ -154,126 +90,44 @@
               },
               "next": {
                 "block": {
-                  "type": "wpipe_step",
-                  "id": "decompile_1793019804987_1",
+                  "type": "wpipe_response",
+                  "id": "root_response",
                   "fields": {
-                    "REPO_FILTER": "ALL",
-                    "CAT_FILTER": "ALL",
-                    "SEARCH_FILTER": "",
-                    "STEP_NAME": "http",
-                    "NAMESPACE": "wpipe_steps.connectivity.http"
-                  },
-                  "next": {
-                    "block": {
-                      "type": "wpipe_if_else",
-                      "id": "decompile_1793019804987_2",
-                      "fields": {
-                        "CONDITION": "http_response.get('status_code') == 200"
-                      },
-                      "inputs": {
-                        "DO": {
-                          "block": {
-                            "type": "wpipe_user_file_step",
-                            "id": "decompile_1793019804987_3",
-                            "fields": {
-                              "STEP_NAME": "QuesoStep",
-                              "FILE_NAME": "queso_step.py",
-                              "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
-                            }
-                          }
-                        },
-                        "ELSE": {
-                          "block": {
-                            "type": "wpipe_user_file_step",
-                            "id": "decompile_1793019804987_4",
-                            "fields": {
-                              "STEP_NAME": "PanStep",
-                              "FILE_NAME": "pan_step.py",
-                              "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
-                            }
-                          }
-                        }
-                      },
-                      "next": {
-                        "block": {
-                          "type": "wpipe_if",
-                          "id": "decompile_1793019804987_5",
-                          "fields": {
-                            "CONDITION": "http_response.get('status_code') == 200"
-                          },
-                          "inputs": {
-                            "DO": {
-                              "block": {
-                                "type": "wpipe_ai_step",
-                                "id": "decompile_1793019804987_6",
-                                "fields": {
-                                  "STEP_NAME": "AiProcessStep",
-                                  "AI_PROMPT": "Process data with an AI model"
-                                }
-                              }
-                            }
-                          },
-                          "next": {
-                            "block": {
-                              "type": "wpipe_if",
-                              "id": "decompile_1793019804987_7",
-                              "fields": {
-                                "CONDITION": "http_response.get('status_code') == 200"
-                              },
-                              "inputs": {
-                                "DO": {
-                                  "block": {
-                                    "type": "wpipe_user_file_step",
-                                    "id": "decompile_1793019804987_8",
-                                    "fields": {
-                                      "STEP_NAME": "AguaStep",
-                                      "FILE_NAME": "agua_step.py",
-                                      "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
-                                    }
-                                  }
-                                }
-                              },
-                              "next": {
-                                "block": {
-                                  "type": "wpipe_background",
-                                  "id": "decompile_1793019804987_9",
-                                  "fields": {},
-                                  "inputs": {
-                                    "DO": {
-                                      "block": {
-                                        "type": "wpipe_user_file_step",
-                                        "id": "decompile_1793019804987_10",
-                                        "fields": {
-                                          "STEP_NAME": "TransformPayloadStep",
-                                          "FILE_NAME": "transform_payload_step.py",
-                                          "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
-                                        }
-                                      }
-                                    }
-                                  },
-                                  "next": {
-                                    "block": {
-                                      "type": "wpipe_response",
-                                      "id": "root_response",
-                                      "fields": {
-                                        "RESPONSE_TYPE": "http_json",
-                                        "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
+                    "RESPONSE_TYPE": "http_json",
+                    "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
                   }
                 }
               }
             }
           ]
         }
+      }
+    },
+    "workspace_state": {
+      "blocks": {
+        "languageVersion": 0,
+        "blocks": [
+          {
+            "type": "wpipe_trigger",
+            "id": "root_trigger",
+            "x": 80,
+            "y": 50,
+            "fields": {
+              "TRIGGER_TYPE": "api",
+              "TRIGGER_PARAM": "/run"
+            },
+            "next": {
+              "block": {
+                "type": "wpipe_response",
+                "id": "root_response",
+                "fields": {
+                  "RESPONSE_TYPE": "http_json",
+                  "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   },
@@ -292,120 +146,11 @@
           },
           "next": {
             "block": {
-              "type": "wpipe_step",
-              "id": "decompile_1793019804987_1",
+              "type": "wpipe_response",
+              "id": "root_response",
               "fields": {
-                "REPO_FILTER": "ALL",
-                "CAT_FILTER": "ALL",
-                "SEARCH_FILTER": "",
-                "STEP_NAME": "http",
-                "NAMESPACE": "wpipe_steps.connectivity.http"
-              },
-              "next": {
-                "block": {
-                  "type": "wpipe_if_else",
-                  "id": "decompile_1793019804987_2",
-                  "fields": {
-                    "CONDITION": "http_response.get('status_code') == 200"
-                  },
-                  "inputs": {
-                    "DO": {
-                      "block": {
-                        "type": "wpipe_user_file_step",
-                        "id": "decompile_1793019804987_3",
-                        "fields": {
-                          "STEP_NAME": "QuesoStep",
-                          "FILE_NAME": "queso_step.py",
-                          "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
-                        }
-                      }
-                    },
-                    "ELSE": {
-                      "block": {
-                        "type": "wpipe_user_file_step",
-                        "id": "decompile_1793019804987_4",
-                        "fields": {
-                          "STEP_NAME": "PanStep",
-                          "FILE_NAME": "pan_step.py",
-                          "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
-                        }
-                      }
-                    }
-                  },
-                  "next": {
-                    "block": {
-                      "type": "wpipe_if",
-                      "id": "decompile_1793019804987_5",
-                      "fields": {
-                        "CONDITION": "http_response.get('status_code') == 200"
-                      },
-                      "inputs": {
-                        "DO": {
-                          "block": {
-                            "type": "wpipe_ai_step",
-                            "id": "decompile_1793019804987_6",
-                            "fields": {
-                              "STEP_NAME": "AiProcessStep",
-                              "AI_PROMPT": "Process data with an AI model"
-                            }
-                          }
-                        }
-                      },
-                      "next": {
-                        "block": {
-                          "type": "wpipe_if",
-                          "id": "decompile_1793019804987_7",
-                          "fields": {
-                            "CONDITION": "http_response.get('status_code') == 200"
-                          },
-                          "inputs": {
-                            "DO": {
-                              "block": {
-                                "type": "wpipe_user_file_step",
-                                "id": "decompile_1793019804987_8",
-                                "fields": {
-                                  "STEP_NAME": "AguaStep",
-                                  "FILE_NAME": "agua_step.py",
-                                  "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
-                                }
-                              }
-                            }
-                          },
-                          "next": {
-                            "block": {
-                              "type": "wpipe_background",
-                              "id": "decompile_1793019804987_9",
-                              "fields": {},
-                              "inputs": {
-                                "DO": {
-                                  "block": {
-                                    "type": "wpipe_user_file_step",
-                                    "id": "decompile_1793019804987_10",
-                                    "fields": {
-                                      "STEP_NAME": "TransformPayloadStep",
-                                      "FILE_NAME": "transform_payload_step.py",
-                                      "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
-                                    }
-                                  }
-                                }
-                              },
-                              "next": {
-                                "block": {
-                                  "type": "wpipe_response",
-                                  "id": "root_response",
-                                  "fields": {
-                                    "RESPONSE_TYPE": "http_json",
-                                    "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
+                "RESPONSE_TYPE": "http_json",
+                "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
               }
             }
           }
@@ -429,120 +174,11 @@
             },
             "next": {
               "block": {
-                "type": "wpipe_step",
-                "id": "decompile_1793019804987_1",
+                "type": "wpipe_response",
+                "id": "root_response",
                 "fields": {
-                  "REPO_FILTER": "ALL",
-                  "CAT_FILTER": "ALL",
-                  "SEARCH_FILTER": "",
-                  "STEP_NAME": "http",
-                  "NAMESPACE": "wpipe_steps.connectivity.http"
-                },
-                "next": {
-                  "block": {
-                    "type": "wpipe_if_else",
-                    "id": "decompile_1793019804987_2",
-                    "fields": {
-                      "CONDITION": "http_response.get('status_code') == 200"
-                    },
-                    "inputs": {
-                      "DO": {
-                        "block": {
-                          "type": "wpipe_user_file_step",
-                          "id": "decompile_1793019804987_3",
-                          "fields": {
-                            "STEP_NAME": "QuesoStep",
-                            "FILE_NAME": "queso_step.py",
-                            "FILE_STATUS": "\ud83d\udcc1 states/queso_step.py"
-                          }
-                        }
-                      },
-                      "ELSE": {
-                        "block": {
-                          "type": "wpipe_user_file_step",
-                          "id": "decompile_1793019804987_4",
-                          "fields": {
-                            "STEP_NAME": "PanStep",
-                            "FILE_NAME": "pan_step.py",
-                            "FILE_STATUS": "\ud83d\udcc1 states/pan_step.py"
-                          }
-                        }
-                      }
-                    },
-                    "next": {
-                      "block": {
-                        "type": "wpipe_if",
-                        "id": "decompile_1793019804987_5",
-                        "fields": {
-                          "CONDITION": "http_response.get('status_code') == 200"
-                        },
-                        "inputs": {
-                          "DO": {
-                            "block": {
-                              "type": "wpipe_ai_step",
-                              "id": "decompile_1793019804987_6",
-                              "fields": {
-                                "STEP_NAME": "AiProcessStep",
-                                "AI_PROMPT": "Process data with an AI model"
-                              }
-                            }
-                          }
-                        },
-                        "next": {
-                          "block": {
-                            "type": "wpipe_if",
-                            "id": "decompile_1793019804987_7",
-                            "fields": {
-                              "CONDITION": "http_response.get('status_code') == 200"
-                            },
-                            "inputs": {
-                              "DO": {
-                                "block": {
-                                  "type": "wpipe_user_file_step",
-                                  "id": "decompile_1793019804987_8",
-                                  "fields": {
-                                    "STEP_NAME": "AguaStep",
-                                    "FILE_NAME": "agua_step.py",
-                                    "FILE_STATUS": "\ud83d\udcc1 states/agua_step.py"
-                                  }
-                                }
-                              }
-                            },
-                            "next": {
-                              "block": {
-                                "type": "wpipe_background",
-                                "id": "decompile_1793019804987_9",
-                                "fields": {},
-                                "inputs": {
-                                  "DO": {
-                                    "block": {
-                                      "type": "wpipe_user_file_step",
-                                      "id": "decompile_1793019804987_10",
-                                      "fields": {
-                                        "STEP_NAME": "TransformPayloadStep",
-                                        "FILE_NAME": "transform_payload_step.py",
-                                        "FILE_STATUS": "\ud83d\udcc1 states/transform_payload_step.py"
-                                      }
-                                    }
-                                  }
-                                },
-                                "next": {
-                                  "block": {
-                                    "type": "wpipe_response",
-                                    "id": "root_response",
-                                    "fields": {
-                                      "RESPONSE_TYPE": "http_json",
-                                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "RESPONSE_TYPE": "http_json",
+                  "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
                 }
               }
             }

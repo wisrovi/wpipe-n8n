@@ -9,13 +9,8 @@ from typing import Any
 from loguru import logger
 from config.settings import settings
 from dto.context import PipelineContextDTO
-from states.agua_step import AguaStep
-from states.ai_process_step import AiProcessStep
 from states.base import BaseStep
-from states.pan_step import PanStep
-from states.queso_step import QuesoStep
 from wpipe import Pipeline, Condition, For, Parallel, Background  # type: ignore[import-untyped]
-from wpipe_steps.connectivity.http import httpStep as http
 
 os.makedirs("output", exist_ok=True)
 
@@ -29,28 +24,9 @@ pipe.retry_delay = 0.5
 
 # 2. Direct inline step assembly reflecting the visual canvas
 pipe.set_steps([
-        http(),
-        Condition(
-            expression="http_response.get('status_code') == 200",
-            branch_true=[
-            QuesoStep(),
-            ],
-            branch_false=[
-            PanStep(),
-            ],
-        ),
-        Condition(
-            expression="http_response.get('status_code') == 200",
-            branch_true=[
-            AiProcessStep(),
-            ],
-        ),
-        Condition(
-            expression="http_response.get('status_code') == 200",
-            branch_true=[
-            AguaStep(),
-            ],
-        ),
+
+
+        # No steps configured
 ])
 
 

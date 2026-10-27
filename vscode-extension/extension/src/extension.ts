@@ -245,10 +245,24 @@ export async function activate(context: vscode.ExtensionContext) {
               }
             }
           }
+          const pyTarget = WPipeCanvasEditorProvider.resolvePythonUriForWpipe(targetUri, wsFolder.uri);
           for (const [relPath, content] of Object.entries(filesMap)) {
             const fileUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, relPath));
-            await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(fileUri.fsPath)));
-            await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content as string, "utf8"));
+            let fileAlreadyExists = false;
+            try {
+              await vscode.workspace.fs.stat(fileUri);
+              fileAlreadyExists = true;
+            } catch {}
+
+            const isTargetPipeline = fileUri.fsPath === pyTarget.fsPath;
+            const isMainPipelineDefault = ["main_pipeline", "pipelines", "main"].includes(initialIr.project.name) && relPath.endsWith("pipelines.py");
+            const isPipelineFile = isTargetPipeline || isMainPipelineDefault;
+            const isNewStateFile = relPath.startsWith("app/states/") && !fileAlreadyExists;
+
+            if (isPipelineFile || isNewStateFile || !fileAlreadyExists) {
+              await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(fileUri.fsPath)));
+              await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content as string, "utf8"));
+            }
           }
           await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
           await vscode.commands.executeCommand("wpipeSteps.refreshEntry");

@@ -25,11 +25,12 @@ app: FastAPI = FastAPI(
 )
 
 
-def handle_pipeline_event(event_data: dict[str, Any]) -> dict[str, Any]:
+def handle_pipeline_event(event_data: dict[str, Any], pipeline_name: str = "main") -> dict[str, Any]:
     """Receive trigger event, execute pipeline under resource monitoring and return result.
 
     Args:
         event_data (dict[str, Any]): Event payload.
+        pipeline_name (str): Identifier of the target pipeline to execute. Defaults to 'main'.
 
     Returns:
         dict[str, Any]: Execution result dictionary.
@@ -40,7 +41,7 @@ def handle_pipeline_event(event_data: dict[str, Any]) -> dict[str, Any]:
     """
     tx_id = event_data.get("transaction_id") or generate_transaction_id()
     event_data["transaction_id"] = tx_id
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(pipeline_name)
 
     try:
         with (

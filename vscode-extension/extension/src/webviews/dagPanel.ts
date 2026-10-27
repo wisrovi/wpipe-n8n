@@ -184,15 +184,22 @@ export class DAGPanel {
     }
 
     public parseString(text: string, fileName: string) {
-        let parsedSteps: ParsedStepNode[] = [];
-        let stepsRaw = PipelineDecompiler.extractBalanced(text, /(?:set_steps|steps)\s*\(\s*\[/);
-        if (stepsRaw === null) {
-            stepsRaw = PipelineDecompiler.extractBalanced(text, /steps\s*=\s*\[/);
+        // Extract all declared pipelines
+        const pipelineMatches: { varName: string; stepsRaw: string }[] = [];
+        const setStepsRegex = /(?:([a-zA-Z0-9_]+)\s*\.)?(?:set_steps|steps)\s*\(\s*\[/g;
+        let match: RegExpExecArray | null;
+        while ((match = setStepsRegex.exec(text)) !== null) {
+            const varName = match[1] || "pipe";
+            const balanced = PipelineDecompiler.extractBalanced(text.slice(match.index), /(?:[a-zA-Z0-9_]+\s*\.)?(?:set_steps|steps)\s*\(\s*\[/);
+            if (balanced !== null) {
+                pipelineMatches.push({ varName, stepsRaw: balanced });
+            }
         }
-
-        if (stepsRaw !== null) {
-            const tokens = PipelineDecompiler.tokenize(stepsRaw);
-            parsedSteps = tokens.map(t => PipelineDecompiler.parseItem(t));
+        if (pipelineMatches.length === 0) {
+            const stepsAssign = PipelineDecompiler.extractBalanced(text, /steps\s*=\s*\[/);
+            if (stepsAssign !== null) {
+                pipelineMatches.push({ varName: "pipe", stepsRaw: stepsAssign });
+            }
         }
 
         // Generate Mermaid DAG
@@ -203,8 +210,6 @@ export class DAGPanel {
         graph += '  classDef customStep fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#a7f3d0,rx:6px,ry:6px;\n';
         graph += '  classDef errorState fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fca5a5,rx:6px,ry:6px;\n';
         graph += '  classDef runningState fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fde68a,rx:6px,ry:6px;\n';
-        
-        graph += '  Start([🚀 Iniciar Pipeline]):::startEnd\n';
 
         let idCounter = 1;
         const makeId = (prefix: string) => `${prefix}_${idCounter++}`;
@@ -332,11 +337,39 @@ export class DAGPanel {
             return current;
         };
 
-        if (parsedSteps.length === 0) {
-            graph += '  Start --> End([🏁 Fin]):::startEnd\n';
+        if (pipelineMatches.length === 0) {
+            graph += '  Start([🚀 Iniciar Pipeline]):::startEnd --> End([🏁 Fin]):::startEnd\n';
+        } else if (pipelineMatches.length === 1) {
+            const pm = pipelineMatches[0];
+            const tokens = PipelineDecompiler.tokenize(pm.stepsRaw);
+            const parsedSteps = tokens.map(t => PipelineDecompiler.parseItem(t)).filter((s): s is ParsedStepNode => s !== null);
+            graph += '  Start([🚀 Iniciar Pipeline]):::startEnd\n';
+            if (parsedSteps.length === 0) {
+                graph += '  Start --> End([🏁 Fin]):::startEnd\n';
+            } else {
+                const finalNode = buildSubgraph(parsedSteps, 'Start');
+                graph += `  ${finalNode} --> End([🏁 Fin]):::startEnd\n`;
+            }
         } else {
-            const finalNode = buildSubgraph(parsedSteps, 'Start');
-            graph += `  ${finalNode} --> End([🏁 Fin]):::startEnd\n`;
+            // Multi-Pipeline: Render each pipeline inside its own visual subgraph
+            pipelineMatches.forEach((pm, pIdx) => {
+                const tokens = PipelineDecompiler.tokenize(pm.stepsRaw);
+                const parsedSteps = tokens.map(t => PipelineDecompiler.parseItem(t)).filter((s): s is ParsedStepNode => s !== null);
+                const pClean = pm.varName.replace(/^pipe_?/, '') || `pipe_${pIdx + 1}`;
+                const pTitle = pClean === "main" ? "Pipeline Principal (main)" : `Pipeline Secundario (${pClean})`;
+                const startId = `Start_${pIdx + 1}`;
+                const endId = `End_${pIdx + 1}`;
+
+                graph += `  subgraph sg_${pIdx + 1} ["🚀 ${pTitle}"]\n`;
+                graph += `    ${startId}([🚀 Iniciar ${pClean}]):::startEnd\n`;
+                if (parsedSteps.length === 0) {
+                    graph += `    ${startId} --> ${endId}([🏁 Fin ${pClean}]):::startEnd\n`;
+                } else {
+                    const finalNode = buildSubgraph(parsedSteps, startId);
+                    graph += `    ${finalNode} --> ${endId}([🏁 Fin ${pClean}]):::startEnd\n`;
+                }
+                graph += `  end\n`;
+            });
         }
 
         // Estadísticas y Complejidad Big-O
@@ -346,6 +379,7 @@ export class DAGPanel {
         else if (parallelCount > 0) bigO = 'O(N/k)';
         
         const stats = {
+            totalPipelines: Math.max(1, pipelineMatches.length),
             totalSteps: totalNodesCount,
             loops: loopsCount,
             conditions: condCount,
@@ -483,6 +517,10 @@ export class DAGPanel {
 
     <div class="stats-grid">
         <div class="stat-card">
+            <div class="stat-val" style="color: #38bdf8;">${stats.totalPipelines || 1}</div>
+            <div class="stat-label">Pipelines</div>
+        </div>
+        <div class="stat-card">
             <div class="stat-val">${stats.totalSteps}</div>
             <div class="stat-label">Estados Totales</div>
         </div>
@@ -495,7 +533,7 @@ export class DAGPanel {
             <div class="stat-label">Bucles (For)</div>
         </div>
         <div class="stat-card">
-            <div class="stat-val" style="color: #38bdf8;">${bigO}</div>
+            <div class="stat-val" style="color: #10b981;">${bigO}</div>
             <div class="stat-label">Complejidad Teórica</div>
         </div>
     </div>

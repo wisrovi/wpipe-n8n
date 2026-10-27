@@ -156,3 +156,100 @@ def test_ast_compiler_modular_pipeline_file():
     assert "app/auth.py" in files
     assert "Pipeline(pipeline_name=\"auth\")" in files["app/auth.py"]
 
+
+def test_ast_compiler_workspace_state_extraction():
+    """Verify that ASTCompiler extracts nodes/edges and compiles directly from Blockly workspace_state JSON."""
+    compiler = ASTCompiler()
+    canvas = {
+        "workspace_state": {
+            "blocks": {
+                "languageVersion": 0,
+                "blocks": [
+                    {
+                        "type": "wpipe_trigger",
+                        "id": "t1",
+                        "fields": {"TRIGGER_TYPE": "api", "TRIGGER_PARAM": "/run"},
+                        "next": {
+                            "block": {
+                                "type": "wpipe_ai_step",
+                                "id": "s1",
+                                "fields": {"STEP_NAME": "AiProcessStep", "AI_PROMPT": "Do AI task"},
+                                "next": {
+                                    "block": {
+                                        "type": "wpipe_response",
+                                        "id": "r1",
+                                        "fields": {"RESPONSE_TYPE": "http_json"},
+                                    }
+                                },
+                            }
+                        },
+                    },
+                    {
+                        "type": "wpipe_trigger",
+                        "id": "t2",
+                        "fields": {"TRIGGER_TYPE": "api", "TRIGGER_PARAM": "/sub"},
+                        "next": {
+                            "block": {
+                                "type": "wpipe_step",
+                                "id": "s2",
+                                "fields": {"STEP_NAME": "HttpStep", "NAMESPACE": "wpipe_steps.connectivity.http"},
+                            }
+                        },
+                    },
+                ],
+            }
+        }
+    }
+    files = compiler.compile_canvas(canvas, project_name="demo")
+    assert "app/pipelines.py" in files
+    pipe_code = files["app/pipelines.py"]
+    assert "pipe_main.set_steps([AiProcessStep()])" in pipe_code
+    assert "pipe_sub.set_steps([HttpStep()])" in pipe_code
+    assert '"main": pipe_main' in pipe_code
+    assert '"sub": pipe_sub' in pipe_code
+
+
+def test_ast_compiler_multi_pipeline_without_triggers():
+    """Verify that multiple independent step chains without triggers compile into separate pipelines."""
+    compiler = ASTCompiler()
+    canvas = {
+        "workspace_state": {
+            "blocks": {
+                "languageVersion": 0,
+                "blocks": [
+                    {
+                        "type": "wpipe_step",
+                        "id": "s_pan",
+                        "fields": {"STEP_NAME": "PanStep"},
+                        "next": {
+                            "block": {
+                                "type": "wpipe_step",
+                                "id": "s_queso",
+                                "fields": {"STEP_NAME": "QuesoStep"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "wpipe_step",
+                        "id": "s_agua",
+                        "fields": {"STEP_NAME": "AguaStep"},
+                        "next": {
+                            "block": {
+                                "type": "wpipe_step",
+                                "id": "s_cafe",
+                                "fields": {"STEP_NAME": "CafeStep"},
+                            }
+                        },
+                    },
+                ],
+            }
+        }
+    }
+    files = compiler.compile_canvas(canvas, project_name="food_prep")
+    assert "app/pipelines.py" in files
+    pipe_code = files["app/pipelines.py"]
+    assert "pipe_main.set_steps([PanStep(), QuesoStep()])" in pipe_code
+    assert "pipe_agua_step.set_steps([AguaStep(), CafeStep()])" in pipe_code
+    assert '"main": pipe_main' in pipe_code
+    assert '"agua_step": pipe_agua_step' in pipe_code
+

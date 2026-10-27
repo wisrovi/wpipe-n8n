@@ -98,7 +98,7 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
         }
       } else if (fsPath.includes("/states/") && fsPath.endsWith(".py")) {
         try {
-          await WorkspaceIndex.indexWorkspace();
+          await WorkspaceIndex.debouncedIndex(500);
           await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
           const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
           if (wsFolder) {
@@ -207,8 +207,8 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
       }
       if (!code || !code.trim()) return;
 
-      // Always re-index workspace before decompiling to catch freshly created custom states
-      await WorkspaceIndex.indexWorkspace();
+      // Debounced indexing so typing and decompilation never block the UI thread
+      WorkspaceIndex.debouncedIndex(800);
 
       const workspaceState = PipelineDecompiler.decompile(code);
       if (!workspaceState) return;
@@ -550,7 +550,6 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                         await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content as string, "utf8"));
                       }
                     }
-                    await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
                     await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
                   }
                 } catch (err) {
@@ -610,7 +609,6 @@ export class WPipeCanvasEditorProvider implements vscode.CustomTextEditorProvide
                 const doc = await vscode.workspace.openTextDocument(mainPipeUri);
                 await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
               } catch {}
-              await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
               await vscode.commands.executeCommand("wpipeSteps.refreshEntry");
             }
           }

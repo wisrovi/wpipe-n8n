@@ -103,3 +103,56 @@ def test_ai_step_generates_state_file_with_prompt_docstring():
     assert "@to_obj(PipelineContextDTO)" in state_code
     assert "class EntityExtractorStep:" in state_code
 
+
+def test_ast_compiler_multi_trigger_canvas():
+    """Verify that multiple triggers on the same canvas generate named Pipeline instances and endpoints."""
+    compiler = ASTCompiler()
+    canvas = {
+        "nodes": [
+            # Trigger 1: Main REST API
+            {"id": "t1", "data": {"node_type": "trigger", "trigger_type": "api", "trigger_param": "/run"}},
+            {"id": "s1", "data": {"node_type": "step", "namespace": "wpipe_steps.connectivity", "func_name": "HttpRequest", "label": "FetchAPI"}},
+            # Trigger 2: Cron schedule
+            {"id": "t2", "data": {"node_type": "trigger", "trigger_type": "cron", "trigger_param": "0 * * * *"}},
+            {"id": "s2", "data": {"node_type": "step", "namespace": "wpipe_steps.security", "func_name": "NmapScanStep", "label": "ScanTarget"}},
+        ],
+        "edges": [
+            {"source": "t1", "target": "s1"},
+            {"source": "t2", "target": "s2"},
+        ]
+    }
+    files = compiler.compile_canvas(canvas, project_name="multi_service")
+
+    pipe_code = files["app/pipelines.py"]
+    assert "pipe_main: Pipeline = Pipeline(pipeline_name=\"multi_service\")" in pipe_code
+    assert "pipe_cron: Pipeline = Pipeline(pipeline_name=\"multi_service_cron\")" in pipe_code
+    assert '"main": pipe_main' in pipe_code
+    assert '"cron": pipe_cron' in pipe_code
+    assert "def build_pipeline" in pipe_code
+    assert "def execute_pipeline(" in pipe_code
+    assert 'pipeline_name: str = "main"' in pipe_code
+
+    # Verify steps were partitioned correctly to their respective trigger trees
+    assert "pipe_main.set_steps" in pipe_code
+    assert "pipe_cron.set_steps" in pipe_code
+
+    main_py_code = files["app/main.py"]
+    assert "@app.post(\"/run\"" in main_py_code
+    assert "build_pipeline(pipeline_name)" in main_py_code
+
+
+def test_ast_compiler_modular_pipeline_file():
+    """Verify that compiling a modular pipeline (e.g., auth) produces its dedicated module file."""
+    compiler = ASTCompiler()
+    canvas = {
+        "nodes": [
+            {"id": "t1", "data": {"node_type": "trigger", "trigger_type": "api", "trigger_param": "/auth"}},
+            {"id": "s1", "data": {"node_type": "step", "label": "CustomAuthStep"}},
+        ]
+    }
+    files = compiler.compile_canvas(canvas, project_name="auth")
+
+    assert "app/pipelines.py" in files
+    assert "app/auth.py" in files
+    assert "Pipeline(pipeline_name=\"auth\")" in files["app/auth.py"]
+

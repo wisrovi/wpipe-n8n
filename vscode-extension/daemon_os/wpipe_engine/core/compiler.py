@@ -533,34 +533,35 @@ class {class_name}:
         # 3. Filter root execution steps (only steps connected in the execution graph)
         edges = canvas_ir.get("edges", [])
         connected_node_ids = set()
+        adj: dict[str, list[str]] = {}
         for e in edges:
-            connected_node_ids.add(e.get("source"))
-            connected_node_ids.add(e.get("target"))
+            src = e.get("source")
+            tgt = e.get("target")
+            if src and tgt:
+                connected_node_ids.add(src)
+                connected_node_ids.add(tgt)
+                adj.setdefault(src, []).append(tgt)
 
-        root_nodes = [
-            n for n in nodes
-            if not n.get("data", {}).get("parent_id")
-            and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
-            and (n.get("id") in connected_node_ids or not edges)
+        def get_reachable_node_ids(start_id: str) -> set[str]:
+            visited: set[str] = set()
+            queue = [start_id]
+            while queue:
+                curr = queue.pop(0)
+                if curr in visited:
+                    continue
+                visited.add(curr)
+                for nxt in adj.get(curr, []):
+                    if nxt not in visited:
+                        queue.append(nxt)
+            return visited
+
+        trigger_nodes = [
+            n
+            for n in nodes
+            if n.get("data", {}).get("node_type") in ("trigger", "wpipe_trigger")
+            or n.get("type") == "wpipe_trigger"
+            or "trigger" in (n.get("data", {}).get("node_type") or "")
         ]
-
-        if root_nodes:
-            steps_code = ",\n".join(render_step(n, 8) for n in root_nodes)
-        elif existing_pipeline_code and "set_steps" in existing_pipeline_code:
-            # Preserve existing steps if pipeline has them rather than overwriting with default template
-            steps_balanced = self._extract_balanced_brackets(existing_pipeline_code, r"(?:set_steps|steps)\s*\(\s*\[")
-            if steps_balanced is not None:
-                steps_code = steps_balanced.rstrip()
-            else:
-                m_steps = re.search(r"(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)", existing_pipeline_code)
-                if m_steps:
-                    steps_code = m_steps.group(1).rstrip()
-                else:
-                    steps_code = "        # No steps configured"
-        else:
-            steps_code = "        # No steps configured"
-
-        imports_code = "\n".join(sorted(imports))
 
         # 4. Smart AST Code Merge (Preserve custom blocks if existing code is provided)
         custom_blocks = ""
@@ -581,8 +582,37 @@ class {class_name}:
             if log_m and log_m.group(1).strip() and not log_m.group(1).strip().startswith("# Add custom helper"):
                 custom_blocks += f"\n# >>> [WPIPE:CUSTOM_LOGIC:START]\n{log_m.group(1).strip()}\n# <<< [WPIPE:CUSTOM_LOGIC:END]\n"
 
-        # 5. Pipelines.py
-        pipelines_py = f'''"""Declarative pipeline DAG construction and execution for {project_name}.
+        # 5. Multi-Trigger vs Single-Trigger Compilation Strategy
+        is_multi_trigger = len(trigger_nodes) > 1
+        extra_endpoints_code = ""
+
+        if not is_multi_trigger:
+            root_nodes = [
+                n for n in nodes
+                if not n.get("data", {}).get("parent_id")
+                and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
+                and (n.get("id") in connected_node_ids or not edges)
+            ]
+
+            if root_nodes:
+                steps_code = ",\n".join(render_step(n, 8) for n in root_nodes)
+            elif existing_pipeline_code and "set_steps" in existing_pipeline_code:
+                # Preserve existing steps if pipeline has them rather than overwriting with default template
+                steps_balanced = self._extract_balanced_brackets(existing_pipeline_code, r"(?:set_steps|steps)\s*\(\s*\[")
+                if steps_balanced is not None:
+                    steps_code = steps_balanced.rstrip()
+                else:
+                    m_steps = re.search(r"(?:set_steps|steps)\s*\(\s*\[([\s\S]*?)\]\s*\)", existing_pipeline_code)
+                    if m_steps:
+                        steps_code = m_steps.group(1).rstrip()
+                    else:
+                        steps_code = "        # No steps configured"
+            else:
+                steps_code = "        # No steps configured"
+
+            imports_code = "\n".join(sorted(imports))
+
+            pipelines_py = f'''"""Declarative pipeline DAG construction and execution for {project_name}.
 
 Mandatory architecture component per WPipe Architect Manual.
 """
@@ -658,6 +688,196 @@ if __name__ == "__main__":
         traceback.print_exc()
         sys.exit(1)
 '''
+        else:
+            # Multi-Trigger Canvas: compile each trigger tree to its own named Pipeline instance
+            pipeline_defs: list[dict[str, Any]] = []
+            used_slugs: set[str] = set()
+
+            for idx, trig in enumerate(trigger_nodes):
+                t_id = trig.get("id", "")
+                t_data = trig.get("data", {})
+                t_type = (t_data.get("trigger_type") or "api").lower()
+                t_param = (t_data.get("trigger_param") or "").strip()
+
+                if idx == 0:
+                    slug = "main"
+                    var_name = "pipe_main"
+                    pipe_name = project_name
+                else:
+                    if t_type == "cron":
+                        base_slug = "cron"
+                    elif t_type in ("kafka", "redis", "webhook"):
+                        base_slug = t_type
+                    elif t_param.startswith("/"):
+                        p_clean = sanitize_ident(t_param.strip("/").replace("/", "_"))
+                        base_slug = p_clean or f"sub_{idx}"
+                    else:
+                        base_slug = f"pipeline_{idx}"
+
+                    slug = base_slug
+                    if slug in used_slugs:
+                        slug = f"{base_slug}_{idx}"
+                    var_name = f"pipe_{slug}"
+                    pipe_name = f"{project_name}_{slug}"
+
+                used_slugs.add(slug)
+
+                reach = get_reachable_node_ids(t_id) if edges else set()
+                trig_root_nodes = [
+                    n for n in nodes
+                    if n.get("id") in reach
+                    and not n.get("data", {}).get("parent_id")
+                    and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
+                ]
+
+                if trig_root_nodes:
+                    p_steps_code = ",\n".join(render_step(n, 8) for n in trig_root_nodes)
+                else:
+                    p_steps_code = "        # No steps configured"
+
+                pipeline_defs.append({
+                    "slug": slug,
+                    "var_name": var_name,
+                    "pipe_name": pipe_name,
+                    "trigger_type": t_type,
+                    "trigger_param": t_param,
+                    "steps_code": p_steps_code,
+                })
+
+            pipeline_instantiations: list[str] = []
+            registry_entries: list[str] = []
+            for p in pipeline_defs:
+                inst = f'''# --- Pipeline: {p["slug"]} ({p["trigger_type"].upper()}: {p["trigger_param"] or "/run"}) ---
+{p["var_name"]}: Pipeline = Pipeline(pipeline_name="{p["pipe_name"]}")
+{p["var_name"]}.tracking_db = settings.tracking_db
+{p["var_name"]}.collect_system_metrics = True
+{p["var_name"]}.show_progress = False
+{p["var_name"]}.max_retries = 3
+{p["var_name"]}.retry_delay = 0.5
+
+{p["var_name"]}.set_steps([
+{p["steps_code"]}
+])'''
+                pipeline_instantiations.append(inst)
+                registry_entries.append(f'    "{p["slug"]}": {p["var_name"]},')
+
+            inst_block = "\n\n".join(pipeline_instantiations)
+            reg_block = "\n".join(registry_entries)
+            imports_code = "\n".join(sorted(imports))
+
+            pipelines_py = f'''"""Declarative pipeline DAG construction and execution for {project_name}.
+
+Multi-trigger pipeline architecture reflecting multiple execution trees on visual canvas.
+Mandatory architecture component per WPipe Architect Manual.
+"""
+
+import os
+from typing import Any
+
+from loguru import logger
+{imports_code}{custom_blocks}
+
+os.makedirs("output", exist_ok=True)
+
+# 1. Declarative Pipeline Instances (Multi-Trigger Architecture)
+{inst_block}
+
+# Canonical registry of all pipelines declared on this canvas
+pipelines: dict[str, Pipeline] = {{
+{reg_block}
+}}
+
+# Primary pipeline alias for backward compatibility
+pipe: Pipeline = pipe_main
+
+
+def build_pipeline(name: str = "main") -> Pipeline:
+    """Declaratively return the configured WPipe state machine.
+
+    Args:
+        name (str): Pipeline name key. Defaults to 'main'.
+
+    Returns:
+        Pipeline: Configured WPipe pipeline instance.
+    """
+    return pipelines.get(name, pipe_main)
+
+
+def execute_pipeline(payload: dict[str, Any], pipeline_name: str = "main") -> dict[str, Any]:
+    """Execute the declarative WPipe pipeline.
+
+    Args:
+        payload (dict[str, Any]): Input payload dictionary.
+        pipeline_name (str): Target pipeline identifier. Defaults to 'main'.
+
+    Returns:
+        dict[str, Any]: Execution result dictionary with mutated context.
+    """
+    target_pipe = pipelines.get(pipeline_name, pipe_main)
+    tx_id = payload.get("transaction_id", "unknown")
+    logger.info(f"Executing {project_name} [{{pipeline_name}}] WPipe pipeline with transaction: {{tx_id}}")
+    try:
+        result = target_pipe.run(payload)
+        logger.info(f"Pipeline [{{pipeline_name}}] completed successfully")
+        return result
+    except Exception as err:
+        logger.error(f"Error executing {project_name} [{{pipeline_name}}]: {{err}}")
+        raise
+
+
+if __name__ == "__main__":
+    import json
+    import sys
+    test_payload = {{"transaction_id": "sim_run", "input_data": {{"mode": "direct"}}}}
+    target_pipeline = "main"
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        try:
+            parsed = json.loads(sys.argv[1])
+            if isinstance(parsed, dict):
+                test_payload = parsed
+                if "_target_pipeline" in parsed:
+                    target_pipeline = parsed.pop("_target_pipeline")
+        except Exception:
+            pass
+    try:
+        res = execute_pipeline(test_payload, pipeline_name=target_pipeline)
+        print("WPIPE_SIMULATION_SUCCESS")
+        print(json.dumps(res, default=str))
+    except Exception as exc:
+        print("WPIPE_SIMULATION_FAILED", file=sys.stderr)
+        print(f"{{type(exc).__name__}}: {{exc}}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+'''
+            # Generate additional API endpoints for secondary triggers
+            extra_eps = []
+            for p in pipeline_defs[1:]:
+                ep_path = p["trigger_param"] if p["trigger_param"].startswith("/") else f"/{p['slug']}"
+                fn_name = f"run_{p['slug']}_endpoint"
+                ep_code = f'''
+@app.post("{ep_path}", response_model=PipelineResponseDTO)
+def {fn_name}(request: PipelineRequestDTO) -> PipelineResponseDTO:
+    """REST API endpoint to trigger secondary {p['slug']} pipeline execution."""
+    tx_id = request.transaction_id or generate_transaction_id()
+    payload = {{"transaction_id": tx_id, "input_data": request.payload}}
+    if isinstance(request.payload, dict):
+        payload.update(request.payload)
+
+    try:
+        result = handle_pipeline_event(payload, pipeline_name="{p['slug']}")
+        return PipelineResponseDTO(
+            status="success",
+            transaction_id=tx_id,
+            data=result.get("processed_data", result),
+            metrics=sanitize_metrics(result.get("metrics", {{}})),
+        )
+    except Exception as err:
+        logger.error(f"Endpoint error executing {p['slug']}: {{err}}")
+        raise HTTPException(status_code=500, detail=str(err))
+'''
+                extra_eps.append(ep_code)
+            extra_endpoints_code = "\n".join(extra_eps)
 
         # 6. Main.py
         main_py = f'''"""Microservice main entrypoint: FastAPI REST API & event listener.
@@ -687,11 +907,12 @@ app: FastAPI = FastAPI(
 )
 
 
-def handle_pipeline_event(event_data: dict[str, Any]) -> dict[str, Any]:
+def handle_pipeline_event(event_data: dict[str, Any], pipeline_name: str = "main") -> dict[str, Any]:
     """Receive trigger event, execute pipeline under resource monitoring and return result.
 
     Args:
         event_data (dict[str, Any]): Event payload.
+        pipeline_name (str): Identifier of the target pipeline to execute. Defaults to 'main'.
 
     Returns:
         dict[str, Any]: Execution result dictionary.
@@ -702,7 +923,7 @@ def handle_pipeline_event(event_data: dict[str, Any]) -> dict[str, Any]:
     """
     tx_id = event_data.get("transaction_id") or generate_transaction_id()
     event_data["transaction_id"] = tx_id
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(pipeline_name)
 
     try:
         with (
@@ -771,7 +992,7 @@ def run_pipeline_endpoint(request: PipelineRequestDTO) -> PipelineResponseDTO:
     except Exception as err:
         logger.error(f"Pipeline API failure for {{tx_id}}: {{err}}")
         raise HTTPException(status_code=500, detail=str(err)) from err
-
+{extra_endpoints_code}
 
 if __name__ == "__main__":
     import uvicorn
@@ -1848,6 +2069,11 @@ explicit_package_bases = true
             "run_tests_docker.sh": run_tests_docker,
             "wpipe.config.json": wpipe_config_json,
         }
+
+        # For modular pipelines (1:1 mapping), also expose the dedicated pipeline module
+        if project_name not in ("main_pipeline", "pipelines", "main"):
+            ident = sanitize_ident(project_name)
+            raw_files[f"app/{ident}.py"] = pipelines_py
 
         # Include standard built-in states only when actually referenced in pipeline
         if "CleanDataStep" in step_names_for_readme:

@@ -14,33 +14,59 @@ export interface WorkspaceStep {
 
 export class WorkspaceIndex {
     private static steps: Map<string, WorkspaceStep> = new Map();
+    private static isIndexing: boolean = false;
+    private static pendingIndex: boolean = false;
+    private static debounceTimer: NodeJS.Timeout | null = null;
+
+    public static debouncedIndex(delayMs: number = 600): Promise<void> {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+        return new Promise<void>((resolve) => {
+            this.debounceTimer = setTimeout(async () => {
+                this.debounceTimer = null;
+                await this.indexWorkspace();
+                resolve();
+            }, delayMs);
+        });
+    }
 
     public static async indexWorkspace() {
-        const config = vscode.workspace.getConfiguration('wpipe');
-        const userExcludes = config.get<string[]>('excludePaths', []);
-        const maxFiles = config.get<number>('maxSearchFiles', 500);
+        if (this.isIndexing) {
+            this.pendingIndex = true;
+            return;
+        }
+        this.isIndexing = true;
+        try {
+            const config = vscode.workspace.getConfiguration('wpipe');
+            const userExcludes = config.get<string[]>('excludePaths', []);
+            const maxFiles = config.get<number>('maxSearchFiles', 200);
 
-        const defaultExcludes = [
-            '**/node_modules/**', '**/.venv/**', '**/venv/**', '**/.env/**', '**/env/**',
-            '**/.conda/**', '**/conda/**', '**/site-packages/**', '**/wpipe/wpipe/**',
-            '**/__pycache__/**', '**/.pytest_cache/**', '**/.mypy_cache/**',
-            '**/.ruff_cache/**', '**/.tox/**', '**/build/**', '**/dist/**', '**/*.egg-info/**'
-        ];
+            const defaultExcludes = [
+                '**/node_modules/**', '**/.venv/**', '**/venv/**', '**/.env/**', '**/env/**',
+                '**/.conda/**', '**/conda/**', '**/site-packages/**', '**/wpipe/wpipe/**',
+                '**/__pycache__/**', '**/.pytest_cache/**', '**/.mypy_cache/**',
+                '**/.ruff_cache/**', '**/.tox/**', '**/build/**', '**/dist/**', '**/*.egg-info/**',
+                '**/.git/**', '**/.svn/**'
+            ];
 
-        const combinedExcludes = Array.from(new Set([...defaultExcludes, ...userExcludes]));
-        const excludePattern = `{${combinedExcludes.join(',')}}`;
+            const combinedExcludes = Array.from(new Set([...defaultExcludes, ...userExcludes]));
+            const excludePattern = `{${combinedExcludes.join(',')}}`;
 
-        const files = await vscode.workspace.findFiles('**/*.py', excludePattern, maxFiles);
-        
-        const newSteps: Map<string, WorkspaceStep> = new Map();
+            // Focus search on state and step definitions to prevent scanning unrelated files
+            const files = await vscode.workspace.findFiles('{**/states/*.py,**/app/**/*.py,**/steps/*.py,**/*step*.py}', excludePattern, maxFiles);
+            
+            const newSteps: Map<string, WorkspaceStep> = new Map();
 
-        for (const f of files) {
-            try {
-                const contentData = await vscode.workspace.fs.readFile(f);
-                if (contentData.length > 500000) continue;
-                
-                const content = new TextDecoder().decode(contentData);
-                const tree = parser.parse(content);
+            for (const f of files) {
+                try {
+                    const contentData = await vscode.workspace.fs.readFile(f);
+                    if (contentData.length > 500000) continue;
+                    
+                    const content = new TextDecoder().decode(contentData);
+                    if (!content.includes('@step')) continue;
+
+                    const tree = parser.parse(content);
                 
                 tree.iterate({
                     enter: (node) => {
@@ -85,7 +111,14 @@ export class WorkspaceIndex {
             } catch (e) {}
         }
         this.steps = newSteps;
+    } finally {
+        this.isIndexing = false;
+        if (this.pendingIndex) {
+            this.pendingIndex = false;
+            this.debouncedIndex(300);
+        }
     }
+}
 
     public static getStep(name: string): WorkspaceStep | undefined {
         if (!name) return undefined;

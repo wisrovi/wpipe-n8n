@@ -14,7 +14,7 @@
 ### Plataforma & Ecosistema de Ingeniería
 - **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
 - **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
-- **Fecha de Compilación**: `2026-10-27 12:13:13 UTC`.
+- **Fecha de Compilación**: `2026-10-27 13:04:06 UTC`.
 - **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico + wpipe-mcp).
 
 ### Autor & Atribución Profesional

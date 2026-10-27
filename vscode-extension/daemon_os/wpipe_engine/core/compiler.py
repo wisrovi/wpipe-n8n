@@ -170,6 +170,142 @@ class ASTCompiler:
                         return text[start_idx:i]
         return None
 
+    @classmethod
+    def parse_workspace_state(cls, ws_state: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Convert Blockly workspace_state JSON into Canvas IR nodes and edges."""
+        if not isinstance(ws_state, dict):
+            return [], []
+
+        blocks_container = ws_state.get("blocks", {})
+        top_blocks = blocks_container.get("blocks", []) if isinstance(blocks_container, dict) else []
+        if not top_blocks and isinstance(ws_state.get("blocks"), list):
+            top_blocks = ws_state["blocks"]
+
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        node_counter = 1
+
+        def process_block(blk: dict[str, Any], parent_id: str | None = None, slot_type: str | None = None) -> tuple[str, list[str]]:
+            nonlocal node_counter
+            blk_id = blk.get("id") or f"node_{node_counter}"
+            node_counter += 1
+            blk_type = blk.get("type", "wpipe_step")
+            fields = blk.get("fields", {})
+
+            node_type = "step"
+            trigger_type = None
+            trigger_param = None
+            step_name = None
+            namespace = None
+            cond_expr = None
+            for_iters = None
+            merge_pol = None
+
+            if blk_type == "wpipe_trigger":
+                node_type = "trigger"
+                trigger_type = fields.get("TRIGGER_TYPE", "api")
+                trigger_param = fields.get("TRIGGER_PARAM", "/run")
+                label = f"Trigger ({trigger_type.upper()}: {trigger_param})"
+            elif blk_type == "wpipe_response":
+                node_type = "response"
+                label = f"Response ({fields.get('RESPONSE_TYPE', 'http')})"
+            elif blk_type == "wpipe_step":
+                step_name = fields.get("STEP_NAME", "Step")
+                namespace = fields.get("NAMESPACE")
+                label = step_name
+            elif blk_type == "wpipe_ai_step":
+                step_name = fields.get("STEP_NAME", "custom_ai_state")
+                namespace = f"app.states.{step_name}"
+                label = step_name
+            elif blk_type == "wpipe_user_file_step":
+                step_name = fields.get("STEP_NAME", "custom_user_step")
+                file_name = fields.get("FILE_NAME", "custom_user_step.py")
+                namespace = f"app.states.{file_name.replace('.py', '')}"
+                label = step_name
+            elif blk_type in ("wpipe_if", "wpipe_if_else"):
+                node_type = "condition"
+                cond_expr = fields.get("CONDITION", "status_code == 200")
+                label = "IF Condition"
+            elif blk_type == "wpipe_for":
+                node_type = "for"
+                for_iters = int(fields.get("ITERATIONS", 5))
+                label = "FOR Loop"
+            elif blk_type == "wpipe_while":
+                node_type = "while"
+                cond_expr = fields.get("CONDITION", "retry_count < 3")
+                label = "WHILE Loop"
+            elif blk_type == "wpipe_parallel":
+                node_type = "parallel"
+                merge_pol = fields.get("MERGE_POLICY", "accumulate")
+                label = "PARALLEL"
+            elif blk_type == "wpipe_background":
+                node_type = "background"
+                label = "BACKGROUND Task"
+            else:
+                label = fields.get("STEP_NAME", blk_type)
+                step_name = label
+
+            node_data = {
+                "label": label,
+                "node_type": node_type,
+                "trigger_type": trigger_type,
+                "trigger_param": trigger_param,
+                "step_name": step_name,
+                "func_name": step_name,
+                "namespace": namespace,
+                "condition_expression": cond_expr,
+                "for_iterations": for_iters,
+                "merge_policy": merge_pol,
+                "parent_id": parent_id,
+                "slot_type": slot_type,
+                "block_type": blk_type,
+            }
+            nodes.append({
+                "id": blk_id,
+                "type": "default",
+                "position": {"x": blk.get("x", 0), "y": blk.get("y", 0)},
+                "data": node_data,
+            })
+
+            branch_exits = [blk_id]
+            inputs = blk.get("inputs", {})
+            do_block = inputs.get("DO", {}).get("block")
+            if do_block:
+                slot = "if_body"
+                if node_type in ("for", "while"):
+                    slot = "loop_body"
+                elif node_type == "parallel":
+                    slot = "parallel_body"
+                elif node_type == "background":
+                    slot = "background_body"
+                c_entry, c_exits = process_block(do_block, blk_id, slot)
+                edges.append({"id": f"e_{blk_id}_{c_entry}", "source": blk_id, "target": c_entry})
+                branch_exits = c_exits
+
+            else_block = inputs.get("ELSE", {}).get("block")
+            if else_block:
+                e_entry, e_exits = process_block(else_block, blk_id, "else_body")
+                edges.append({"id": f"e_{blk_id}_{e_entry}", "source": blk_id, "target": e_entry})
+                branch_exits.extend(else_exits)
+
+            final_exits = branch_exits
+            nxt = blk.get("next", {}).get("block")
+            if nxt:
+                n_entry, n_exits = process_block(nxt, parent_id, slot_type)
+                edges.append({"id": f"e_seq_{blk_id}_{n_entry}", "source": blk_id, "target": n_entry})
+                for ex in branch_exits:
+                    if ex != blk_id:
+                        edges.append({"id": f"e_{ex}_{n_entry}", "source": ex, "target": n_entry})
+                final_exits = n_exits
+
+            return blk_id, final_exits
+
+        for top_b in top_blocks:
+            if isinstance(top_b, dict):
+                process_block(top_b)
+
+        return nodes, edges
+
     def compile_canvas(
         self,
         canvas_ir: dict[str, Any],
@@ -178,6 +314,27 @@ class ASTCompiler:
     ) -> dict[str, str]:
         """Compile Canvas IR JSON to a dictionary of { relative_path: file_content }."""
         nodes = canvas_ir.get("nodes", [])
+        edges = canvas_ir.get("edges", [])
+
+        # Fallback to workspace_state if nodes are missing or empty
+        if not nodes:
+            ws_state = None
+            if isinstance(canvas_ir.get("workspace_state"), dict):
+                ws_state = canvas_ir["workspace_state"]
+            elif isinstance(canvas_ir.get("project"), dict):
+                p = canvas_ir["project"]
+                if isinstance(p.get("workspace_state"), dict):
+                    ws_state = p["workspace_state"]
+                elif isinstance(p.get("canvas_ir"), dict) and isinstance(p["canvas_ir"].get("workspace_state"), dict):
+                    ws_state = p["canvas_ir"]["workspace_state"]
+                elif isinstance(p.get("canvas_ir"), dict) and p["canvas_ir"].get("nodes"):
+                    nodes = p["canvas_ir"]["nodes"]
+                    edges = p["canvas_ir"].get("edges", [])
+            if not nodes and ws_state:
+                parsed_nodes, parsed_edges = self.parse_workspace_state(ws_state)
+                if parsed_nodes:
+                    nodes = parsed_nodes
+                    edges = parsed_edges
 
         # 0. Extract trigger launcher and root_path configuration
         trigger_node = next(
@@ -531,7 +688,8 @@ class {class_name}:
                 return f"{pad}{class_name}()"
 
         # 3. Filter root execution steps (only steps connected in the execution graph)
-        edges = canvas_ir.get("edges", [])
+        if not edges:
+            edges = canvas_ir.get("edges", [])
         connected_node_ids = set()
         adj: dict[str, list[str]] = {}
         for e in edges:
@@ -555,6 +713,13 @@ class {class_name}:
                         queue.append(nxt)
             return visited
 
+        # Calculate in-degree for all nodes to detect root execution trees
+        in_degree: dict[str, int] = {n.get("id", ""): 0 for n in nodes}
+        for e in edges:
+            tgt = e.get("target")
+            if tgt in in_degree:
+                in_degree[tgt] += 1
+
         trigger_nodes = [
             n
             for n in nodes
@@ -562,6 +727,22 @@ class {class_name}:
             or n.get("type") == "wpipe_trigger"
             or "trigger" in (n.get("data", {}).get("node_type") or "")
         ]
+
+        reachable_from_triggers: set[str] = set()
+        for t in trigger_nodes:
+            t_id = t.get("id", "")
+            if t_id:
+                reachable_from_triggers.update(get_reachable_node_ids(t_id))
+
+        step_root_nodes = [
+            n for n in nodes
+            if not n.get("data", {}).get("parent_id")
+            and in_degree.get(n.get("id", ""), 0) == 0
+            and (n.get("data", {}).get("node_type") or n.get("type", "step")) not in ("trigger", "response", "wpipe_trigger", "wpipe_response")
+            and n.get("id") not in reachable_from_triggers
+        ]
+
+        all_pipeline_roots: list[dict[str, Any]] = trigger_nodes + step_root_nodes
 
         # 4. Smart AST Code Merge (Preserve custom blocks if existing code is provided)
         custom_blocks = ""
@@ -583,7 +764,7 @@ class {class_name}:
                 custom_blocks += f"\n# >>> [WPIPE:CUSTOM_LOGIC:START]\n{log_m.group(1).strip()}\n# <<< [WPIPE:CUSTOM_LOGIC:END]\n"
 
         # 5. Multi-Trigger vs Single-Trigger Compilation Strategy
-        is_multi_trigger = len(trigger_nodes) > 1
+        is_multi_trigger = len(all_pipeline_roots) > 1
         extra_endpoints_code = ""
 
         if not is_multi_trigger:
@@ -689,30 +870,41 @@ if __name__ == "__main__":
         sys.exit(1)
 '''
         else:
-            # Multi-Trigger Canvas: compile each trigger tree to its own named Pipeline instance
+            # Multi-Pipeline Canvas: compile each independent execution tree to its own named Pipeline instance
             pipeline_defs: list[dict[str, Any]] = []
             used_slugs: set[str] = set()
 
-            for idx, trig in enumerate(trigger_nodes):
-                t_id = trig.get("id", "")
-                t_data = trig.get("data", {})
-                t_type = (t_data.get("trigger_type") or "api").lower()
-                t_param = (t_data.get("trigger_param") or "").strip()
+            for idx, root in enumerate(all_pipeline_roots):
+                r_id = root.get("id", "")
+                r_data = root.get("data", {})
+                r_kind = r_data.get("node_type") or root.get("type", "step")
+                is_trig = r_kind in ("trigger", "wpipe_trigger") or "trigger" in r_kind
+
+                if is_trig:
+                    t_type = (r_data.get("trigger_type") or "api").lower()
+                    t_param = (r_data.get("trigger_param") or "").strip()
+                else:
+                    t_type = "step"
+                    s_label = r_data.get("step_name") or r_data.get("label") or f"sub_{idx}"
+                    t_param = sanitize_ident(s_label)
 
                 if idx == 0:
                     slug = "main"
                     var_name = "pipe_main"
                     pipe_name = project_name
                 else:
-                    if t_type == "cron":
-                        base_slug = "cron"
-                    elif t_type in ("kafka", "redis", "webhook"):
-                        base_slug = t_type
-                    elif t_param.startswith("/"):
-                        p_clean = sanitize_ident(t_param.strip("/").replace("/", "_"))
-                        base_slug = p_clean or f"sub_{idx}"
+                    if is_trig:
+                        if t_type == "cron":
+                            base_slug = "cron"
+                        elif t_type in ("kafka", "redis", "webhook"):
+                            base_slug = t_type
+                        elif t_param.startswith("/"):
+                            p_clean = sanitize_ident(t_param.strip("/").replace("/", "_"))
+                            base_slug = p_clean or f"sub_{idx}"
+                        else:
+                            base_slug = f"pipeline_{idx}"
                     else:
-                        base_slug = f"pipeline_{idx}"
+                        base_slug = sanitize_ident(t_param) or f"pipeline_{idx}"
 
                     slug = base_slug
                     if slug in used_slugs:
@@ -722,7 +914,7 @@ if __name__ == "__main__":
 
                 used_slugs.add(slug)
 
-                reach = get_reachable_node_ids(t_id) if edges else set()
+                reach = get_reachable_node_ids(r_id) if edges else {r_id}
                 trig_root_nodes = [
                     n for n in nodes
                     if n.get("id") in reach

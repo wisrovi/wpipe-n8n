@@ -14,7 +14,7 @@
 ### Plataforma & Ecosistema de Ingeniería
 - **Suite de Orquestación**: [WPipe Studio](https://github.com/wisrovi/wpipe-studio) (wisrovi SUITE) — Plataforma visual de ingeniería de microservicios y diseño modular de pipelines.
 - **Motor Core**: [WPipe](https://github.com/wisrovi/wpipe) (wisrovi SUITE) >=2.5.13.
-- **Fecha de Compilación**: `2026-10-26 13:01:36 UTC`.
+- **Fecha de Compilación**: `2026-10-27 12:13:13 UTC`.
 - **Estándar de Generación**: Dialecto A (Contratos Pydantic Context DTOs + AST Jerárquico Topológico + wpipe-mcp).
 
 ### Autor & Atribución Profesional
@@ -36,7 +36,7 @@ Este componente de software y su topología de ejecución fueron diseñados y co
 El microservicio `main_pipeline` expone un flujo de trabajo modular asíncrono y de alto rendimiento, orquestado mediante **WPipe** y servido a través de **FastAPI**.
 
 - **Pipeline Core**: `main_pipeline` (`app/pipelines.py`)
-- **Topología de Pasos Ensamblados**: http, QuesoStep, PanStep, Condition(http_response.get('status_code') == 200), AiProcessStepStep, Condition(http_response.get('status_code') == 200), AguaStep, Condition(http_response.get('status_code') == 200).
+- **Topología de Pasos Ensamblados**: CleanDataStep, TransformPayloadStep.
 - **Bloques de Control Soportados**: Bifurcaciones condicionales (`Condition`), bucles deterministas o continuos (`For`), ejecución concurrente (`Parallel`) y tareas desacopladas (`Background`).
 - **Contratos de Datos**: Clases Pydantic en `app/dto/` con validación estricta de tipos, inmutabilidad y serialización de contexto vía `@to_obj`.
 
@@ -46,7 +46,7 @@ El microservicio `main_pipeline` expone un flujo de trabajo modular asíncrono y
 flowchart TD
     START(["🌐 Ingress (FastAPI REST: /run)"]):::startClass --> DTO["📋 PipelineContextDTO<br/>(Validación de Entrada)"]
     DTO --> PIPE["⚡ WPipe Pipeline: main_pipeline"]
-    PIPE --> STEPS["🔄 Topología de Pasos & Bloques de Control<br/>(http, QuesoStep, PanStep, Condition(http_response.get('status_code') == 200), AiProcessStepStep, Condition(http_response.get('status_code') == 200), AguaStep, Condition(http_response.get('status_code') == 200))"]
+    PIPE --> STEPS["🔄 Topología de Pasos & Bloques de Control<br/>(CleanDataStep, TransformPayloadStep)"]
     STEPS --> RES["🏁 PipelineResponseDTO<br/>(HTTP 200 JSON OK)"]:::endClass
 
     classDef startClass fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;

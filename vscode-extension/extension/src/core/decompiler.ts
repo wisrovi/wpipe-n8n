@@ -25,18 +25,18 @@ export interface ParsedStepNode {
 
 export class PipelineDecompiler {
   /**
-   * Extract balanced bracket content starting from a matched prefix pattern in text.
-   * E.g. prefix: /(?:set_steps|steps)\s*\(\s*\[/ -> extracts everything up to the matching closing ']'
+   * Extract balanced bracket content starting at a specific opening character index.
    */
-  public static extractBalanced(text: string, prefixRegex: RegExp, openChar: string = "[", closeChar: string = "]"): string | null {
-    const match = prefixRegex.exec(text);
-    if (!match) return null;
-
-    const startIdx = match.index + match[0].length;
+  public static extractBalancedFromIndex(
+    text: string,
+    openCharIdx: number,
+    openChar: string = "[",
+    closeChar: string = "]"
+  ): string | null {
     let depth = 1;
     let inQuote: string | null = null;
 
-    for (let i = startIdx; i < text.length; i++) {
+    for (let i = openCharIdx + 1; i < text.length; i++) {
       const ch = text[i];
       if ((ch === '"' || ch === "'") && (i === 0 || text[i - 1] !== "\\")) {
         if (!inQuote) inQuote = ch;
@@ -46,12 +46,24 @@ export class PipelineDecompiler {
         else if (ch === closeChar) {
           depth--;
           if (depth === 0) {
-            return text.substring(startIdx, i);
+            return text.substring(openCharIdx + 1, i);
           }
         }
       }
     }
     return null;
+  }
+
+  /**
+   * Extract balanced bracket content starting from a matched prefix pattern in text.
+   * E.g. prefix: /(?:set_steps|steps)\s*\(\s*\[/ -> extracts everything up to the matching closing ']'
+   */
+  public static extractBalanced(text: string, prefixRegex: RegExp, openChar: string = "[", closeChar: string = "]"): string | null {
+    const match = prefixRegex.exec(text);
+    if (!match) return null;
+    const openIdx = match.index + match[0].lastIndexOf(openChar);
+    if (openIdx < 0) return null;
+    return this.extractBalancedFromIndex(text, openIdx, openChar, closeChar);
   }
 
   /**
@@ -196,25 +208,40 @@ export class PipelineDecompiler {
   }
 
   /**
-   * Decompile Python source code of pipelines.py into Blockly workspace_state structure.
+   * Decompile Python source code (e.g. app/pipelines.py or modular pipeline file)
+   * into Blockly workspace_state structure.
+   * Supports both single-pipeline scripts and multi-pipeline definitions in the same file.
    */
   public static decompile(pythonCode: string): any | null {
     if (!pythonCode || (!pythonCode.includes("pipe") && !pythonCode.includes("Pipeline") && !pythonCode.includes("set_steps"))) {
       return null;
     }
 
-    // 1. Find set_steps list with balanced bracket extraction
-    let stepsRaw = this.extractBalanced(pythonCode, /(?:set_steps|steps)\s*\(\s*\[/);
-    if (stepsRaw === null) {
-      stepsRaw = this.extractBalanced(pythonCode, /steps\s*=\s*\[/);
+    // 1. Scan and extract all set_steps definitions (multi-pipeline support)
+    const pipelineMatches: Array<{ varName: string; stepsRaw: string }> = [];
+    const setStepsRegex = /(?:([a-zA-Z0-9_]+)\s*\.)?(?:set_steps|steps)\s*\(\s*\[/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = setStepsRegex.exec(pythonCode)) !== null) {
+      const varName = match[1] || "pipe";
+      const openIdx = match.index + match[0].lastIndexOf("[");
+      const extracted = this.extractBalancedFromIndex(pythonCode, openIdx, "[", "]");
+      if (extracted !== null) {
+        pipelineMatches.push({ varName, stepsRaw: extracted });
+        setStepsRegex.lastIndex = openIdx + 1 + extracted.length;
+      }
     }
 
-    if (stepsRaw === null) {
+    if (pipelineMatches.length === 0) {
+      const fallback = this.extractBalanced(pythonCode, /steps\s*=\s*\[/);
+      if (fallback !== null) {
+        pipelineMatches.push({ varName: "pipe", stepsRaw: fallback });
+      }
+    }
+
+    if (pipelineMatches.length === 0) {
       return null;
     }
-
-    const tokens = this.tokenize(stepsRaw);
-    const parsedSteps = tokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null);
 
     // 2. Build Blockly Blocks chain
     let idCounter = 1;
@@ -383,45 +410,96 @@ export class PipelineDecompiler {
       return first;
     };
 
-    // Construct root chain: Trigger -> Steps -> Response
-    const triggerBlock: any = {
-      type: "wpipe_trigger",
-      id: "root_trigger",
-      x: 80,
-      y: 50,
-      fields: {
-        TRIGGER_TYPE: "api",
-        TRIGGER_PARAM: "/run",
-      },
-    };
+    const topBlocks: any[] = [];
 
-    const responseBlock: any = {
-      type: "wpipe_response",
-      id: "root_response",
-      fields: {
-        RESPONSE_TYPE: "http_json",
-        RESPONSE_PARAM: '{"status": "success", "data": context}',
-      },
-    };
+    pipelineMatches.forEach((pm, idx) => {
+      const tokens = this.tokenize(pm.stepsRaw);
+      const parsedSteps = tokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null);
 
-    const bodyChain = chainNodes(parsedSteps);
-    if (bodyChain) {
-      triggerBlock.next = { block: bodyChain };
-      let tail = bodyChain;
-      while (tail && tail.next && tail.next.block) {
-        tail = tail.next.block;
+      let triggerType = "api";
+      let triggerParam = idx === 0 ? "/run" : `/${pm.varName.replace(/^pipe_?/, "") || "sub"}`;
+
+      const lowVar = pm.varName.toLowerCase();
+      if (lowVar.includes("cron")) {
+        triggerType = "cron";
+        triggerParam = "0 * * * *";
+      } else if (lowVar.includes("kafka")) {
+        triggerType = "kafka";
+        triggerParam = "events.input";
+      } else if (lowVar.includes("redis")) {
+        triggerType = "redis";
+        triggerParam = "queue:tasks";
+      } else if (lowVar.includes("webhook")) {
+        triggerType = "webhook";
+        triggerParam = "/webhook";
+      } else if (lowVar.includes("cli")) {
+        triggerType = "cli";
+        triggerParam = "";
       }
-      if (tail) {
-        tail.next = { block: responseBlock };
+
+      // Check if there is an explicit Pipeline instantiation with pipeline_name
+      try {
+        const nameRegex = new RegExp(`${pm.varName}\\s*=\\s*Pipeline\\s*\\(\\s*(?:pipeline_name\\s*=\\s*)?["']([^"']+)["']`);
+        const nameMatch = nameRegex.exec(pythonCode);
+        if (nameMatch) {
+          const pipeName = nameMatch[1].toLowerCase();
+          if (pipeName.includes("cron")) {
+            triggerType = "cron";
+            triggerParam = "0 * * * *";
+          } else if (pipeName.includes("kafka")) {
+            triggerType = "kafka";
+            triggerParam = "events.input";
+          } else if (pipeName.includes("redis")) {
+            triggerType = "redis";
+            triggerParam = "queue:tasks";
+          } else if (pipeName.includes("webhook")) {
+            triggerType = "webhook";
+            triggerParam = "/webhook";
+          }
+        }
+      } catch {}
+
+      const triggerBlock: any = {
+        type: "wpipe_trigger",
+        id: idx === 0 ? "root_trigger" : `root_trigger_${idx}`,
+        x: 80,
+        y: 50 + idx * 320,
+        fields: {
+          TRIGGER_TYPE: triggerType,
+          TRIGGER_PARAM: triggerParam,
+        },
+      };
+
+      const responseBlock: any = {
+        type: "wpipe_response",
+        id: idx === 0 ? "root_response" : `root_response_${idx}`,
+        fields: {
+          RESPONSE_TYPE: "http_json",
+          RESPONSE_PARAM: '{"status": "success", "data": context}',
+        },
+      };
+
+      const bodyChain = chainNodes(parsedSteps);
+      if (bodyChain) {
+        triggerBlock.next = { block: bodyChain };
+        let tail = bodyChain;
+        while (tail && tail.next && tail.next.block) {
+          tail = tail.next.block;
+        }
+        if (tail) {
+          tail.next = { block: responseBlock };
+        }
+      } else {
+        triggerBlock.next = { block: responseBlock };
       }
-    } else {
-      triggerBlock.next = { block: responseBlock };
-    }
+
+      topBlocks.push(triggerBlock);
+    });
 
     return {
       blocks: {
         languageVersion: 0,
-        blocks: [triggerBlock],
+        blocks: topBlocks,
       },
     };
   }

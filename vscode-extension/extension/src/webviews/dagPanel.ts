@@ -7,6 +7,7 @@ export class DAGPanel {
     public static currentPanel: DAGPanel | undefined;
     private readonly _panel: vscode.WebviewPanel;
     private _disposables: vscode.Disposable[] = [];
+    private _isDisposed: boolean = false;
 
     public static async createOrShow(uri: vscode.Uri, doc: vscode.TextDocument) {
         if (DAGPanel.currentPanel) { 
@@ -22,21 +23,45 @@ export class DAGPanel {
     }
 
     public highlightNodes(nodeNames: string[], status: 'error' | 'success' | 'running') {
-        this._panel.webview.postMessage({
-            command: 'highlightNodes',
-            nodes: nodeNames,
-            status: status
-        });
+        if (this._isDisposed) return;
+        try {
+            this._panel.webview.postMessage({
+                command: 'highlightNodes',
+                nodes: nodeNames,
+                status: status
+            });
+        } catch {}
+    }
+
+    public dispose() {
+        if (this._isDisposed) {
+            return;
+        }
+        this._isDisposed = true;
+        if (DAGPanel.currentPanel === this) {
+            DAGPanel.currentPanel = undefined;
+        }
+        while (this._disposables.length) {
+            const d = this._disposables.pop();
+            if (d) {
+                try {
+                    d.dispose();
+                } catch (e) {
+                    console.error("Error disposing resource in DAGPanel:", e);
+                }
+            }
+        }
     }
 
     private constructor(p: vscode.WebviewPanel, doc: vscode.TextDocument) {
         this._panel = p;
-        this._panel.onDidDispose(() => { DAGPanel.currentPanel = undefined; }, null, this._disposables);
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         
         // Inicialización
         this.updateDocument(doc, true);
         
         this._panel.webview.onDidReceiveMessage(async message => {
+            if (this._isDisposed) return;
             if (message.command === 'downloadImage') {
                 const saveUri = await vscode.window.showSaveDialog({
                     defaultUri: vscode.Uri.file(message.fileName),
@@ -74,6 +99,7 @@ export class DAGPanel {
 
         // Actualizamos vista al guardar cualquier documento de python relevante en este editor
         vscode.workspace.onDidSaveTextDocument(async e => { 
+            if (this._isDisposed) return;
             if (e.languageId === 'python') {
                 if (e.uri.fsPath.endsWith('pipelines.py')) {
                     this.updateDocument(e, true);
@@ -83,6 +109,7 @@ export class DAGPanel {
                         try {
                             const pipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, 'app', 'pipelines.py'));
                             const pipeDoc = await vscode.workspace.openTextDocument(pipeUri);
+                            if (this._isDisposed) return;
                             this.updateDocument(pipeDoc, false);
                         } catch {}
                     }
@@ -95,9 +122,11 @@ export class DAGPanel {
         // Filesystem Watchers separados para detectar cambios desde otros contenedores
         const pipeFsWatcher = vscode.workspace.createFileSystemWatcher("**/pipelines.py");
         const handleExternalPipelineChange = async (changedUri: vscode.Uri) => {
+            if (this._isDisposed) return;
             try {
                 const rawBytes = await vscode.workspace.fs.readFile(changedUri);
                 const fileText = Buffer.from(rawBytes).toString("utf8");
+                if (this._isDisposed) return;
                 this.updateContent(path.basename(changedUri.fsPath), fileText, false);
             } catch (err) {
                 console.warn("DAGPanel could not reload externally modified pipeline:", err);
@@ -109,12 +138,14 @@ export class DAGPanel {
 
         const statesFsWatcher = vscode.workspace.createFileSystemWatcher("**/states/*.py");
         const handleExternalStateChange = async (stateUri: vscode.Uri) => {
+            if (this._isDisposed) return;
             try {
                 const wsFolder = vscode.workspace.getWorkspaceFolder(stateUri);
                 if (wsFolder) {
                     const pipeUri = vscode.Uri.file(path.join(wsFolder.uri.fsPath, 'app', 'pipelines.py'));
                     const rawBytes = await vscode.workspace.fs.readFile(pipeUri);
                     const fileText = Buffer.from(rawBytes).toString("utf8");
+                    if (this._isDisposed) return;
                     this.updateContent("pipelines.py", fileText, false);
                 }
             } catch {}
@@ -125,16 +156,22 @@ export class DAGPanel {
 
         // Al cambiar de editor activo, actualizamos la vista
         vscode.window.onDidChangeActiveTextEditor(e => { 
+            if (this._isDisposed) return;
             if (e && e.document.languageId === 'python') this.updateDocument(e.document, false); 
         }, null, this._disposables);
     }
 
     public async updateContent(fileName: string, content: string, forceBackup: boolean = false) {
+        if (this._isDisposed) return;
         const res = this.parseString(content, fileName);
-        this._panel.webview.html = this._getHtml(fileName, res.graph, res.stats, res.bigO, res.suggestions);
+        if (this._isDisposed) return;
+        try {
+            this._panel.webview.html = this._getHtml(fileName, res.graph, res.stats, res.bigO, res.suggestions);
+        } catch {}
     }
 
     public async updateDocument(doc: vscode.TextDocument, forceBackup: boolean = false) {
+        if (this._isDisposed) return;
         let text = "";
         try {
             const rawBytes = await vscode.workspace.fs.readFile(doc.uri);
@@ -142,6 +179,7 @@ export class DAGPanel {
         } catch {
             text = doc.getText();
         }
+        if (this._isDisposed) return;
         await this.updateContent(path.basename(doc.fileName), text, forceBackup);
     }
 

@@ -55,16 +55,24 @@ export class PipelineDecompiler {
   }
 
   /**
-   * Tokenize balanced argument lists ignoring commas inside brackets/parens/quotes.
+   * Tokenize balanced argument lists ignoring commas inside brackets/parens/quotes and Python comments.
    */
   public static tokenize(s: string): string[] {
     const items: string[] = [];
     let cur = "";
     let depth = 0;
     let inQuote: string | null = null;
+    let inComment = false;
 
     for (let i = 0; i < s.length; i++) {
       const ch = s[i];
+
+      if (inComment) {
+        if (ch === "\n" || ch === "\r") {
+          inComment = false;
+        }
+        continue;
+      }
 
       // Handle quotes
       if ((ch === '"' || ch === "'") && (i === 0 || s[i - 1] !== "\\")) {
@@ -76,6 +84,11 @@ export class PipelineDecompiler {
       }
 
       if (!inQuote) {
+        if (ch === "#") {
+          inComment = true;
+          continue;
+        }
+
         if (ch === "[" || ch === "(" || ch === "{") depth++;
         else if (ch === "]" || ch === ")" || ch === "}") depth--;
 
@@ -95,8 +108,11 @@ export class PipelineDecompiler {
   /**
    * Parse a single step string (e.g., StepName(), Condition(...), For(...))
    */
-  public static parseItem(itemStr: string): ParsedStepNode {
+  public static parseItem(itemStr: string): ParsedStepNode | null {
     const tr = itemStr.trim();
+    if (!tr || tr.startsWith("#")) {
+      return null;
+    }
 
     if (tr.startsWith("Condition(")) {
       const exprMatch = tr.match(/expression\s*=\s*(["'])([\s\S]*?)\1/);
@@ -111,8 +127,8 @@ export class PipelineDecompiler {
       return {
         type: bfTokens.length > 0 ? "wpipe_if_else" : "wpipe_if",
         condition: expr,
-        branchTrue: btTokens.map((t) => this.parseItem(t)),
-        branchFalse: bfTokens.map((t) => this.parseItem(t)),
+        branchTrue: btTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
+        branchFalse: bfTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
     } else if (tr.startsWith("For(")) {
@@ -125,7 +141,7 @@ export class PipelineDecompiler {
         return {
           type: "wpipe_while",
           condition: cond,
-          branchTrue: stepTokens.map((t) => this.parseItem(t)),
+          branchTrue: stepTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
           raw: tr,
         };
       }
@@ -138,7 +154,7 @@ export class PipelineDecompiler {
       return {
         type: "wpipe_for",
         iterations: iters,
-        branchTrue: stepTokens.map((t) => this.parseItem(t)),
+        branchTrue: stepTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
     } else if (tr.startsWith("Parallel(")) {
@@ -151,22 +167,26 @@ export class PipelineDecompiler {
       return {
         type: "wpipe_parallel",
         mergePolicy: merge,
-        branchTrue: stepTokens.map((t) => this.parseItem(t)),
+        branchTrue: stepTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
     } else if (tr.startsWith("Background(")) {
       const stepMatch = tr.match(/step\s*=\s*([A-Za-z0-9_]+(?:\([^)]*\))?)/);
-      const innerName = stepMatch ? stepMatch[1].split("(")[0].trim() : "AsyncTask";
+      const innerName = stepMatch ? stepMatch[1].split("(")[0].trim() : "";
+      const innerStep = innerName ? this.parseItem(stepMatch ? stepMatch[1] : innerName) : null;
       return {
         type: "wpipe_background",
-        stepName: innerName,
-        branchTrue: [this.parseItem(stepMatch ? stepMatch[1] : innerName)],
+        stepName: innerName || undefined,
+        branchTrue: innerStep ? [innerStep] : [],
         raw: tr,
       };
     } else {
       // Direct step invocation, e.g. HttpRequestContext(), Queso(), CleanDataStep(...)
       const nameMatch = tr.match(/^([A-Za-z0-9_]+)/);
-      const stepName = nameMatch ? nameMatch[1] : "Step";
+      if (!nameMatch) {
+        return null;
+      }
+      const stepName = nameMatch[1];
       return {
         type: "wpipe_step",
         stepName: stepName,
@@ -194,7 +214,7 @@ export class PipelineDecompiler {
     }
 
     const tokens = this.tokenize(stepsRaw);
-    const parsedSteps = tokens.map((t) => this.parseItem(t));
+    const parsedSteps = tokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null);
 
     // 2. Build Blockly Blocks chain
     let idCounter = 1;

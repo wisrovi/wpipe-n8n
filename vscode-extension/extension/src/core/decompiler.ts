@@ -126,7 +126,7 @@ export class PipelineDecompiler {
       return null;
     }
 
-    if (tr.startsWith("Condition(")) {
+    if (/(?:^|\b)(?:[a-zA-Z0-9_]+\.)?Condition\s*\(/.test(tr)) {
       const exprMatch = tr.match(/expression\s*=\s*(["'])([\s\S]*?)\1/);
       const expr = exprMatch ? exprMatch[2] : "status_code == 200";
 
@@ -143,7 +143,7 @@ export class PipelineDecompiler {
         branchFalse: bfTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
-    } else if (tr.startsWith("For(")) {
+    } else if (/(?:^|\b)(?:[a-zA-Z0-9_]+\.)?For\s*\(/.test(tr)) {
       const isWhile = tr.includes("validation_expression=");
       if (isWhile) {
         const valMatch = tr.match(/validation_expression\s*=\s*(["'])([\s\S]*?)\1/);
@@ -169,7 +169,7 @@ export class PipelineDecompiler {
         branchTrue: stepTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
-    } else if (tr.startsWith("Parallel(")) {
+    } else if (/(?:^|\b)(?:[a-zA-Z0-9_]+\.)?Parallel\s*\(/.test(tr)) {
       const mergeMatch = tr.match(/merge_policy\s*=\s*(["'])([\s\S]*?)\1/);
       const merge = mergeMatch ? mergeMatch[2] : "accumulate";
 
@@ -182,8 +182,8 @@ export class PipelineDecompiler {
         branchTrue: stepTokens.map((t) => this.parseItem(t)).filter((s): s is ParsedStepNode => s !== null),
         raw: tr,
       };
-    } else if (tr.startsWith("Background(")) {
-      const stepMatch = tr.match(/step\s*=\s*([A-Za-z0-9_]+(?:\([^)]*\))?)/);
+    } else if (/(?:^|\b)(?:[a-zA-Z0-9_]+\.)?Background\s*\(/.test(tr)) {
+      const stepMatch = tr.match(/step\s*=\s*([A-Za-z0-9_.]+(?:\([^)]*\))?)/);
       const innerName = stepMatch ? stepMatch[1].split("(")[0].trim() : "";
       const innerStep = innerName ? this.parseItem(stepMatch ? stepMatch[1] : innerName) : null;
       return {
@@ -193,15 +193,18 @@ export class PipelineDecompiler {
         raw: tr,
       };
     } else {
-      // Direct step invocation, e.g. HttpRequestContext(), Queso(), CleanDataStep(...)
-      const nameMatch = tr.match(/^([A-Za-z0-9_]+)/);
-      if (!nameMatch) {
+      // Direct step invocation, e.g. HttpRequestContext(), wpipe_steps.connectivity.http.HttpStep(), Queso(), CleanDataStep(...)
+      // Supports dot-notation namespaces, keyword/positional parameters, and function references without parens
+      const callMatch = tr.match(/^(?:([a-zA-Z0-9_.]+)\.)?([A-Za-z0-9_]+)(?:\s*\(([\s\S]*)\))?$/);
+      if (!callMatch) {
         return null;
       }
-      const stepName = nameMatch[1];
+      const pkgNamespace = callMatch[1] || undefined;
+      const stepName = callMatch[2];
       return {
         type: "wpipe_step",
         stepName: stepName,
+        namespace: pkgNamespace,
         raw: tr,
       };
     }
@@ -210,10 +213,10 @@ export class PipelineDecompiler {
   /**
    * Decompile Python source code (e.g. app/pipelines.py or modular pipeline file)
    * into Blockly workspace_state structure.
-   * Supports both single-pipeline scripts and multi-pipeline definitions in the same file.
+   * Supports single-pipeline scripts, multi-pipeline definitions, add_state chains, and variable references.
    */
   public static decompile(pythonCode: string): any | null {
-    if (!pythonCode || (!pythonCode.includes("pipe") && !pythonCode.includes("Pipeline") && !pythonCode.includes("set_steps"))) {
+    if (!pythonCode || (!pythonCode.includes("pipe") && !pythonCode.includes("Pipeline") && !pythonCode.includes("set_steps") && !pythonCode.includes("add_state"))) {
       return null;
     }
 
@@ -229,6 +232,59 @@ export class PipelineDecompiler {
       if (extracted !== null) {
         pipelineMatches.push({ varName, stepsRaw: extracted });
         setStepsRegex.lastIndex = openIdx + 1 + extracted.length;
+      }
+    }
+
+    // 1b. Support variable assignment: `pipe.steps = [...]` or `steps = [...]`
+    if (pipelineMatches.length === 0) {
+      const stepsAssignRegex = /(?:([a-zA-Z0-9_]+)\s*\.)?steps\s*=\s*\[/g;
+      while ((match = stepsAssignRegex.exec(pythonCode)) !== null) {
+        const varName = match[1] || "pipe";
+        const openIdx = match.index + match[0].lastIndexOf("[");
+        const extracted = this.extractBalancedFromIndex(pythonCode, openIdx, "[", "]");
+        if (extracted !== null) {
+          pipelineMatches.push({ varName, stepsRaw: extracted });
+          stepsAssignRegex.lastIndex = openIdx + 1 + extracted.length;
+        }
+      }
+    }
+
+    // 1c. Support variable reference: `pipe.set_steps(my_steps)` where `my_steps = [...]`
+    if (pipelineMatches.length === 0) {
+      const varCallRegex = /(?:([a-zA-Z0-9_]+)\s*\.)?set_steps\s*\(\s*([a-zA-Z0-9_]+)\s*\)/g;
+      while ((match = varCallRegex.exec(pythonCode)) !== null) {
+        const pipeVar = match[1] || "pipe";
+        const listVar = match[2];
+        const listDefRegex = new RegExp(`(?:^|\\n)\\s*${listVar}\\s*=\\s*\\[`);
+        const extracted = this.extractBalanced(pythonCode, listDefRegex);
+        if (extracted !== null) {
+          pipelineMatches.push({ varName: pipeVar, stepsRaw: extracted });
+        }
+      }
+    }
+
+    // 1d. Support sequential `add_state(...)` calls:
+    // e.g. pipe.add_state(Step1()); pipe.add_state(Step2())
+    const addStateRegex = /(?:([a-zA-Z0-9_]+)\s*\.)?add_state\s*\(/g;
+    const addStateMap: Map<string, string[]> = new Map();
+    while ((match = addStateRegex.exec(pythonCode)) !== null) {
+      const pVar = match[1] || "pipe";
+      const openParenIdx = match.index + match[0].length - 1;
+      const extractedArg = this.extractBalancedFromIndex(pythonCode, openParenIdx, "(", ")");
+      if (extractedArg !== null && extractedArg.trim()) {
+        if (!addStateMap.has(pVar)) {
+          addStateMap.set(pVar, []);
+        }
+        addStateMap.get(pVar)!.push(extractedArg.trim());
+        addStateRegex.lastIndex = openParenIdx + 1 + extractedArg.length;
+      }
+    }
+    if (addStateMap.size > 0) {
+      for (const [pVar, stepItems] of addStateMap.entries()) {
+        const existing = pipelineMatches.find((pm) => pm.varName === pVar);
+        if (!existing) {
+          pipelineMatches.push({ varName: pVar, stepsRaw: stepItems.join(", ") });
+        }
       }
     }
 
@@ -342,11 +398,18 @@ export class PipelineDecompiler {
         const sName = rawName.includes("Step")
           ? rawName.replace(/(?:[_\s-]*step)+$/i, "Step")
           : rawName;
-        const wsStep = WorkspaceIndex.getStep(sName);
+        const wsStep = WorkspaceIndex.getStep(sName) || WorkspaceIndex.getStep(rawName);
         const catSteps = CatalogManager.getSteps();
-        const isOfficialOrPlugin = catSteps.some(
-          (cs) => cs.name === sName || cs.func_name === sName || cs.name === `${sName}Step` || (sName.endsWith('Step') && cs.name === sName.slice(0, -4))
+        
+        const isNamespaceOfficial = !!item.namespace && (
+          item.namespace.startsWith("wpipe_steps") ||
+          item.namespace.startsWith("wpipe_plugins")
         );
+        
+        const catEntry = catSteps.find(
+          (cs) => cs.name === sName || cs.func_name === sName || cs.name === rawName || cs.func_name === rawName || cs.name === `${sName}Step` || (sName.endsWith('Step') && cs.name === sName.slice(0, -4)) || (item.namespace && cs.namespace === item.namespace && (cs.name === rawName || cs.func_name === rawName))
+        );
+        const isOfficialOrPlugin = isNamespaceOfficial || !!catEntry;
 
         if (wsStep || !isOfficialOrPlugin) {
           if (wsStep && wsStep.isAiStep) {
@@ -378,11 +441,8 @@ export class PipelineDecompiler {
           };
         } else {
           // Catalog Step (Green block: wpipe_step)
-          const catEntry = catSteps.find(
-            (cs) => cs.name === sName || cs.func_name === sName || cs.name === `${sName}Step` || (sName.endsWith('Step') && cs.name === sName.slice(0, -4))
-          );
-          const effectiveStepName = catEntry ? catEntry.name : sName;
-          const ns = catEntry ? catEntry.namespace : "wpipe_steps";
+          const effectiveStepName = catEntry ? (catEntry.func_name || catEntry.name) : (sName.toLowerCase() === "httpstep" ? "http" : sName);
+          const ns = (catEntry && catEntry.namespace) || item.namespace || "wpipe_steps";
           return {
             type: "wpipe_step",
             id: makeId(),
@@ -437,9 +497,9 @@ export class PipelineDecompiler {
         triggerParam = "";
       }
 
-      // Check if there is an explicit Pipeline instantiation with pipeline_name
+      // Check if there is an explicit Pipeline or PipelineAsync instantiation with pipeline_name
       try {
-        const nameRegex = new RegExp(`${pm.varName}\\s*=\\s*Pipeline\\s*\\(\\s*(?:pipeline_name\\s*=\\s*)?["']([^"']+)["']`);
+        const nameRegex = new RegExp(`${pm.varName}\\s*=\\s*(?:Pipeline|PipelineAsync)\\s*\\(\\s*(?:pipeline_name\\s*=\\s*)?["']([^"']+)["']`);
         const nameMatch = nameRegex.exec(pythonCode);
         if (nameMatch) {
           const pipeName = nameMatch[1].toLowerCase();

@@ -12,8 +12,10 @@ from config.settings import settings
 from dto.context import PipelineContextDTO
 from states.ai_process_step import AiProcessStep
 from states.base import BaseStep
+from states.pan_step import PanStep
+from states.queso_step import QuesoStep
 from wpipe import Pipeline, Condition, For, Parallel, Background  # type: ignore[import-untyped]
-from wpipe_steps.connectivity.http import HttpStep as http
+from wpipe_steps.connectivity.http import HttpRequestStep as HttpRequestContext
 
 os.makedirs("output", exist_ok=True)
 
@@ -27,7 +29,13 @@ pipe_main.max_retries = 3
 pipe_main.retry_delay = 0.5
 
 pipe_main.set_steps([
-        AiProcessStep()
+        AiProcessStep(),
+        Condition(
+            expression="http_response.get('status_code') == 200",
+            branch_true=[
+            PanStep(),
+            ],
+        )
 ])
 
 # --- Pipeline: run (API: /run) ---
@@ -39,7 +47,13 @@ pipe_run.max_retries = 3
 pipe_run.retry_delay = 0.5
 
 pipe_run.set_steps([
-        http()
+        HttpRequestContext(),
+        For(
+            iterations=3,
+            steps=[
+            QuesoStep(),
+            ],
+        )
 ])
 
 # Canonical registry of all pipelines declared on this canvas

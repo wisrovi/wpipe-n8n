@@ -1,7 +1,470 @@
 {
   "format": "wpipe",
   "project": {
+    "id": "pipeline",
     "name": "main_pipeline",
+    "protocol": "fastapi",
+    "docker_image": "",
+    "canvas_ir": {
+      "nodes": [
+        {
+          "id": "node_1",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 10
+          },
+          "data": {
+            "label": "Trigger (API: /run)",
+            "node_type": "trigger",
+            "trigger_type": "api",
+            "trigger_param": "/run",
+            "origin": "described",
+            "params": {
+              "trigger_type": "api",
+              "trigger_param": "/run"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_trigger"
+          }
+        },
+        {
+          "id": "node_2",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 63
+          },
+          "data": {
+            "label": "AiProcessStep",
+            "node_type": "step",
+            "namespace": "app.states.AiProcessStep",
+            "func_name": "AiProcessStep",
+            "origin": "described",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "notes": "Process data with an AI model",
+            "block_type": "wpipe_ai_step"
+          }
+        },
+        {
+          "id": "node_3",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 170
+          },
+          "data": {
+            "label": "IF Condition",
+            "node_type": "condition",
+            "origin": "described",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "condition_expression": "status_code == 200",
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_if"
+          }
+        },
+        {
+          "id": "node_4",
+          "type": "default",
+          "position": {
+            "x": -29,
+            "y": 196
+          },
+          "data": {
+            "label": "PanStep",
+            "node_type": "step",
+            "namespace": "app.states.pan_step",
+            "func_name": "PanStep",
+            "origin": "user_imported",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "file_name": "pan_step.py",
+            "parent_id": "node_3",
+            "slot_type": "if_body",
+            "block_type": "wpipe_user_file_step"
+          }
+        },
+        {
+          "id": "node_5",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 317
+          },
+          "data": {
+            "label": "Response (HTTP_JSON: {\"status\": \"success\", \"data\": context})",
+            "node_type": "response",
+            "response_type": "http_json",
+            "response_param": "{\"status\": \"success\", \"data\": context}",
+            "origin": "described",
+            "params": {
+              "response_type": "http_json",
+              "response_param": "{\"status\": \"success\", \"data\": context}"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_response"
+          }
+        },
+        {
+          "id": "node_6",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 410
+          },
+          "data": {
+            "label": "Trigger (API: /run)",
+            "node_type": "trigger",
+            "trigger_type": "api",
+            "trigger_param": "/run",
+            "origin": "described",
+            "params": {
+              "trigger_type": "api",
+              "trigger_param": "/run"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_trigger"
+          }
+        },
+        {
+          "id": "node_7",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 463
+          },
+          "data": {
+            "label": "HttpRequestContext",
+            "node_type": "step",
+            "namespace": "wpipe_steps.connectivity.http",
+            "func_name": "HttpRequestContext",
+            "origin": "catalog",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_step"
+          }
+        },
+        {
+          "id": "node_8",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 622
+          },
+          "data": {
+            "label": "FOR Loop",
+            "node_type": "for",
+            "origin": "described",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "for_iterations": 3,
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_for"
+          }
+        },
+        {
+          "id": "node_9",
+          "type": "default",
+          "position": {
+            "x": -36,
+            "y": 648
+          },
+          "data": {
+            "label": "QuesoStep",
+            "node_type": "step",
+            "namespace": "app.states.queso_step",
+            "func_name": "QuesoStep",
+            "origin": "user_imported",
+            "params": {},
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "file_name": "queso_step.py",
+            "parent_id": "node_8",
+            "slot_type": "loop_body",
+            "block_type": "wpipe_user_file_step"
+          }
+        },
+        {
+          "id": "node_10",
+          "type": "default",
+          "position": {
+            "x": -190,
+            "y": 769
+          },
+          "data": {
+            "label": "Response (HTTP_JSON: {\"status\": \"success\", \"data\": context})",
+            "node_type": "response",
+            "response_type": "http_json",
+            "response_param": "{\"status\": \"success\", \"data\": context}",
+            "origin": "described",
+            "params": {
+              "response_type": "http_json",
+              "response_param": "{\"status\": \"success\", \"data\": context}"
+            },
+            "contract": {
+              "reads": [
+                "data"
+              ],
+              "writes": [
+                "result"
+              ],
+              "inferred": "exact"
+            },
+            "merge_policy": "accumulate",
+            "block_type": "wpipe_response"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e_node_3_node_4",
+          "source": "node_3",
+          "target": "node_4"
+        },
+        {
+          "id": "e_seq_node_3_node_5",
+          "source": "node_3",
+          "target": "node_5"
+        },
+        {
+          "id": "e_node_4_node_5",
+          "source": "node_4",
+          "target": "node_5"
+        },
+        {
+          "id": "e_seq_node_2_node_3",
+          "source": "node_2",
+          "target": "node_3"
+        },
+        {
+          "id": "e_seq_node_1_node_2",
+          "source": "node_1",
+          "target": "node_2"
+        },
+        {
+          "id": "e_node_8_node_9",
+          "source": "node_8",
+          "target": "node_9"
+        },
+        {
+          "id": "e_seq_node_8_node_10",
+          "source": "node_8",
+          "target": "node_10"
+        },
+        {
+          "id": "e_node_9_node_10",
+          "source": "node_9",
+          "target": "node_10"
+        },
+        {
+          "id": "e_seq_node_7_node_8",
+          "source": "node_7",
+          "target": "node_8"
+        },
+        {
+          "id": "e_seq_node_6_node_7",
+          "source": "node_6",
+          "target": "node_7"
+        }
+      ],
+      "viewport": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1
+      },
+      "workspace_state": {
+        "blocks": {
+          "languageVersion": 0,
+          "blocks": [
+            {
+              "type": "wpipe_trigger",
+              "id": "root_trigger",
+              "x": -190,
+              "y": 10,
+              "fields": {
+                "TRIGGER_TYPE": "api",
+                "TRIGGER_PARAM": "/run"
+              },
+              "next": {
+                "block": {
+                  "type": "wpipe_ai_step",
+                  "id": "decompile_1793368246564_1",
+                  "fields": {
+                    "STEP_NAME": "AiProcessStep",
+                    "AI_PROMPT": "Process data with an AI model"
+                  },
+                  "next": {
+                    "block": {
+                      "type": "wpipe_if",
+                      "id": "decompile_1793368246564_2",
+                      "fields": {
+                        "CONDITION": "status_code == 200"
+                      },
+                      "inputs": {
+                        "DO": {
+                          "block": {
+                            "type": "wpipe_user_file_step",
+                            "id": "decompile_1793368246564_3",
+                            "fields": {
+                              "STEP_NAME": "PanStep",
+                              "FILE_NAME": "pan_step.py"
+                            }
+                          }
+                        }
+                      },
+                      "next": {
+                        "block": {
+                          "type": "wpipe_response",
+                          "id": "root_response",
+                          "fields": {
+                            "RESPONSE_TYPE": "http_json",
+                            "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "wpipe_trigger",
+              "id": "root_trigger_1",
+              "x": -190,
+              "y": 410,
+              "fields": {
+                "TRIGGER_TYPE": "api",
+                "TRIGGER_PARAM": "/run"
+              },
+              "next": {
+                "block": {
+                  "type": "wpipe_step",
+                  "id": "decompile_1793368246564_4",
+                  "fields": {
+                    "REPO_FILTER": "ALL",
+                    "CAT_FILTER": "ALL",
+                    "SEARCH_FILTER": "",
+                    "STEP_NAME": "HttpRequestContext",
+                    "NAMESPACE": "wpipe_steps.connectivity.http"
+                  },
+                  "next": {
+                    "block": {
+                      "type": "wpipe_for",
+                      "id": "decompile_1793368246564_5",
+                      "fields": {
+                        "ITERATIONS": 3
+                      },
+                      "inputs": {
+                        "DO": {
+                          "block": {
+                            "type": "wpipe_user_file_step",
+                            "id": "decompile_1793368246564_6",
+                            "fields": {
+                              "STEP_NAME": "QuesoStep",
+                              "FILE_NAME": "queso_step.py"
+                            }
+                          }
+                        }
+                      },
+                      "next": {
+                        "block": {
+                          "type": "wpipe_response",
+                          "id": "root_response_1",
+                          "fields": {
+                            "RESPONSE_TYPE": "http_json",
+                            "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
     "workspace_state": {
       "blocks": {
         "languageVersion": 0,
@@ -9,8 +472,8 @@
           {
             "type": "wpipe_trigger",
             "id": "root_trigger",
-            "x": 80,
-            "y": 50,
+            "x": -190,
+            "y": 10,
             "fields": {
               "TRIGGER_TYPE": "api",
               "TRIGGER_PARAM": "/run"
@@ -18,18 +481,39 @@
             "next": {
               "block": {
                 "type": "wpipe_ai_step",
-                "id": "decompile_1793106356454_1",
+                "id": "decompile_1793368246564_1",
                 "fields": {
                   "STEP_NAME": "AiProcessStep",
                   "AI_PROMPT": "Process data with an AI model"
                 },
                 "next": {
                   "block": {
-                    "type": "wpipe_response",
-                    "id": "root_response",
+                    "type": "wpipe_if",
+                    "id": "decompile_1793368246564_2",
                     "fields": {
-                      "RESPONSE_TYPE": "http_json",
-                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                      "CONDITION": "status_code == 200"
+                    },
+                    "inputs": {
+                      "DO": {
+                        "block": {
+                          "type": "wpipe_user_file_step",
+                          "id": "decompile_1793368246564_3",
+                          "fields": {
+                            "STEP_NAME": "PanStep",
+                            "FILE_NAME": "pan_step.py"
+                          }
+                        }
+                      }
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_response",
+                        "id": "root_response",
+                        "fields": {
+                          "RESPONSE_TYPE": "http_json",
+                          "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                        }
+                      }
                     }
                   }
                 }
@@ -39,8 +523,8 @@
           {
             "type": "wpipe_trigger",
             "id": "root_trigger_1",
-            "x": 80,
-            "y": 370,
+            "x": -190,
+            "y": 410,
             "fields": {
               "TRIGGER_TYPE": "api",
               "TRIGGER_PARAM": "/run"
@@ -48,21 +532,42 @@
             "next": {
               "block": {
                 "type": "wpipe_step",
-                "id": "decompile_1793106356454_2",
+                "id": "decompile_1793368246564_4",
                 "fields": {
                   "REPO_FILTER": "ALL",
                   "CAT_FILTER": "ALL",
                   "SEARCH_FILTER": "",
-                  "STEP_NAME": "http",
+                  "STEP_NAME": "HttpRequestContext",
                   "NAMESPACE": "wpipe_steps.connectivity.http"
                 },
                 "next": {
                   "block": {
-                    "type": "wpipe_response",
-                    "id": "root_response_1",
+                    "type": "wpipe_for",
+                    "id": "decompile_1793368246564_5",
                     "fields": {
-                      "RESPONSE_TYPE": "http_json",
-                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                      "ITERATIONS": 3
+                    },
+                    "inputs": {
+                      "DO": {
+                        "block": {
+                          "type": "wpipe_user_file_step",
+                          "id": "decompile_1793368246564_6",
+                          "fields": {
+                            "STEP_NAME": "QuesoStep",
+                            "FILE_NAME": "queso_step.py"
+                          }
+                        }
+                      }
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_response",
+                        "id": "root_response_1",
+                        "fields": {
+                          "RESPONSE_TYPE": "http_json",
+                          "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                        }
+                      }
                     }
                   }
                 }
@@ -72,27 +577,47 @@
         ]
       }
     },
-    "canvas_ir": {
-      "workspace_state": {
-        "blocks": {
-          "languageVersion": 0,
-          "blocks": [
-            {
-              "type": "wpipe_trigger",
-              "id": "root_trigger",
-              "x": 80,
-              "y": 50,
+    "generated_files": []
+  },
+  "workspace_state": {
+    "blocks": {
+      "languageVersion": 0,
+      "blocks": [
+        {
+          "type": "wpipe_trigger",
+          "id": "root_trigger",
+          "x": -190,
+          "y": 10,
+          "fields": {
+            "TRIGGER_TYPE": "api",
+            "TRIGGER_PARAM": "/run"
+          },
+          "next": {
+            "block": {
+              "type": "wpipe_ai_step",
+              "id": "decompile_1793368246564_1",
               "fields": {
-                "TRIGGER_TYPE": "api",
-                "TRIGGER_PARAM": "/run"
+                "STEP_NAME": "AiProcessStep",
+                "AI_PROMPT": "Process data with an AI model"
               },
               "next": {
                 "block": {
-                  "type": "wpipe_ai_step",
-                  "id": "decompile_1793106356454_1",
+                  "type": "wpipe_if",
+                  "id": "decompile_1793368246564_2",
                   "fields": {
-                    "STEP_NAME": "AiProcessStep",
-                    "AI_PROMPT": "Process data with an AI model"
+                    "CONDITION": "status_code == 200"
+                  },
+                  "inputs": {
+                    "DO": {
+                      "block": {
+                        "type": "wpipe_user_file_step",
+                        "id": "decompile_1793368246564_3",
+                        "fields": {
+                          "STEP_NAME": "PanStep",
+                          "FILE_NAME": "pan_step.py"
+                        }
+                      }
+                    }
                   },
                   "next": {
                     "block": {
@@ -106,26 +631,47 @@
                   }
                 }
               }
-            },
-            {
-              "type": "wpipe_trigger",
-              "id": "root_trigger_1",
-              "x": 80,
-              "y": 370,
+            }
+          }
+        },
+        {
+          "type": "wpipe_trigger",
+          "id": "root_trigger_1",
+          "x": -190,
+          "y": 410,
+          "fields": {
+            "TRIGGER_TYPE": "api",
+            "TRIGGER_PARAM": "/run"
+          },
+          "next": {
+            "block": {
+              "type": "wpipe_step",
+              "id": "decompile_1793368246564_4",
               "fields": {
-                "TRIGGER_TYPE": "api",
-                "TRIGGER_PARAM": "/run"
+                "REPO_FILTER": "ALL",
+                "CAT_FILTER": "ALL",
+                "SEARCH_FILTER": "",
+                "STEP_NAME": "HttpRequestContext",
+                "NAMESPACE": "wpipe_steps.connectivity.http"
               },
               "next": {
                 "block": {
-                  "type": "wpipe_step",
-                  "id": "decompile_1793106356454_2",
+                  "type": "wpipe_for",
+                  "id": "decompile_1793368246564_5",
                   "fields": {
-                    "REPO_FILTER": "ALL",
-                    "CAT_FILTER": "ALL",
-                    "SEARCH_FILTER": "",
-                    "STEP_NAME": "http",
-                    "NAMESPACE": "wpipe_steps.connectivity.http"
+                    "ITERATIONS": 3
+                  },
+                  "inputs": {
+                    "DO": {
+                      "block": {
+                        "type": "wpipe_user_file_step",
+                        "id": "decompile_1793368246564_6",
+                        "fields": {
+                          "STEP_NAME": "QuesoStep",
+                          "FILE_NAME": "queso_step.py"
+                        }
+                      }
+                    }
                   },
                   "next": {
                     "block": {
@@ -136,76 +682,6 @@
                         "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
                       }
                     }
-                  }
-                }
-              }
-            }
-          ]
-        }
-      }
-    }
-  },
-  "workspace_state": {
-    "blocks": {
-      "languageVersion": 0,
-      "blocks": [
-        {
-          "type": "wpipe_trigger",
-          "id": "root_trigger",
-          "x": 80,
-          "y": 50,
-          "fields": {
-            "TRIGGER_TYPE": "api",
-            "TRIGGER_PARAM": "/run"
-          },
-          "next": {
-            "block": {
-              "type": "wpipe_ai_step",
-              "id": "decompile_1793106356454_1",
-              "fields": {
-                "STEP_NAME": "AiProcessStep",
-                "AI_PROMPT": "Process data with an AI model"
-              },
-              "next": {
-                "block": {
-                  "type": "wpipe_response",
-                  "id": "root_response",
-                  "fields": {
-                    "RESPONSE_TYPE": "http_json",
-                    "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "type": "wpipe_trigger",
-          "id": "root_trigger_1",
-          "x": 80,
-          "y": 370,
-          "fields": {
-            "TRIGGER_TYPE": "api",
-            "TRIGGER_PARAM": "/run"
-          },
-          "next": {
-            "block": {
-              "type": "wpipe_step",
-              "id": "decompile_1793106356454_2",
-              "fields": {
-                "REPO_FILTER": "ALL",
-                "CAT_FILTER": "ALL",
-                "SEARCH_FILTER": "",
-                "STEP_NAME": "http",
-                "NAMESPACE": "wpipe_steps.connectivity.http"
-              },
-              "next": {
-                "block": {
-                  "type": "wpipe_response",
-                  "id": "root_response_1",
-                  "fields": {
-                    "RESPONSE_TYPE": "http_json",
-                    "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
                   }
                 }
               }
@@ -223,8 +699,8 @@
           {
             "type": "wpipe_trigger",
             "id": "root_trigger",
-            "x": 80,
-            "y": 50,
+            "x": -190,
+            "y": 10,
             "fields": {
               "TRIGGER_TYPE": "api",
               "TRIGGER_PARAM": "/run"
@@ -232,18 +708,39 @@
             "next": {
               "block": {
                 "type": "wpipe_ai_step",
-                "id": "decompile_1793106356454_1",
+                "id": "decompile_1793368246564_1",
                 "fields": {
                   "STEP_NAME": "AiProcessStep",
                   "AI_PROMPT": "Process data with an AI model"
                 },
                 "next": {
                   "block": {
-                    "type": "wpipe_response",
-                    "id": "root_response",
+                    "type": "wpipe_if",
+                    "id": "decompile_1793368246564_2",
                     "fields": {
-                      "RESPONSE_TYPE": "http_json",
-                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                      "CONDITION": "status_code == 200"
+                    },
+                    "inputs": {
+                      "DO": {
+                        "block": {
+                          "type": "wpipe_user_file_step",
+                          "id": "decompile_1793368246564_3",
+                          "fields": {
+                            "STEP_NAME": "PanStep",
+                            "FILE_NAME": "pan_step.py"
+                          }
+                        }
+                      }
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_response",
+                        "id": "root_response",
+                        "fields": {
+                          "RESPONSE_TYPE": "http_json",
+                          "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                        }
+                      }
                     }
                   }
                 }
@@ -253,8 +750,8 @@
           {
             "type": "wpipe_trigger",
             "id": "root_trigger_1",
-            "x": 80,
-            "y": 370,
+            "x": -190,
+            "y": 410,
             "fields": {
               "TRIGGER_TYPE": "api",
               "TRIGGER_PARAM": "/run"
@@ -262,21 +759,42 @@
             "next": {
               "block": {
                 "type": "wpipe_step",
-                "id": "decompile_1793106356454_2",
+                "id": "decompile_1793368246564_4",
                 "fields": {
                   "REPO_FILTER": "ALL",
                   "CAT_FILTER": "ALL",
                   "SEARCH_FILTER": "",
-                  "STEP_NAME": "http",
+                  "STEP_NAME": "HttpRequestContext",
                   "NAMESPACE": "wpipe_steps.connectivity.http"
                 },
                 "next": {
                   "block": {
-                    "type": "wpipe_response",
-                    "id": "root_response_1",
+                    "type": "wpipe_for",
+                    "id": "decompile_1793368246564_5",
                     "fields": {
-                      "RESPONSE_TYPE": "http_json",
-                      "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                      "ITERATIONS": 3
+                    },
+                    "inputs": {
+                      "DO": {
+                        "block": {
+                          "type": "wpipe_user_file_step",
+                          "id": "decompile_1793368246564_6",
+                          "fields": {
+                            "STEP_NAME": "QuesoStep",
+                            "FILE_NAME": "queso_step.py"
+                          }
+                        }
+                      }
+                    },
+                    "next": {
+                      "block": {
+                        "type": "wpipe_response",
+                        "id": "root_response_1",
+                        "fields": {
+                          "RESPONSE_TYPE": "http_json",
+                          "RESPONSE_PARAM": "{\"status\": \"success\", \"data\": context}"
+                        }
+                      }
                     }
                   }
                 }
